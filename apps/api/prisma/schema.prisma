@@ -1,0 +1,385 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  schemas   = ["acesso", "organizacoes", "pessoas", "eventos", "inscricoes", "saude", "arquivos", "public"]
+}
+
+enum MemberRole {
+  ORGANIZER
+  SECRETARY
+  HEALTH
+
+  @@map("funcao_membro")
+  @@schema("organizacoes")
+}
+
+enum EventStatus {
+  DRAFT     @map("RASCUNHO")
+  PUBLISHED @map("PUBLICADO")
+  CANCELLED @map("CANCELADO")
+  COMPLETED @map("REALIZADO")
+
+  @@map("situacao_evento")
+  @@schema("eventos")
+}
+
+enum CampaignKind {
+  CAMPER    @map("CAMPISTA")
+  VOLUNTEER @map("SERVO")
+
+  @@map("publico_campanha")
+  @@schema("eventos")
+}
+
+enum RegistrationStatus {
+  RECEIVED  @map("RECEBIDA")
+  REVIEW    @map("EM_ANALISE")
+  APPROVED  @map("APROVADA")
+  CONFIRMED @map("CONFIRMADA")
+  WAITLIST  @map("LISTA_ESPERA")
+  REJECTED  @map("RECUSADA")
+  CANCELLED @map("CANCELADA")
+
+  @@map("situacao_inscricao")
+  @@schema("inscricoes")
+}
+
+model Account {
+  id              String           @id(map: "contas_pk") @map("conta_id") @db.Uuid
+  email           String
+  platformAdmin   Boolean          @default(false) @map("admin")
+  profile         Json             @default("{}") @map("perfil")
+  createdAt       DateTime         @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
+  memberships     Membership[]
+  registrations   Registration[]
+  assets          MediaAsset[]
+  sentInvitations Invitation[]     @relation("InvitationCreator")
+  auditActions    AuditLog[]       @relation("AuditActor")
+  decisionNotices DecisionNotice[]
+
+  @@map("contas")
+  @@schema("acesso")
+}
+
+model Organization {
+  id          String       @id(map: "organizacoes_pk") @default(uuid()) @map("organizacao_id") @db.Uuid
+  name        String       @map("nome")
+  kind        String       @default("PARISH") @map("tipo")
+  city        String       @map("cidade")
+  state       String       @map("uf")
+  contact     String       @map("contato")
+  logoUrl     String?      @map("url_logotipo")
+  active      Boolean      @default(true) @map("ativo")
+  createdAt   DateTime     @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
+  memberships Membership[]
+  invitations Invitation[]
+  eventTypes  EventType[]
+  events      Event[]
+  people      Person[]
+  assets      MediaAsset[]
+  auditLogs   AuditLog[]
+
+  @@map("organizacoes")
+  @@schema("organizacoes")
+}
+
+model Membership {
+  id             String       @id(map: "membros_pk") @default(uuid()) @map("membro_id") @db.Uuid
+  organizationId String       @map("organizacao_id") @db.Uuid
+  accountId      String       @map("conta_id") @db.Uuid
+  role           MemberRole   @map("funcao")
+  active         Boolean      @default(true) @map("ativo")
+  healthEventIds String[]     @default([]) @map("eventos_saude_ids")
+  organization   Organization @relation(fields: [organizationId], references: [id], map: "membros_organizacao_id_fk")
+  account        Account      @relation(fields: [accountId], references: [id], map: "membros_conta_id_fk")
+
+  @@unique([organizationId, accountId], map: "membros_organizacao_id_conta_id_uk")
+  @@index([accountId], map: "membros_conta_id_idx")
+  @@map("membros")
+  @@schema("organizacoes")
+}
+
+model Invitation {
+  id             String       @id(map: "convites_pk") @default(uuid()) @map("convite_id") @db.Uuid
+  organizationId String       @map("organizacao_id") @db.Uuid
+  email          String
+  role           MemberRole   @map("funcao")
+  tokenHash      String       @unique(map: "convites_hash_token_uk") @map("hash_token")
+  expiresAt      DateTime     @map("expira_em") @db.Timestamp(3)
+  acceptedAt     DateTime?    @map("aceito_em") @db.Timestamp(3)
+  revokedAt      DateTime?    @map("revogado_em") @db.Timestamp(3)
+  createdBy      String       @map("criado_por") @db.Uuid
+  createdAt      DateTime     @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
+  organization   Organization @relation(fields: [organizationId], references: [id], map: "convites_organizacao_id_fk")
+  creator        Account      @relation("InvitationCreator", fields: [createdBy], references: [id], map: "convites_criado_por_fk")
+
+  @@index([organizationId, email], map: "convites_organizacao_id_email_idx")
+  @@map("convites")
+  @@schema("organizacoes")
+}
+
+model EventType {
+  id             String       @id(map: "tipos_evento_pk") @default(uuid()) @map("tipo_evento_id") @db.Uuid
+  organizationId String       @map("organizacao_id") @db.Uuid
+  name           String       @map("nome")
+  organization   Organization @relation(fields: [organizationId], references: [id], map: "tipos_evento_organizacao_fk")
+  events         Event[]
+
+  @@unique([organizationId, name], map: "tipos_evento_organizacao_nome_uk")
+  @@map("tipos_evento")
+  @@schema("eventos")
+}
+
+model Event {
+  id             String       @id(map: "eventos_pk") @default(uuid()) @map("evento_id") @db.Uuid
+  organizationId String       @map("organizacao_id") @db.Uuid
+  typeId         String       @map("tipo_evento_id") @db.Uuid
+  name           String       @map("nome")
+  description    String       @map("descricao")
+  imageUrl       String?      @map("url_arte")
+  imageBucket    String?      @map("bucket_arte")
+  imageKey       String?      @map("chave_arte")
+  location       String       @map("local")
+  city           String       @map("cidade")
+  startsAt       DateTime     @map("inicio_em") @db.Date
+  endsAt         DateTime     @map("termino_em") @db.Date
+  status         EventStatus  @default(DRAFT) @map("situacao")
+  createdAt      DateTime     @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
+  organization   Organization @relation(fields: [organizationId], references: [id], map: "eventos_organizacao_fk")
+  type           EventType    @relation(fields: [typeId], references: [id], map: "eventos_tipo_fk")
+  campaigns      Campaign[]
+  teams          Team[]
+
+  @@index([organizationId, status], map: "eventos_organizacao_situacao_idx")
+  @@map("eventos")
+  @@schema("eventos")
+}
+
+model Campaign {
+  id            String         @id(map: "campanhas_pk") @default(uuid()) @map("campanha_id") @db.Uuid
+  eventId       String         @map("evento_id") @db.Uuid
+  kind          CampaignKind   @map("publico")
+  opensAt       DateTime       @map("abertura_em") @db.Timestamptz(3)
+  closesAt      DateTime       @map("encerramento_em") @db.Timestamptz(3)
+  paused        Boolean        @default(false) @map("pausada")
+  capacity      Int?           @map("capacidade")
+  allowWaitlist Boolean        @default(false) @map("permite_lista_espera")
+  event         Event          @relation(fields: [eventId], references: [id], map: "campanhas_evento_fk")
+  forms         FormVersion[]
+  drafts        Draft[]
+  registrations Registration[]
+
+  @@unique([eventId, kind], map: "campanhas_evento_publico_uk")
+  @@map("campanhas")
+  @@schema("eventos")
+}
+
+model FormVersion {
+  id            String         @id @default(uuid()) @map("versao_ficha_id") @db.Uuid
+  campaignId    String         @map("campanha_id") @db.Uuid
+  version       Int            @map("numero_versao")
+  config        Json           @map("configuracao")
+  publishedAt   DateTime?      @map("publicada_em") @db.Timestamp(3)
+  createdAt     DateTime       @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
+  campaign      Campaign       @relation(fields: [campaignId], references: [id])
+  drafts        Draft[]
+  registrations Registration[]
+
+  @@unique([campaignId, version])
+  @@map("versoes_ficha")
+  @@schema("inscricoes")
+}
+
+model Draft {
+  id            String        @id @default(uuid()) @map("rascunho_id") @db.Uuid
+  campaignId    String        @map("campanha_id") @db.Uuid
+  formVersionId String        @map("versao_ficha_id") @db.Uuid
+  tokenHash     String        @unique @map("hash_token")
+  payload       Json          @default("{}") @map("respostas")
+  expiresAt     DateTime      @map("expira_em") @db.Timestamp(3)
+  updatedAt     DateTime      @updatedAt @map("atualizado_em") @db.Timestamp(3)
+  createdAt     DateTime      @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
+  campaign      Campaign      @relation(fields: [campaignId], references: [id])
+  form          FormVersion   @relation(fields: [formVersionId], references: [id])
+  health        DraftHealth?
+  assets        MediaAsset[]
+  registration  Registration?
+
+  @@map("rascunhos")
+  @@schema("inscricoes")
+}
+
+model DraftHealth {
+  draftId String @id @map("rascunho_id") @db.Uuid
+  data    Json   @default("{}") @map("respostas")
+  draft   Draft  @relation(fields: [draftId], references: [id], onDelete: Cascade)
+
+  @@map("rascunhos_saude")
+  @@schema("saude")
+}
+
+model Person {
+  id             String         @id(map: "pessoas_pk") @default(uuid()) @map("pessoa_id") @db.Uuid
+  organizationId String         @map("organizacao_id") @db.Uuid
+  name           String         @map("nome")
+  birthDate      DateTime       @map("data_nascimento") @db.Date
+  phone          String         @map("telefone")
+  email          String?
+  cpf            String?
+  createdAt      DateTime       @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
+  organization   Organization   @relation(fields: [organizationId], references: [id], map: "pessoas_organizacao_id_fk")
+  registrations  Registration[]
+
+  @@index([organizationId, cpf], map: "pessoas_organizacao_id_cpf_idx")
+  @@index([organizationId, name], map: "pessoas_organizacao_id_nome_idx")
+  @@map("pessoas")
+  @@schema("pessoas")
+}
+
+model Registration {
+  id              String             @id @default(uuid()) @map("inscricao_id") @db.Uuid
+  protocol        String             @unique @map("protocolo")
+  draftId         String             @unique @map("rascunho_id") @db.Uuid
+  personId        String             @map("pessoa_id") @db.Uuid
+  campaignId      String             @map("campanha_id") @db.Uuid
+  formVersionId   String             @map("versao_ficha_id") @db.Uuid
+  accountId       String?            @map("conta_id") @db.Uuid
+  teamId          String?            @map("equipe_id") @db.Uuid
+  snapshot        Json               @map("respostas")
+  status          RegistrationStatus @default(RECEIVED) @map("situacao")
+  createdAt       DateTime           @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
+  updatedAt       DateTime           @updatedAt @map("atualizado_em") @db.Timestamp(3)
+  draft           Draft              @relation(fields: [draftId], references: [id])
+  person          Person             @relation(fields: [personId], references: [id])
+  campaign        Campaign           @relation(fields: [campaignId], references: [id])
+  form            FormVersion        @relation(fields: [formVersionId], references: [id])
+  account         Account?           @relation(fields: [accountId], references: [id])
+  team            Team?              @relation(fields: [teamId], references: [id])
+  health          HealthSubmission?
+  consent         Consent?
+  history         StatusHistory[]
+  decisionNotices DecisionNotice[]
+
+  @@index([campaignId, status])
+  @@index([accountId])
+  @@map("inscricoes")
+  @@schema("inscricoes")
+}
+
+model HealthSubmission {
+  registrationId String       @id @map("inscricao_id") @db.Uuid
+  data           Json         @map("respostas")
+  registration   Registration @relation(fields: [registrationId], references: [id])
+
+  @@map("fichas_saude")
+  @@schema("saude")
+}
+
+model Consent {
+  registrationId     String       @id @map("inscricao_id") @db.Uuid
+  version            String       @map("versao")
+  termsText          String       @map("texto_termos")
+  accepted           Boolean      @map("aceito")
+  imageAuthorized    Boolean      @map("imagem_autorizada")
+  guardianAuthorized Boolean      @map("responsavel_autorizou")
+  acceptedAt         DateTime     @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("aceito_em") @db.Timestamp(3)
+  registration       Registration @relation(fields: [registrationId], references: [id])
+
+  @@map("aceites")
+  @@schema("inscricoes")
+}
+
+model StatusHistory {
+  id             String             @id @default(uuid()) @map("historico_id") @db.Uuid
+  registrationId String             @map("inscricao_id") @db.Uuid
+  actorId        String             @map("autor_id") @db.Uuid
+  fromStatus     RegistrationStatus @map("situacao_anterior")
+  toStatus       RegistrationStatus @map("situacao_nova")
+  reason         String             @map("motivo")
+  createdAt      DateTime           @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
+  registration   Registration       @relation(fields: [registrationId], references: [id])
+  decisionNotice DecisionNotice?
+
+  @@map("historico")
+  @@schema("inscricoes")
+}
+
+model Team {
+  id            String         @id @default(uuid()) @map("equipe_id") @db.Uuid
+  eventId       String         @map("evento_id") @db.Uuid
+  name          String         @map("nome")
+  capacity      Int?           @map("vagas")
+  event         Event          @relation(fields: [eventId], references: [id])
+  registrations Registration[]
+
+  @@unique([eventId, name])
+  @@map("equipes")
+  @@schema("eventos")
+}
+
+model DecisionNotice {
+  id             String        @id @default(uuid()) @map("aviso_id") @db.Uuid
+  registrationId String        @map("inscricao_id") @db.Uuid
+  historyId      String        @unique @map("historico_id") @db.Uuid
+  createdById    String        @map("autor_id") @db.Uuid
+  kind           String        @map("tipo")
+  tokenHash      String        @unique @map("hash_token")
+  expiresAt      DateTime      @map("expira_em") @db.Timestamp(3)
+  confirmedAt    DateTime?     @map("presenca_confirmada_em") @db.Timestamp(3)
+  revokedAt      DateTime?     @map("revogado_em") @db.Timestamp(3)
+  emailStatus    String        @default("PENDENTE") @map("situacao_email")
+  emailAttempts  Int           @default(0) @map("tentativas_email")
+  emailStartedAt DateTime?     @map("envio_iniciado_em") @db.Timestamp(3)
+  emailSentAt    DateTime?     @map("email_enviado_em") @db.Timestamp(3)
+  whatsappSentAt DateTime?     @map("whatsapp_enviado_em") @db.Timestamp(3)
+  createdAt      DateTime      @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
+  updatedAt      DateTime      @updatedAt @map("atualizado_em") @db.Timestamp(3)
+  registration   Registration  @relation(fields: [registrationId], references: [id])
+  history        StatusHistory @relation(fields: [historyId], references: [id])
+  createdBy      Account       @relation(fields: [createdById], references: [id], onDelete: Restrict, map: "avisos_decisao_autor_id_fk")
+
+  @@index([registrationId, createdAt])
+  @@map("avisos_decisao")
+  @@schema("inscricoes")
+}
+
+model MediaAsset {
+  id             String        @id @default(uuid()) @map("arquivo_id") @db.Uuid
+  organizationId String?       @map("organizacao_id") @db.Uuid
+  draftId        String?       @map("rascunho_id") @db.Uuid
+  accountId      String?       @map("conta_id") @db.Uuid
+  provider       String        @default("supabase") @map("provedor")
+  bucket         String
+  objectKey      String        @unique @map("chave_objeto")
+  purpose        String        @map("finalidade")
+  mimeType       String        @map("tipo_mime")
+  size           Int           @map("tamanho_bytes")
+  createdAt      DateTime      @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  draft          Draft?        @relation(fields: [draftId], references: [id])
+  account        Account?      @relation(fields: [accountId], references: [id])
+
+  @@map("arquivos")
+  @@schema("arquivos")
+}
+
+model AuditLog {
+  id             String       @id(map: "auditoria_pk") @default(uuid()) @map("auditoria_id") @db.Uuid
+  organizationId String       @map("organizacao_id") @db.Uuid
+  actorId        String       @map("autor_id") @db.Uuid
+  action         String       @map("acao")
+  entityId       String       @map("entidade_id")
+  createdAt      DateTime     @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
+  organization   Organization @relation(fields: [organizationId], references: [id], map: "auditoria_organizacao_id_fk")
+  actor          Account      @relation("AuditActor", fields: [actorId], references: [id], map: "auditoria_autor_id_fk")
+
+  @@index([organizationId, createdAt], map: "auditoria_organizacao_id_criado_em_idx")
+  @@map("auditoria")
+  @@schema("organizacoes")
+}

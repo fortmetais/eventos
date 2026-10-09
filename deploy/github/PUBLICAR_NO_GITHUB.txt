@@ -1,0 +1,65 @@
+PROJETO ENCONTRO — GITHUB
+
+Repositório informado: git@github.com:fortmetais/eventos.git
+Página: https://github.com/fortmetais/eventos
+Pasta local: C:\desenvolvimento\beta_i_social
+Branch de desenvolvimento: main
+
+O GitHub recebe o código, os scripts SQL, as migrations e os arquivos de
+exemplo. Não recebe apps/api/.env, senhas, chaves privadas, node_modules,
+builds, banco de dados local ou a pasta .local de testes e capturas.
+
+ACESSO DA NOVA CONTA POR SSH
+
+1. Entre no GitHub com a conta fortmetais.
+2. Abra https://github.com/settings/ssh/new
+3. Em Title, use: Encontro - computador de desenvolvimento.
+4. Em Key type, mantenha Authentication Key.
+5. Copie o conteúdo inteiro de .local/github/fortmetais-eventos.pub e
+   cole em Key. Esse arquivo é a chave PÚBLICA, usada para autorizar este
+   computador. A chave privada fica fora do projeto e não é enviada.
+6. Clique em Add SSH key. O GitHub poderá pedir confirmação da sua conta.
+7. Avise que a chave foi cadastrada para testar o acesso e concluir o envio.
+
+A identificação deste projeto será configurada apenas no repositório local;
+as configurações e credenciais de outros projetos não serão substituídas.
+O endereço do repositório, sozinho, não configura a autenticação SSH.
+
+ATUALIZAÇÕES FUTURAS
+
+Depois que o primeiro envio for confirmado, você poderá enviar atualizações
+pelo terminal na pasta do projeto:
+
+git status
+git add .
+git commit -m "Descreva a alteração realizada"
+git push
+
+Confira os arquivos antes de confirmar. O package-lock.json é versionado
+para preservar as versões instaladas. A Hostinger instala as dependências
+novamente, sem precisar enviar node_modules.
+
+VINCULAÇÃO À HOSTINGER
+
+Após o projeto aparecer no GitHub, no hPanel use a criação de aplicação
+Node.js por GitHub. Autorize a integração na conta fortmetais e selecione
+o repositório eventos e a branch main. Confirme no plano contratado se a
+opção Aplicativo Web Node.js está disponível; a configuração detalhada será
+feita conforme o painel apresentado pela Hostinger.
+
+Este projeto contém React em apps/web e Express em apps/api, com pacotes
+compartilhados na raiz do repositório. A publicação precisa preparar as duas
+partes, configurar as URLs e as variáveis privadas no painel da hospedagem.
+Não envie o .env por Git e não use npm run dev como processo de produção.
+
+O PostgreSQL eventos_beta está hoje neste computador. Hospedar o código não
+copia o banco nem transforma localhost em um banco acessível à Hostinger.
+Antes de disponibilizar o sistema completo, precisamos preparar um
+PostgreSQL de produção e transferir a estrutura/dados de maneira controlada.
+Não executar migrations completas ou seed sobre o banco criado gradualmente.
+
+REFERÊNCIAS OFICIAIS
+
+https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account
+https://docs.github.com/en/migrations/importing-source-code/using-the-command-line-to-import-source-code/adding-locally-hosted-code-to-github
+https://www.hostinger.com/support/how-to-deploy-a-nodejs-website-in-hostinger/

@@ -1,0 +1,143 @@
+CRIAÇÃO GRADUAL PELO DBEAVER
+
+Execute apenas uma etapa por vez e confira o resultado antes de avançar.
+Os scripts criam a estrutura, não cadastram contas nem conectam a API.
+Não foram aplicados à sua base: você fará a execução pelo DBeaver.
+
+0. PostgreSQL próprio: conectado ao banco postgres, execute 00 com auto-commit.
+   Depois conecte ao novo banco eventos_beta. No Supabase, pule 00: o banco
+   do projeto já existe. Não é necessário um banco por paróquia.
+1. Execute o arquivo 01 inteiro como script, conectado ao banco escolhido.
+   Confira acesso.contas no navegador do DBeaver (atualize a conexão).
+   Comece por esta etapa; a tabela pode permanecer vazia enquanto o Auth
+   não está configurado. Sem a identidade real, não existe login funcional.
+   A etapa 1 já foi concluída pelo usuário em eventos_beta. Não a reexecute.
+   Use 01b_conferir_contas.sql para conferir chave primária, defaults,
+   obrigatoriedade das colunas, índices e RLS sem alterar a base existente.
+2. Após validar a etapa 1, execute 02: organizações, membros, convites e
+   auditoria. Os vínculos dependem das contas de acesso da etapa 1.
+3. Após validar a etapa 2, execute 03: pessoas da organização sem obrigar
+   conta de acesso. O perfil global continua em acesso.contas.perfil.
+
+Cada script 01–03 usa uma transação e deve ser executado uma única vez.
+Se houver falha, faça ROLLBACK antes de corrigir e executar novamente.
+Não reexecute cegamente em uma instalação existente: não usamos CREATE
+TABLE IF NOT EXISTS para esconder diferenças de estrutura.
+CREATE DATABASE não pode ser executado dentro de uma transação.
+
+ORGANIZAÇÃO ESCOLHIDA
+
+Banco: eventos_beta.
+acesso.contas                      Conta global e permissão de administrador.
+organizacoes.organizacoes          Paróquia/comunidade/organização responsável.
+organizacoes.membros               Conta + organização + função + suspensão.
+organizacoes.convites              Convite, hash do token, prazo e uso único.
+organizacoes.auditoria             Ações administrativas da organização.
+pessoas.pessoas                    Cadastro de pessoa pertencente à organização.
+
+PADRÃO PT-BR ADOTADO A PARTIR DA ETAPA 1 CRIADA PELO USUÁRIO
+
+Esquemas, tabelas e colunas usam português, minúsculas, sem acentos e
+snake_case. Tabelas no plural; chaves identificam a entidade: conta_id,
+organizacao_id, membro_id, convite_id, auditoria_id e pessoa_id.
+Não é necessário usar aspas nesses identificadores.
+
+Mapa confirmado na imagem para o modelo Account:
+id -> conta_id (uuid); email -> email (text);
+platformAdmin -> admin (boolean); profile -> perfil (jsonb);
+createdAt -> criado_em (timestamp(3)).
+A imagem não permite confirmar PK, nullability, defaults, índices ou RLS.
+Esses detalhes precisam do resultado da consulta de conferência 01b.
+
+Os valores técnicos dos papéis (ORGANIZER, SECRETARY, HEALTH) e do tipo
+PARISH foram preservados por compatibilidade com as regras da API atual.
+Se também desejarmos traduzi-los, faremos isso junto da integração da API.
+O enum físico dos papéis é organizacoes.funcao_membro.
+Não criar um esquema por paróquia: o isolamento depende de organizacao_id
+e da autorização do servidor.
+
+UUIDs: contas.conta_id é o mesmo UUID do usuário confirmado no Supabase Auth.
+Nos demais cadastros, o Prisma gera UUIDs (@default(uuid())). Por isso não
+há DEFAULT aleatório em contas.conta_id e nenhuma extensão é necessária.
+Quem cadastrar dados manualmente deve informar um UUID para os demais IDs.
+Não há senhas de usuários ou tokens de sessão nas tabelas da aplicação.
+CPF/telefone não são chaves para acesso ou vinculação de históricos.
+Datas de nascimento usam DATE; instantes usam TIMESTAMP(3) em UTC para
+preservar os tipos do Prisma atual. Informe instantes em UTC no SQL manual.
+
+ACESSO AO BANCO
+
+RLS está habilitado sem políticas públicas, e privilégios de PUBLIC,
+anon e authenticated são revogados nos objetos novos. Isso impede o acesso
+do navegador pelo Supabase às tabelas de negócio. Não publique esses
+esquemas na API automática do Supabase nem crie políticas abertas.
+
+A conexão privada da API precisa de privilégios específicos para o servidor
+e de um arranjo compatível com RLS. O proprietário das tabelas normalmente
+ignora RLS; esse comportamento será usado apenas em desenvolvimento.
+Não use a credencial da API no React. Esquemas separados e RLS sem políticas
+não implementam, sozinhos, isolamento entre organizações para um servidor
+com acesso privilegiado. As regras por organização continuam na API.
+Os grants/políticas do papel de produção serão definidos na conexão real.
+
+INTEGRAÇÃO COM A APLICAÇÃO EXISTENTE — ESTADO ATUAL
+
+EVENTOS E PERÍODOS
+Após as etapas 01–03, execute 05_eventos_e_periodos.sql inteiro, uma única
+vez. Cria eventos.tipos_evento, eventos.eventos e eventos.campanhas.
+O organizador cadastra um dia ou intervalo, dois períodos independentes
+e arte vertical 9:16. Guia: docs/eventos-etapa-inicial.md.
+
+FICHA DE INTENÇÃO PARA SERVOS
+Após a etapa 05, execute 06_fichas_servos_e_inscricoes.sql inteiro, uma
+única vez. Cria nove tabelas adicionais:
+- inscricoes: versoes_ficha, rascunhos, inscricoes, aceites e historico;
+- saude: rascunhos_saude e fichas_saude;
+- arquivos: arquivos;
+- eventos: equipes.
+Fichas publicadas e respostas enviadas são imutáveis. Alterações na ficha
+criam versões novas; as respostas anteriores preservam sua versão.
+Execute npm run storage:setup para preparar as fotos privadas no Supabase.
+Guia de ativação e roteiro de testes: docs/ficha-servos.md.
+
+AVISOS DE ACEITE/RECUSA E PRESENÇA
+Após o SQL 06, execute 07_avisos_e_confirmacao_servos.sql inteiro, uma única
+vez. Cria inscricoes.avisos_decisao. O organizador prepara WhatsApp; a API
+envia e-mail quando seu SMTP estiver configurado. O candidato confirma
+presença pelo link pessoal. Guia: docs/avisos-e-presenca.md.
+
+DEPARTAMENTOS E VAGAS
+Após o SQL 06, execute 08_departamentos_e_vagas.sql inteiro, uma única vez.
+Adiciona vagas a eventos.equipes, preservando seus IDs e vínculos existentes.
+O organizador informa departamentos e vagas ao criar o evento e pode
+ajustar os limites na avaliação dos servos. Cadastros antigos ficam com
+vagas a definir; não recebem capacidades inventadas. O SQL 08 não depende
+do SQL 07 de avisos. Guia e roteiro: docs/departamentos-e-vagas.md.
+
+Mantenha EVENTS_ENABLED=false e EVENT_MANAGEMENT_ENABLED=true.
+VOLUNTEER_REGISTRATIONS_ENABLED=true é o padrão: libera a etapa de servos
+somente quando suas tabelas existirem. A campanha de campistas ainda não
+é disponibilizada nessa instalação gradual. Atualize a página inteira
+após criar as tabelas para atualizar os recursos disponíveis no painel.
+Se mudar variáveis no .env, reinicie a aplicação.
+
+Os 19 modelos de negócio já estão mapeados no Prisma com os nomes em
+português. Os nomes internos do código são preservados por @map/@@map/
+@@schema. npm run db:check verifica as etapas disponíveis sem mudar dados.
+Os scripts SQL não foram aplicados automaticamente ao eventos_beta.
+
+NÃO execute db:deploy, db:migrate, db:push nem db:seed no banco gradual.
+As migrations completas/legadas são usadas em bancos novos de teste; a
+baseline da instalação manual ainda precisa ser definida antes de adotar
+migrations nessa base existente. Não recrie tabelas já cadastradas.
+
+Não altere auth.users nem crie senhas por SQL. No PostgreSQL local,
+auth.users não existe: a identidade está no Supabase Auth. Para o primeiro
+administrador, confirme a conta real e use o procedimento restrito da API.
+Auth, convites e fotos dependem das chaves e configurações privadas no .env.
+Siga deploy/supabase/CONFIGURAR_AUTH.txt para configurar a autenticação.
+
+Referências oficiais:
+https://www.postgresql.org/docs/current/ddl-schemas.html
+https://www.prisma.io/docs/orm/v6/prisma-schema/data-model/multi-schema
+https://supabase.com/docs/guides/auth/managing-user-data

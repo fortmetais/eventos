@@ -1,0 +1,33 @@
+// REFERÊNCIA PARA A INTEGRAÇÃO FUTURA. Não substitui o schema.prisma completo.
+// O código pode manter os nomes internos do modelo enquanto o PostgreSQL
+// usa nomes em português. O cliente em uso ainda não foi alterado.
+// Multi-schema no Prisma 6.12 requer a flag multiSchema no generator.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+  schemas   = ["acesso"]
+}
+
+model Account {
+  id            String   @id @map("conta_id") @db.Uuid
+  email         String
+  platformAdmin Boolean  @default(false) @map("admin")
+  profile       Json     @default("{}") @map("perfil")
+  createdAt     DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)")) @map("criado_em") @db.Timestamp(3)
+
+  @@map("contas")
+  @@schema("acesso")
+}
+
+// Na aplicação completa, preservar também as relações do Account e mapear
+// cada modelo/enum dos demais módulos; schemas conterá todos os esquemas.
+// O valor padrão de criado_em acima corresponde ao script fornecido.
+// Confirmar o DDL real pelo arquivo 01b antes de adotar este mapeamento.
+// A URL de conexão apontará para /eventos_beta, com credenciais só no servidor.

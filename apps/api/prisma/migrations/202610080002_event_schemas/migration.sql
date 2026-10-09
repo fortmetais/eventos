@@ -1,0 +1,65 @@
+-- Para instalações completas pelas migrations. Na base gradual do DBeaver,
+-- use apenas database/manual/05_eventos_e_periodos.sql, sem migrate deploy.
+CREATE SCHEMA eventos;
+ALTER TYPE public."EventStatus" SET SCHEMA eventos;
+ALTER TYPE eventos."EventStatus" RENAME TO situacao_evento;
+ALTER TYPE eventos.situacao_evento RENAME VALUE 'DRAFT' TO 'RASCUNHO';
+ALTER TYPE eventos.situacao_evento RENAME VALUE 'PUBLISHED' TO 'PUBLICADO';
+ALTER TYPE eventos.situacao_evento RENAME VALUE 'CANCELLED' TO 'CANCELADO';
+ALTER TYPE eventos.situacao_evento RENAME VALUE 'COMPLETED' TO 'REALIZADO';
+ALTER TYPE public."CampaignKind" SET SCHEMA eventos;
+ALTER TYPE eventos."CampaignKind" RENAME TO publico_campanha;
+ALTER TYPE eventos.publico_campanha RENAME VALUE 'CAMPER' TO 'CAMPISTA';
+ALTER TYPE eventos.publico_campanha RENAME VALUE 'VOLUNTEER' TO 'SERVO';
+
+ALTER TABLE public."EventType" SET SCHEMA eventos;
+ALTER TABLE eventos."EventType" RENAME TO tipos_evento;
+ALTER TABLE eventos.tipos_evento RENAME COLUMN id TO tipo_evento_id;
+ALTER TABLE eventos.tipos_evento RENAME COLUMN "organizationId" TO organizacao_id;
+ALTER TABLE eventos.tipos_evento RENAME COLUMN name TO nome;
+ALTER TABLE eventos.tipos_evento RENAME CONSTRAINT "EventType_pkey" TO tipos_evento_pk;
+ALTER TABLE eventos.tipos_evento RENAME CONSTRAINT "EventType_organizationId_fkey" TO tipos_evento_organizacao_fk;
+ALTER INDEX eventos."EventType_organizationId_name_key" RENAME TO tipos_evento_organizacao_nome_uk;
+
+ALTER TABLE public."Event" SET SCHEMA eventos;
+ALTER TABLE eventos."Event" RENAME TO eventos;
+ALTER TABLE eventos.eventos RENAME COLUMN id TO evento_id;
+ALTER TABLE eventos.eventos RENAME COLUMN "organizationId" TO organizacao_id;
+ALTER TABLE eventos.eventos RENAME COLUMN "typeId" TO tipo_evento_id;
+ALTER TABLE eventos.eventos RENAME COLUMN name TO nome;
+ALTER TABLE eventos.eventos RENAME COLUMN description TO descricao;
+ALTER TABLE eventos.eventos RENAME COLUMN "imageUrl" TO url_arte;
+ALTER TABLE eventos.eventos RENAME COLUMN location TO local;
+ALTER TABLE eventos.eventos RENAME COLUMN city TO cidade;
+ALTER TABLE eventos.eventos RENAME COLUMN "startsAt" TO inicio_em;
+ALTER TABLE eventos.eventos RENAME COLUMN "endsAt" TO termino_em;
+ALTER TABLE eventos.eventos RENAME COLUMN status TO situacao;
+ALTER TABLE eventos.eventos RENAME COLUMN "createdAt" TO criado_em;
+ALTER TABLE eventos.eventos ADD COLUMN bucket_arte TEXT, ADD COLUMN chave_arte TEXT;
+ALTER TABLE eventos.eventos ALTER COLUMN criado_em SET DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC');
+ALTER TABLE eventos.eventos RENAME CONSTRAINT "Event_pkey" TO eventos_pk;
+ALTER TABLE eventos.eventos RENAME CONSTRAINT "Event_organizationId_fkey" TO eventos_organizacao_fk;
+ALTER TABLE eventos.eventos RENAME CONSTRAINT "Event_typeId_fkey" TO eventos_tipo_fk;
+ALTER INDEX eventos."Event_organizationId_status_idx" RENAME TO eventos_organizacao_situacao_idx;
+
+ALTER TABLE public."Campaign" SET SCHEMA eventos;
+ALTER TABLE eventos."Campaign" RENAME TO campanhas;
+ALTER TABLE eventos.campanhas RENAME COLUMN id TO campanha_id;
+ALTER TABLE eventos.campanhas RENAME COLUMN "eventId" TO evento_id;
+ALTER TABLE eventos.campanhas RENAME COLUMN kind TO publico;
+ALTER TABLE eventos.campanhas RENAME COLUMN "opensAt" TO abertura_em;
+ALTER TABLE eventos.campanhas RENAME COLUMN "closesAt" TO encerramento_em;
+ALTER TABLE eventos.campanhas RENAME COLUMN paused TO pausada;
+ALTER TABLE eventos.campanhas RENAME COLUMN capacity TO capacidade;
+ALTER TABLE eventos.campanhas RENAME COLUMN "allowWaitlist" TO permite_lista_espera;
+ALTER TABLE eventos.campanhas ALTER COLUMN abertura_em TYPE TIMESTAMPTZ(3) USING abertura_em AT TIME ZONE 'UTC';
+ALTER TABLE eventos.campanhas ALTER COLUMN encerramento_em TYPE TIMESTAMPTZ(3) USING encerramento_em AT TIME ZONE 'UTC';
+ALTER TABLE eventos.campanhas RENAME CONSTRAINT "Campaign_pkey" TO campanhas_pk;
+ALTER TABLE eventos.campanhas RENAME CONSTRAINT "Campaign_eventId_fkey" TO campanhas_evento_fk;
+ALTER INDEX eventos."Campaign_eventId_kind_key" RENAME TO campanhas_evento_publico_uk;
+ALTER TABLE eventos.eventos ADD CONSTRAINT eventos_periodo_valido CHECK (termino_em >= inicio_em);
+ALTER TABLE eventos.campanhas ADD CONSTRAINT campanhas_periodo_valido CHECK (encerramento_em > abertura_em);
+ALTER TABLE eventos.campanhas ADD CONSTRAINT campanhas_capacidade_valida CHECK (capacidade IS NULL OR capacidade > 0);
+REVOKE ALL ON SCHEMA eventos FROM PUBLIC;
+REVOKE ALL ON ALL TABLES IN SCHEMA eventos FROM PUBLIC;
+REVOKE ALL ON TYPE eventos.situacao_evento, eventos.publico_campanha FROM PUBLIC;

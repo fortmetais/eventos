@@ -1,0 +1,27 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.local/
+coverage/
+*.log
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Credenciais, chaves e cópias de dados locais
+.npmrc
+.ssh/
+*.pem
+*.key
+*.p12
+*.pfx
+*.dump
+*.backup
+*.sqlite
+*.sqlite3
+backups/
+uploads/
+Thumbs.db
+.DS_Store

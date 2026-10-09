@@ -1,0 +1,112 @@
+ATIVAR SUPABASE AUTH COM O POSTGRESQL LOCAL
+
+O Prisma já usa as seis tabelas do banco eventos_beta com os nomes em
+português. Não copie essas tabelas para o Supabase nem altere DATABASE_URL
+ou DIRECT_URL para usar o banco do projeto Supabase.
+
+1. CRIAR O PROJETO
+Entre em https://supabase.com/dashboard e crie um projeto, por exemplo
+eventos-beta. Escolha organização, região e plano conforme sua conta.
+A senha solicitada é do banco do projeto Supabase. Ela não substitui a
+senha do PostgreSQL local nem é a senha do usuário da aplicação.
+
+2. PREENCHER O ARQUIVO PRIVADO apps/api/.env
+Remova o # da linha SUPABASE_URL e informe a URL real do projeto.
+Preencha SUPABASE_PUBLISHABLE_KEY com a chave sb_publishable_...
+Preencha SUPABASE_SECRET_KEY com a chave sb_secret_...
+As variáveis legadas SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY também
+são aceitas; as chaves atuais têm preferência. Não envie chaves pela
+conversa nem coloque a chave privada no React.
+
+3. CONFIGURAR O AUTH NO PAINEL
+Habilite o provedor Email e a criação de contas, se desejar que o primeiro
+acesso por código crie a identidade. Se o cadastro estiver desabilitado,
+crie primeiro a identidade no painel. Uma conta nova não será admin.
+
+Na configuração de URLs:
+Site URL: http://localhost:5174
+Redirect URLs:
+http://localhost:5174/entrar**
+http://127.0.0.1:5174/entrar**
+http://localhost:5174/nova-senha**
+http://127.0.0.1:5174/nova-senha**
+
+O acesso aceita senha, link de e-mail e código. Os endereços /entrar**
+permitem o retorno /entrar?next=/convite/... após clicar no link recebido,
+inclusive quando o e-mail é aberto em outra aba. Não remova /nova-senha.
+Em produção, configure os endereços do domínio real e restrinja o retorno
+ao caminho /entrar ou /nova-senha e sua query; não libere domínios externos.
+O retorno next é preservado na criação do acesso por e-mail e ao definir
+senha. Uma credencial de retorno com prazo de 24h permite retomar em outra
+aba do mesmo navegador/origem; ela é removida após o aceite ou Continuar depois.
+Em outro navegador/dispositivo, use o link de confirmação com next ou
+reabra o convite original. Nenhum vínculo é criado antes do aceite na API.
+
+Para enviar um código, cole magic-link.html no template Magic Link.
+Ele deve conter {{ .Token }}. A tela aceita códigos de 6 a 10 dígitos.
+Projetos gratuitos criados desde 03/06/2026 precisam de SMTP próprio
+para personalizar templates. Sem SMTP, use o link padrão recebido ou
+a opção Entrar com senha para uma identidade previamente cadastrada.
+
+Para testar com e-mails fora da equipe do projeto, configure o SMTP do
+Auth. O envio padrão do Supabase limita destinatários aos integrantes
+autorizados da organização e possui limites baixos de envio.
+O SMTP do Auth é separado do SMTP dos convites da API. Enquanto o SMTP
+dos convites não estiver configurado, a tela oferece o link manual.
+
+4. VERIFICAR E ENTRAR
+Na raiz do projeto, execute:
+npm run db:check
+npm run auth:check
+
+Esses comandos não criam usuários, não alteram dados e não enviam e-mails.
+Depois de editar o .env, reinicie npm run dev.
+Abra http://localhost:5174/entrar e informe o e-mail do primeiro admin.
+Entre com a senha definida para a identidade no Auth, abra o link recebido
+ou confirme o código, conforme o método disponível. Esse acesso cria a conta em
+acesso.contas com admin=false. A identidade usa o mesmo UUID do Auth.
+
+5. PROVISIONAR O PRIMEIRO ADMIN
+No painel Auth / Users, localize o UUID da identidade cujo e-mail você
+acabou de confirmar. Grave esse UUID em BOOTSTRAP_ADMIN_USER_ID no .env.
+Execute na raiz: npm run admin:bootstrap
+O comando confirma a identidade no Supabase antes de promover a conta.
+Atualize a página e abra Administração. Não há criação pública de admins.
+
+6. ROTEIRO INICIAL DE TESTES
+Use duas paróquias fictícias, A e B, e e-mails de teste sob seu controle.
+- Admin entra: menu Administração disponível.
+- Admin cadastra A e B: ambas aparecem na tela e no DBeaver.
+- Admin convida organizador de A: link e prazo ficam registrados.
+- Organizador abre /convite/... e entra: volta ao convite para confirmar o aceite.
+- Sem conta: cria o acesso por e-mail, confirma em outra aba e retorna ao convite.
+- Ao definir uma senha: o retorno ao convite permanece após salvar.
+- Teste automatizado no navegador: npm run test:browser:invitation com a aplicação
+  local em execução. O Supabase e a API são simulados somente nesse teste.
+- Aceita: vínculo criado em membros e painel da organização convidante aberto.
+- Admin volta à aba Membros e convites: usuário aparece em Membros e convite Aceito.
+  A lista também atualiza a cada 15s enquanto há convites pendentes e a aba está visível.
+  O botão Atualizar lista permite conferir manualmente sem repetir o aceite.
+- Organizador volta ao início: abre seu painel; vários vínculos abrem a seleção.
+- Conta sem vínculo: vê orientação para aceitar convite, sem cadastro de paróquias.
+- Organizador tenta /admin: acesso restrito ao administrador da plataforma.
+- Reutilizar o convite: recusa sem novo vínculo.
+- Organizador de A tentar consultar membros de B: acesso negado.
+- Admin suspender um membro: acesso administrativo bloqueado ao atualizar.
+  Não suspender o único organizador ativo; esse caso deve ser recusado.
+- Editar perfil básico: atualiza apenas o perfil da conta autenticada.
+
+EVENTS_ENABLED=false mantém ativa a etapa administrativa sem consultar as
+tabelas futuras de eventos, inscrições ou fotos. Não execute migrations
+antigas, db:push ou seed na base parcial criada no DBeaver. O código já foi
+mapeado; a baseline das migrations será definida para essa instalação
+gradual antes de passar a gerenciá-la automaticamente.
+
+Verifique cada ambiente com auth:check. A entrada com senha, link/código,
+recuperação de senha e convites deve ser homologada com contas de teste.
+
+Referências oficiais:
+https://supabase.com/docs/guides/getting-started/api-keys
+https://supabase.com/docs/guides/auth/auth-email-passwordless
+https://supabase.com/docs/guides/auth/redirect-urls
+https://supabase.com/docs/guides/auth/auth-smtp
