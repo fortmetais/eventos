@@ -11,8 +11,8 @@ const page = `<!doctype html>
     <meta name="theme-color" content="#020d20">
     <meta name="description" content="FAC 2027, de 5 a 9 de fevereiro, em Loanda, Paraná. Acesse o formulário de inscrição.">
     <title>FAC 2027 — Inscrição</title>
-    <link rel="stylesheet" href="/pagina-temporaria.css?v=inscricao-sobre-arte-1">
-    <script src="/musica.js?v=1" defer></script>
+    <link rel="stylesheet" href="/pagina-temporaria.css?v=musica-icone-1">
+    <script src="/musica.js?v=2" defer></script>
   </head>
   <body>
     <main class="poster-page">
@@ -25,19 +25,25 @@ const page = `<!doctype html>
           href="https://docs.google.com/forms/d/e/1FAIpQLSfLJ440VZ0P-7V405JhBBys9uXtFSjv7VRryltkQOROb93Cjw/viewform?pli=1"
           target="_blank" rel="noopener noreferrer"
           aria-label="INSCRIÇÃO — abrir formulário em nova aba">INSCRIÇÃO</a>
-      </div>
-      <div class="music-player">
-        <audio id="background-music" src="/lazaro.mp3" controls loop preload="none"
-          aria-label="Música de fundo: Lázaro"></audio>
-        <div class="music-controls" hidden>
-          <button id="music-toggle" type="button" aria-controls="background-music"
-            aria-pressed="false">Ouvir música</button>
-          <label class="music-volume" for="music-volume">Volume
-            <input id="music-volume" type="range" min="0" max="100" value="35"
-              aria-label="Volume da música">
-          </label>
+        <div class="music-player">
+          <audio id="background-music" src="/lazaro.mp3" loop preload="none" hidden
+            aria-label="Música de fundo: Lázaro"></audio>
+          <div class="music-controls" hidden>
+            <button id="music-toggle" type="button" aria-controls="background-music"
+              aria-label="Ativar som da música" title="Ativar som da música" data-silent="true">
+              <svg class="music-icon--on" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M11 5 6 9H3v6h3l5 4V5Z"/>
+                <path d="M15 8a6 6 0 0 1 0 8M18 5a10 10 0 0 1 0 14"/>
+              </svg>
+              <svg class="music-icon--off" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M11 5 6 9H3v6h3l5 4V5ZM16 9l5 6M21 9l-5 6"/>
+              </svg>
+            </button>
+          </div>
+          <p id="music-status" role="status" hidden></p>
         </div>
-        <p id="music-status" role="status" hidden></p>
       </div>
     </main>
   </body>
@@ -49,21 +55,21 @@ const styles = `
 html, body { margin: 0; min-height: 100%; }
 body { min-height: 100vh; min-height: 100svh; background: radial-gradient(ellipse at center, #082653 0%, #020d20 70%); }
 .poster-page { min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 20px; }
-.poster-frame { position: relative; width: min(100%, 1041px, max(280px, calc((100vh - 108px) * 1041 / 1510))); width: min(100%, 1041px, max(280px, calc((100svh - 108px) * 1041 / 1510))); aspect-ratio: 1041 / 1510; }
+.poster-frame { position: relative; width: min(100%, 1041px, max(280px, calc((100vh - 40px) * 1041 / 1510))); width: min(100%, 1041px, max(280px, calc((100svh - 40px) * 1041 / 1510))); aspect-ratio: 1041 / 1510; }
 .poster { display: block; width: 100%; height: auto; object-fit: contain; }
 .registration-link { position: absolute; left: 19%; top: 73.5%; width: 62%; height: 10.5%; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; border: 1px solid #f5d68c; border-radius: 12px; background: linear-gradient(135deg, #ffe7a3, #d8a335); color: #07152b; font: 800 clamp(14px, 2.7vw, 25px)/1.4 system-ui, sans-serif; letter-spacing: 0.08em; text-decoration: none; box-shadow: 0 8px 24px #0006; }
 .registration-link:hover { background: #ffe7a3; }
 .registration-link:focus-visible { outline: 3px solid #fff; outline-offset: 5px; }
-.music-player { width: min(100%, 320px); font: 14px/1.4 system-ui, sans-serif; }
-.music-player audio { width: 100%; height: 48px; }
-.music-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; }
+.music-player { position: absolute; top: -4px; right: 1.5%; width: 44px; font: 14px/1.4 system-ui, sans-serif; }
+.music-controls { display: flex; align-items: center; justify-content: center; min-height: 44px; }
 .music-controls[hidden] { display: none; }
-.music-controls button { min-height: 44px; padding: 10px 12px; border: 1px solid #b3c7e6; border-radius: 10px; background: #102849; color: #fff; font: inherit; cursor: pointer; }
+.music-controls button { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 8px; border: 1px solid #b3c7e6; border-radius: 50%; background: #102849; color: #fff; cursor: pointer; }
 .music-controls button:hover { background: #1c3b63; }
-.music-controls button:focus-visible, .music-volume input:focus-visible { outline: 3px solid #ffe7a3; outline-offset: 3px; }
-.music-volume { display: flex; align-items: center; gap: 8px; color: #dbe7f8; }
-.music-volume input { width: 90px; min-height: 44px; margin: 0; accent-color: #eac15f; }
-#music-status { margin: 8px 0 0; color: #dbe7f8; text-align: center; }
+.music-controls button:focus-visible { outline: 3px solid #ffe7a3; outline-offset: 3px; }
+.music-controls svg { display: block; width: 24px; height: 24px; }
+.music-controls .music-icon--off, .music-controls [data-silent="true"] .music-icon--on { display: none; }
+.music-controls [data-silent="true"] .music-icon--off { display: block; }
+#music-status { position: absolute; top: 48px; right: 0; width: min(240px, calc(100vw - 40px)); margin: 0; padding: 8px; border-radius: 8px; background: #020d20; color: #dbe7f8; text-align: center; }
 .screen-reader-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 `;
 
