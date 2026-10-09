@@ -23,16 +23,23 @@ async function createApplication() {
       })
     : api;
 }
-const application = await createApplication();
-const server = application.listen(runtime.PORT, runtime.HOST, () =>
-  console.info(
-    `${runtime.TEMPORARY_SITE ? "Página temporária" : "API"} disponível na porta ${runtime.PORT}.`,
-  ),
-);
-async function shutdown() {
-  server.close();
-  await disconnect();
-  process.exit(0);
+// Hostinger loads the entry file through require(); its ESM graph must be synchronous.
+async function start() {
+  const application = await createApplication();
+  const server = application.listen(runtime.PORT, runtime.HOST, () =>
+    console.info(
+      `${runtime.TEMPORARY_SITE ? "Página temporária" : "API"} disponível na porta ${runtime.PORT}.`,
+    ),
+  );
+  async function shutdown() {
+    server.close();
+    await disconnect();
+    process.exit(0);
+  }
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+start().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});

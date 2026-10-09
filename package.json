@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w @fac/api\" \"npm run dev -w @fac/web\"",
     "build": "npm run build -w @fac/api && npm run build -w @fac/web",
-    "build:hostinger": "npm ci --include=dev && npm run db:generate && npm run build",
+    "build:hostinger": "npm ci --include=dev && npm run db:generate && npm run build && node scripts/check-hostinger-startup.mjs",
     "start": "node apps/api/dist/index.js",
     "test": "npm run test -w @fac/api && npm run test -w @fac/web",
     "test:database": "node scripts/test-database.mjs",

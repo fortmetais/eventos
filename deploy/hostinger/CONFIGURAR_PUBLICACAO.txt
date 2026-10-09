@@ -20,7 +20,8 @@ Comando de início, caso o painel solicite: npm start
 Gerenciador de pacotes: npm
 
 O comando de compilação instala as dependências de desenvolvimento necessárias,
-gera o Prisma Client e compila API e React. Não aplica migrations, não executa
+gera o Prisma Client, compila API e React e verifica a inicialização usada
+pela Hostinger com a página temporária. Não aplica migrations, não executa
 seed e não altera o banco. O diretório de saída conserva a estrutura completa
 dos dois pacotes; a API publica somente apps/web/dist e atende /api/v1.
 
