@@ -14,8 +14,8 @@ describe("página temporária do FAC", () => {
         .expect(200);
       expect(response.text).toContain("FAC 2027 — Inscrição");
       expect(response.text).toContain('src="/fac-2027.jpg"');
-      expect(response.text).not.toContain("<script");
-      expect(response.text).not.toContain("<button");
+      expect(response.text).toContain('src="/musica.js?v=1" defer');
+      expect(response.text).toContain('id="background-music"');
       expect(response.headers["cache-control"]).toBe("no-store");
     },
   );
@@ -26,7 +26,7 @@ describe("página temporária do FAC", () => {
       .expect(200);
     const css = await request(app).get("/pagina-temporaria.css").expect(200);
     expect(css.text).toContain("object-fit: contain");
-    expect(css.text).toContain("max-height: calc(100svh - 116px)");
+    expect(css.text).toContain("max-height: calc(100svh - 184px)");
   });
   it("bloqueia consultas e alterações da API de negócio", async () => {
     for (const path of [
@@ -71,7 +71,7 @@ describe("página temporária do FAC", () => {
   it("restringe scripts e conexões na página pública", async () => {
     const response = await request(app).get("/").expect(200);
     expect(response.headers["content-security-policy"]).toContain(
-      "script-src 'none'",
+      "script-src 'self'",
     );
     expect(response.headers["content-security-policy"]).toContain(
       "connect-src 'none'",
