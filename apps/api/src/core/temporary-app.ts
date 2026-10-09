@@ -11,19 +11,21 @@ const page = `<!doctype html>
     <meta name="theme-color" content="#020d20">
     <meta name="description" content="FAC 2027, de 5 a 9 de fevereiro, em Loanda, Paraná. Acesse o formulário de inscrição.">
     <title>FAC 2027 — Inscrição</title>
-    <link rel="stylesheet" href="/pagina-temporaria.css?v=musica-1">
+    <link rel="stylesheet" href="/pagina-temporaria.css?v=inscricao-sobre-arte-1">
     <script src="/musica.js?v=1" defer></script>
   </head>
   <body>
     <main class="poster-page">
       <h1 class="screen-reader-only">FAC 2027 — o melhor carnaval da sua vida está chegando!</h1>
-      <img class="poster" src="/fac-2027.jpg" width="1041" height="1510"
-        alt="FAC: o melhor carnaval da sua vida está chegando! De 05 a 09 de fevereiro de 2027. Em breve: inscrições para servos. Paróquia Nossa Senhora Aparecida, Loanda, Paraná, e Comunidade Santa Teresinha do Menino Jesus."
-        fetchpriority="high" decoding="async">
-      <a class="registration-link"
-        href="https://docs.google.com/forms/d/e/1FAIpQLSfLJ440VZ0P-7V405JhBBys9uXtFSjv7VRryltkQOROb93Cjw/viewform?pli=1"
-        target="_blank" rel="noopener noreferrer"
-        aria-label="INSCRIÇÃO — abrir formulário em nova aba">INSCRIÇÃO</a>
+      <div class="poster-frame">
+        <img class="poster" src="/fac-2027.jpg" width="1041" height="1510"
+          alt="FAC: o melhor carnaval da sua vida está chegando! De 05 a 09 de fevereiro de 2027. Paróquia Nossa Senhora Aparecida, Loanda, Paraná, e Comunidade Santa Teresinha do Menino Jesus."
+          fetchpriority="high" decoding="async">
+        <a class="registration-link"
+          href="https://docs.google.com/forms/d/e/1FAIpQLSfLJ440VZ0P-7V405JhBBys9uXtFSjv7VRryltkQOROb93Cjw/viewform?pli=1"
+          target="_blank" rel="noopener noreferrer"
+          aria-label="INSCRIÇÃO — abrir formulário em nova aba">INSCRIÇÃO</a>
+      </div>
       <div class="music-player">
         <audio id="background-music" src="/lazaro.mp3" controls loop preload="none"
           aria-label="Música de fundo: Lázaro"></audio>
@@ -47,8 +49,9 @@ const styles = `
 html, body { margin: 0; min-height: 100%; }
 body { min-height: 100vh; min-height: 100svh; background: radial-gradient(ellipse at center, #082653 0%, #020d20 70%); }
 .poster-page { min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 20px; }
-.poster { display: block; width: auto; height: auto; max-width: 100%; max-height: calc(100vh - 184px); max-height: calc(100svh - 184px); object-fit: contain; }
-.registration-link { display: inline-flex; align-items: center; justify-content: center; min-height: 56px; width: min(100%, 320px); padding: 14px 28px; border: 1px solid #f5d68c; border-radius: 12px; background: linear-gradient(135deg, #ffe7a3, #d8a335); color: #07152b; font: 800 18px/1.4 system-ui, sans-serif; letter-spacing: 0.08em; text-decoration: none; box-shadow: 0 8px 24px #0006; }
+.poster-frame { position: relative; width: min(100%, 1041px, max(280px, calc((100vh - 108px) * 1041 / 1510))); width: min(100%, 1041px, max(280px, calc((100svh - 108px) * 1041 / 1510))); aspect-ratio: 1041 / 1510; }
+.poster { display: block; width: 100%; height: auto; object-fit: contain; }
+.registration-link { position: absolute; left: 19%; top: 73.5%; width: 62%; height: 10.5%; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; border: 1px solid #f5d68c; border-radius: 12px; background: linear-gradient(135deg, #ffe7a3, #d8a335); color: #07152b; font: 800 clamp(14px, 2.7vw, 25px)/1.4 system-ui, sans-serif; letter-spacing: 0.08em; text-decoration: none; box-shadow: 0 8px 24px #0006; }
 .registration-link:hover { background: #ffe7a3; }
 .registration-link:focus-visible { outline: 3px solid #fff; outline-offset: 5px; }
 .music-player { width: min(100%, 320px); font: 14px/1.4 system-ui, sans-serif; }

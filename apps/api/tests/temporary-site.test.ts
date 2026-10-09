@@ -26,7 +26,7 @@ describe("página temporária do FAC", () => {
       .expect(200);
     const css = await request(app).get("/pagina-temporaria.css").expect(200);
     expect(css.text).toContain("object-fit: contain");
-    expect(css.text).toContain("max-height: calc(100svh - 184px)");
+    expect(css.text).toContain("calc((100svh - 108px) * 1041 / 1510)");
   });
   it("bloqueia consultas e alterações da API de negócio", async () => {
     for (const path of [
