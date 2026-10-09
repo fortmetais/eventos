@@ -1,0 +1,96 @@
+ENCONTRO — PUBLICAÇÃO NA HOSTINGER
+
+Configuração para React e API Express no mesmo endereço.
+
+REVISAR CONFIGURAÇÕES DE COMPILAÇÃO
+
+Configuração predefinida: Other (servidor Node.js)
+Branch: main
+Versão do Node: 24.x
+Diretório raiz: ./
+Comando de compilação: npm run build:hostinger
+Diretório de saída: .
+Arquivo de entrada: apps/api/dist/index.js
+Comando de início, caso o painel solicite: npm start
+Gerenciador de pacotes: npm
+
+O comando de compilação instala as dependências de desenvolvimento necessárias,
+gera o Prisma Client e compila API e React. Não aplica migrations, não executa
+seed e não altera o banco. O diretório de saída conserva a estrutura completa
+dos dois pacotes; a API publica somente apps/web/dist e atende /api/v1.
+
+VARIÁVEIS DE AMBIENTE
+
+Use deploy/hostinger/.env.example como referência pública, sem credenciais.
+Uma cópia preenchida pode ficar em .local/hostinger/.env.production, que é
+ignorada pelo Git. Transfira seus valores para o painel da Hostinger.
+
+Obrigatórias para esta publicação:
+- NODE_ENV=production
+- SERVE_WEB=true
+- HOST=0.0.0.0
+- PORT=3000
+- TRUST_PROXY=1
+- WEB_URL=https://navajowhite-rabbit-913811.hostingersite.com
+- DATABASE_URL: conexão PostgreSQL de produção do Supabase
+- DIRECT_URL: conexão indicada pelo Supabase para acesso direto/migrations
+- SUPABASE_URL e uma chave pública: ANON_KEY ou PUBLISHABLE_KEY
+- Uma chave privada: SUPABASE_SERVICE_ROLE_KEY ou SUPABASE_SECRET_KEY
+- REGISTRATION_LINK_SECRET: segredo privado para links de confirmação
+
+Supabase Auth e banco são configurações distintas. Ter Auth funcionando não
+garante que DATABASE_URL já aponte para o banco remoto. Use as conexões do
+botão Connect do projeto Supabase; conforme suporte de rede da hospedagem,
+use o pooler de sessão quando a conexão direta IPv6 não estiver disponível.
+Preserve o usuário, host, porta, senha codificada e requisitos SSL do provedor.
+
+Use as flags de etapa que já estão na configuração local:
+EVENTS_ENABLED=false
+EVENT_MANAGEMENT_ENABLED=true
+VOLUNTEER_REGISTRATIONS_ENABLED=true
+
+Supabase Storage: manter os nomes dos buckets reais da aplicação. A chave
+privada fica no ambiente do servidor; nunca usar prefixo VITE_ para segredos.
+VITE_API_URL pode ficar ausente: React chama /api/v1 no próprio site.
+O servidor utiliza PORT. Para esta hospedagem Node.js, configurar PORT=3000,
+conforme a orientação de diagnóstico da Hostinger.
+
+SMTP_HOST, SMTP_USER, SMTP_PASSWORD e SMTP_FROM são opcionais para publicar,
+mas necessários para enviar e-mails pela API. O SMTP do Supabase Auth é uma
+configuração independente dos avisos enviados pelo backend.
+
+ANTES DE IMPLANTAR
+
+1. Confirme que as tabelas e esquemas já existem no PostgreSQL remoto.
+2. Preencha as variáveis privadas no painel, sem colocá-las no GitHub.
+3. No Supabase Auth > URL Configuration, configure:
+   Site URL: https://navajowhite-rabbit-913811.hostingersite.com
+   Redirect URLs:
+   https://navajowhite-rabbit-913811.hostingersite.com/entrar**
+   https://navajowhite-rabbit-913811.hostingersite.com/nova-senha**
+   O sufixo ** preserva parâmetros de retorno ao convite. Os padrões acima
+   permitem somente o domínio desta publicação. Mantenha também os retornos
+   localhost usados durante o desenvolvimento.
+4. Confirme que a conta do primeiro administrador também está cadastrada na
+   tabela acesso.contas do banco remoto, com o mesmo UID do Supabase Auth.
+   Não provisionar administradores automaticamente durante a compilação.
+5. Não executar o histórico completo de migrations sobre a estrutura criada
+   manualmente. Aplicar somente os scripts da etapa correspondente, conforme
+   o procedimento gradual do projeto.
+
+VALIDAR A PUBLICAÇÃO
+
+- /: carregar a página Encontro.
+- /entrar: abrir diretamente e atualizar a página sem erro 404.
+- /api/v1/health: retornar status ok.
+- /api/v1/readiness: retornar ready com banco e Auth configurados.
+- Efetuar login, selecionar a organização e testar um convite.
+- Verificar publicação de eventos, upload de arte e acesso a fotos privadas.
+- Confirmar que nenhum organizador acessa registros de outra organização.
+
+REFERÊNCIAS OFICIAIS
+
+https://www.hostinger.com/support/how-to-deploy-a-nodejs-website-in-hostinger/
+https://www.hostinger.com/support/how-to-add-environment-variables-during-node-js-application-deployment/
+https://supabase.com/docs/guides/database/connecting-to-postgres
+https://supabase.com/docs/guides/auth/redirect-urls
