@@ -11,6 +11,8 @@ const page = `<!doctype html>
     <meta name="theme-color" content="#020d20">
     <meta name="description" content="FAC 2027, de 5 a 9 de fevereiro, em Loanda, Paraná. Acesse o formulário de inscrição.">
     <title>FAC 2027 — Inscrição</title>
+    <link rel="icon" href="/favicon.ico?v=encontro-1" sizes="16x16 32x32 48x48">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=encontro-1" sizes="any">
     <link rel="stylesheet" href="/pagina-temporaria.css?v=musica-icone-1">
     <script src="/musica.js?v=2" defer></script>
   </head>
@@ -84,6 +86,7 @@ export function createTemporaryApp(
     throw new Error("A arte da página temporária não foi encontrada.");
   const musicPath = options.musicPath ?? fileURLToPath(new URL("../../public/lazaro.mp3", import.meta.url));
   const musicScriptPath = fileURLToPath(new URL("../../public/musica.js", import.meta.url));
+  const faviconRoot = fileURLToPath(new URL("../../../web/public/", import.meta.url));
   if (!existsSync(musicPath) || !existsSync(musicScriptPath))
     throw new Error("Os arquivos da música da página temporária não foram encontrados.");
   const app = express();
@@ -139,7 +142,12 @@ export function createTemporaryApp(
     res.setHeader("Cache-Control", "public, max-age=3600");
     res.type("application/javascript").sendFile(musicScriptPath, { dotfiles: "allow" });
   });
-  app.get("/favicon.ico", (_req, res) => res.status(204).end());
+  for (const [file, type] of [["favicon.svg", "image/svg+xml"], ["favicon.ico", "image/x-icon"]]) {
+    app.get(`/${file}`, (_req, res) => {
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res.type(type).sendFile(file, { root: faviconRoot, dotfiles: "allow" });
+    });
+  }
   app.use((req, res, next) => {
     if (
       (req.method === "GET" || req.method === "HEAD") &&
