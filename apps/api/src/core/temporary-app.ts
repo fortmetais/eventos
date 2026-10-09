@@ -9,9 +9,9 @@ const page = `<!doctype html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#020d20">
-    <meta name="description" content="FAC 2027, de 5 a 9 de fevereiro, em Loanda, Paraná. Em breve: inscrições para servos.">
-    <title>FAC 2027 — Inscrições em breve</title>
-    <link rel="stylesheet" href="/pagina-temporaria.css">
+    <meta name="description" content="FAC 2027, de 5 a 9 de fevereiro, em Loanda, Paraná. Acesse o formulário de inscrição.">
+    <title>FAC 2027 — Inscrição</title>
+    <link rel="stylesheet" href="/pagina-temporaria.css?v=inscricao-1">
   </head>
   <body>
     <main class="poster-page">
@@ -19,6 +19,10 @@ const page = `<!doctype html>
       <img class="poster" src="/fac-2027.jpg" width="1041" height="1510"
         alt="FAC: o melhor carnaval da sua vida está chegando! De 05 a 09 de fevereiro de 2027. Em breve: inscrições para servos. Paróquia Nossa Senhora Aparecida, Loanda, Paraná, e Comunidade Santa Teresinha do Menino Jesus."
         fetchpriority="high" decoding="async">
+      <a class="registration-link"
+        href="https://docs.google.com/forms/d/e/1FAIpQLSfLJ440VZ0P-7V405JhBBys9uXtFSjv7VRryltkQOROb93Cjw/viewform?pli=1"
+        target="_blank" rel="noopener noreferrer"
+        aria-label="INSCRIÇÃO — abrir formulário em nova aba">INSCRIÇÃO</a>
     </main>
   </body>
 </html>`;
@@ -28,8 +32,11 @@ const styles = `
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; }
 body { min-height: 100vh; min-height: 100svh; background: radial-gradient(ellipse at center, #082653 0%, #020d20 70%); }
-.poster-page { min-height: 100vh; min-height: 100svh; display: grid; place-items: center; }
-.poster { display: block; width: auto; height: auto; max-width: 100%; max-height: 100vh; max-height: 100svh; object-fit: contain; }
+.poster-page { min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 20px; }
+.poster { display: block; width: auto; height: auto; max-width: 100%; max-height: calc(100vh - 116px); max-height: calc(100svh - 116px); object-fit: contain; }
+.registration-link { display: inline-flex; align-items: center; justify-content: center; min-height: 56px; width: min(100%, 320px); padding: 14px 28px; border: 1px solid #f5d68c; border-radius: 12px; background: linear-gradient(135deg, #ffe7a3, #d8a335); color: #07152b; font: 800 18px/1.4 system-ui, sans-serif; letter-spacing: 0.08em; text-decoration: none; box-shadow: 0 8px 24px #0006; }
+.registration-link:hover { background: #ffe7a3; }
+.registration-link:focus-visible { outline: 3px solid #fff; outline-offset: 5px; }
 .screen-reader-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 `;
 

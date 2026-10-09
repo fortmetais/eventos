@@ -6,13 +6,13 @@ import { runtimeSettings } from "../src/core/runtime.js";
 describe("página temporária do FAC", () => {
   const app = createTemporaryApp();
   it.each(["/", "/entrar", "/admin", "/inscricao/123", "/convite/abc"])(
-    "exibe apenas a arte no caminho %s",
+    "exibe a arte e o acesso à inscrição no caminho %s",
     async (path) => {
       const response = await request(app)
         .get(path)
         .set("Accept", "text/html")
         .expect(200);
-      expect(response.text).toContain("FAC 2027 — Inscrições em breve");
+      expect(response.text).toContain("FAC 2027 — Inscrição");
       expect(response.text).toContain('src="/fac-2027.jpg"');
       expect(response.text).not.toContain("<script");
       expect(response.text).not.toContain("<button");
@@ -26,7 +26,7 @@ describe("página temporária do FAC", () => {
       .expect(200);
     const css = await request(app).get("/pagina-temporaria.css").expect(200);
     expect(css.text).toContain("object-fit: contain");
-    expect(css.text).toContain("max-height: 100svh");
+    expect(css.text).toContain("max-height: calc(100svh - 116px)");
   });
   it("bloqueia consultas e alterações da API de negócio", async () => {
     for (const path of [
