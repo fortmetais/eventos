@@ -2,9 +2,14 @@ ENCONTRO — PUBLICAÇÃO NA HOSTINGER
 
 Configuração para React e API Express no mesmo endereço.
 
+Enquanto a aplicação não for liberada, use TEMPORARY_SITE=true para publicar
+somente a arte do FAC, sem acesso às funcionalidades e sem exigir banco.
+Roteiro desta fase: deploy/hostinger/PAGINA_TEMPORARIA.txt.
+Para ativar a aplicação completa descrita abaixo, definir TEMPORARY_SITE=false.
+
 REVISAR CONFIGURAÇÕES DE COMPILAÇÃO
 
-Configuração predefinida: Other (servidor Node.js)
+Configuração predefinida: Express (servidor Node.js)
 Branch: main
 Versão do Node: 24.x
 Diretório raiz: ./
@@ -27,11 +32,12 @@ ignorada pelo Git. Transfira seus valores para o painel da Hostinger.
 
 Obrigatórias para esta publicação:
 - NODE_ENV=production
+- TEMPORARY_SITE=false (aplicação completa; true mantém a página temporária)
 - SERVE_WEB=true
 - HOST=0.0.0.0
 - PORT=3000
 - TRUST_PROXY=1
-- WEB_URL=https://navajowhite-rabbit-913811.hostingersite.com
+- WEB_URL=https://facnsaloanda.com.br
 - DATABASE_URL: conexão PostgreSQL de produção do Supabase
 - DIRECT_URL: conexão indicada pelo Supabase para acesso direto/migrations
 - SUPABASE_URL e uma chave pública: ANON_KEY ou PUBLISHABLE_KEY
@@ -64,10 +70,10 @@ ANTES DE IMPLANTAR
 1. Confirme que as tabelas e esquemas já existem no PostgreSQL remoto.
 2. Preencha as variáveis privadas no painel, sem colocá-las no GitHub.
 3. No Supabase Auth > URL Configuration, configure:
-   Site URL: https://navajowhite-rabbit-913811.hostingersite.com
+   Site URL: https://facnsaloanda.com.br
    Redirect URLs:
-   https://navajowhite-rabbit-913811.hostingersite.com/entrar**
-   https://navajowhite-rabbit-913811.hostingersite.com/nova-senha**
+   https://facnsaloanda.com.br/entrar**
+   https://facnsaloanda.com.br/nova-senha**
    O sufixo ** preserva parâmetros de retorno ao convite. Os padrões acima
    permitem somente o domínio desta publicação. Mantenha também os retornos
    localhost usados durante o desenvolvimento.

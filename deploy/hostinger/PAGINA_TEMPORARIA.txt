@@ -1,0 +1,48 @@
+PÁGINA TEMPORÁRIA DO FAC 2027
+
+A página usa a arte enviada, inteira e sem recortes, em celular e desktop.
+Não apresenta menu, login, formulários ou botões. Apenas a imagem, com
+descrição acessível e título da página. Nenhum JavaScript é carregado.
+
+O modo temporário é aplicado no servidor. A API de negócio responde 503,
+links diretos para administração/inscrições exibem a arte e os arquivos
+React ficam indisponíveis. O endpoint /api/v1/health permite monitoramento.
+O servidor não inicia Prisma, Supabase Auth ou conexão com banco nesse modo.
+
+NA HOSTINGER
+
+Mantenha o site e a integração GitHub já existentes.
+Site atual: https://facnsaloanda.com.br
+Predefinição: Express
+Branch: main
+Node: 24.x
+Diretório raiz: ./
+Compilação: npm run build:hostinger
+Diretório de saída: .
+Arquivo de entrada: apps/api/dist/index.js
+Comando de início, se solicitado: npm start
+
+Variáveis para esta fase:
+NODE_ENV=production
+TEMPORARY_SITE=true
+HOST=0.0.0.0
+PORT=3000
+TRUST_PROXY=1
+SERVE_WEB=true
+
+O modo temporário também é o padrão na produção enquanto TEMPORARY_SITE
+não tiver sido definido. O banco e as chaves do Supabase não são necessários
+para iniciar essa página. As variáveis existentes podem ser preservadas.
+Não copiar valores mascarados do painel para substituir as variáveis.
+
+Publique a versão atualizada da branch main. Depois confira a arte na raiz
+do site, a mesma arte ao abrir /entrar e /admin, e o bloqueio das rotas de
+negócio. /api/v1/health informa mode=temporary.
+
+LIBERAR A APLICAÇÃO COMPLETA
+
+Depois da migração e validação do banco, configure todas as variáveis do
+roteiro CONFIGURAR_PUBLICACAO.txt, altere TEMPORARY_SITE=false e reimplante.
+Esse valor libera a interface React e a API com as permissões normais.
+O desenvolvimento local com NODE_ENV=development continua usando a aplicação,
+salvo quando TEMPORARY_SITE=true é informado explicitamente para uma prévia.
