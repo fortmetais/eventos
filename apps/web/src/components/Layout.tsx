@@ -1,5 +1,5 @@
 import { Link, Navigate, NavLink, Outlet, useLocation } from "react-router-dom";
-import { Suspense } from "react";
+import { Suspense, useEffect } from "react";
 import { Loading } from "./ui";
 import { Church, Heart, LogOut } from "lucide-react";
 import { useAuth } from "../lib/auth";
@@ -8,6 +8,11 @@ export function Layout() {
   const auth = useAuth();
   const location = useLocation();
   const invitation = pendingInvitation();
+  const returnToPoster = auth.temporaryHome && location.pathname === "/";
+  useEffect(() => {
+    if (returnToPoster) window.location.replace("/");
+  }, [returnToPoster]);
+  if (returnToPoster) return <Loading />;
   if (
     invitation &&
     auth.session &&

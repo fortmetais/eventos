@@ -1,12 +1,13 @@
 import "dotenv/config";
 import { createHostedApp } from "./core/hosted-app.js";
 import { createTemporaryApp } from "./core/temporary-app.js";
+import { createPreviewApp } from "./core/preview-app.js";
 import { runtimeSettings } from "./core/runtime.js";
 
 const runtime = runtimeSettings();
 let disconnect = async () => {};
 async function createApplication() {
-  if (runtime.TEMPORARY_SITE)
+  if (runtime.TEMPORARY_SITE && !runtime.APPLICATION_TEST_ACCESS)
     return createTemporaryApp({ trustProxy: runtime.TRUST_PROXY });
   // Import business settings and dependencies only after leaving temporary mode.
   const { config } = await import("./config.js");
@@ -16,6 +17,11 @@ async function createApplication() {
   ]);
   disconnect = () => database.$disconnect();
   const api = createApp();
+  if (runtime.TEMPORARY_SITE)
+    return createPreviewApp(api, {
+      supabaseUrl: config.SUPABASE_URL,
+      trustProxy: runtime.TRUST_PROXY,
+    });
   return config.SERVE_WEB
     ? createHostedApp(api, {
         supabaseUrl: config.SUPABASE_URL,

@@ -23,6 +23,7 @@ for (const key of Object.keys(environment)) {
 Object.assign(environment, {
   NODE_ENV: "production",
   TEMPORARY_SITE: "true",
+  APPLICATION_TEST_ACCESS: "false",
   HOST: "127.0.0.1",
   PORT: String(port),
   TRUST_PROXY: "0",

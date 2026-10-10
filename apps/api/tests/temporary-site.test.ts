@@ -102,4 +102,9 @@ describe("ativação da página temporária", () => {
   it("recusa configuração ambígua em vez de liberar a aplicação", () => {
     expect(() => runtimeSettings({ TEMPORARY_SITE: "yes" })).toThrow();
   });
+  it("libera os testes somente quando solicitado explicitamente", () => {
+    expect(runtimeSettings({ NODE_ENV: "production" }).APPLICATION_TEST_ACCESS).toBe(false);
+    expect(runtimeSettings({ APPLICATION_TEST_ACCESS: "true" }).APPLICATION_TEST_ACCESS).toBe(true);
+    expect(() => runtimeSettings({ APPLICATION_TEST_ACCESS: "yes" })).toThrow();
+  });
 });

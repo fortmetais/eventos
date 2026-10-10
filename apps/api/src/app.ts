@@ -180,7 +180,7 @@ export function createApp(
       eventManagementEnabled,
       volunteerRegistrationsEnabled,
       volunteerRegistrationsReady: volunteerRegistrationsEnabled
-        ? await registrationStage.ready()
+        ? await registrationStage.ready().catch(() => false)
         : false,
     }),
   );

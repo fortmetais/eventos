@@ -1,6 +1,6 @@
 import express, { type Express } from "express";
 import helmet from "helmet";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,6 +11,7 @@ export function createHostedApp(
     webRoot?: string;
     supabaseUrl?: string;
     trustProxy?: number;
+    temporaryHome?: boolean;
   } = {},
 ) {
   const webRoot =
@@ -22,6 +23,12 @@ export function createHostedApp(
       "A interface compilada não foi encontrada. Execute npm run build antes de iniciar com SERVE_WEB=true.",
     );
   }
+  const previewHtml = options.temporaryHome
+    ? readFileSync(indexFile, "utf8").replace(
+        /<html\b/i,
+        '<html data-temporary-home="true"',
+      )
+    : null;
   const connectSources = ["'self'"];
   if (options.supabaseUrl) {
     const origin = new URL(options.supabaseUrl);
@@ -72,6 +79,10 @@ export function createHostedApp(
       !req.path.split("/").some((segment) => segment.startsWith("."))
     ) {
       res.setHeader("Cache-Control", "no-cache");
+      if (previewHtml) {
+        res.type("html").send(previewHtml);
+        return;
+      }
       res.sendFile("index.html", { root: webRoot });
       return;
     }

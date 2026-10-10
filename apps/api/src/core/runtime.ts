@@ -11,6 +11,10 @@ export function runtimeSettings(environment: NodeJS.ProcessEnv = process.env) {
         .enum(["true", "false"])
         .default(development ? "false" : "true")
         .transform((value) => value === "true"),
+      APPLICATION_TEST_ACCESS: z
+        .enum(["true", "false"])
+        .default("false")
+        .transform((value) => value === "true"),
       HOST: z.string().default(development ? "127.0.0.1" : "0.0.0.0"),
       PORT: z.coerce
         .number()

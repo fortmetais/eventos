@@ -22,11 +22,14 @@ interface AuthState {
   eventManagementEnabled?: boolean;
   volunteerRegistrationsEnabled?: boolean;
   volunteerRegistrationsReady?: boolean;
+  temporaryHome?: boolean;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
 }
 const AuthContext = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const temporaryHome =
+    document.documentElement.dataset.temporaryHome === "true";
   const [client, setClient] = useState<SupabaseClient | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [access, setAccess] = useState<Access | null>(null);
@@ -128,6 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         eventManagementEnabled,
         volunteerRegistrationsEnabled,
         volunteerRegistrationsReady,
+        temporaryHome,
         refresh,
         logout,
       }}

@@ -1,0 +1,33 @@
+ACESSO À APLICAÇÃO DURANTE A PÁGINA TEMPORÁRIA
+
+TEMPORARY_SITE=true mantém o cartaz, inscrição externa e música no início.
+APPLICATION_TEST_ACCESS=true libera /entrar, /nova-senha, convites e os painéis
+de administrador, organização e perfil. As permissões normais continuam exigidas.
+As páginas e APIs públicas de eventos e inscrições permanecem indisponíveis.
+O retorno ao início recarrega o cartaz, inclusive ao navegar por dentro do React.
+
+Configurar DATABASE_URL, DIRECT_URL e as chaves do mesmo projeto Supabase somente
+nas variáveis privadas da Hostinger. O login aceita chaves publishable/secret ou
+anon/service_role. Nenhuma chave privada deve entrar no Git ou no bundle React.
+
+No Supabase, Authentication > URL Configuration:
+Site URL: https://facnsaloanda.com.br
+Redirect URLs:
+https://facnsaloanda.com.br/entrar
+https://facnsaloanda.com.br/entrar?next=**
+https://facnsaloanda.com.br/nova-senha
+https://facnsaloanda.com.br/nova-senha?next=**
+Preservar as URLs de localhost enquanto os testes locais continuarem necessários.
+
+VALIDAR
+1. / mostra o cartaz, botão de inscrição externa e ícone da música.
+2. /entrar mostra o login. Usar "Entrar com senha" para testar sem envio de e-mail.
+3. Sem sessão, /admin pede login; /api/v1/admin/organizations responde 401.
+4. Após entrar, cada conta vê somente seus painéis e organizações autorizados.
+5. Atualizar a página dentro do painel mantém a rota.
+6. O botão Início retorna ao cartaz; /api/v1/public/events continua bloqueado.
+7. /api/v1/readiness deve retornar status ready antes de testar gravações no banco.
+
+Para suspender os testes e retornar ao modo público isolado, definir
+APPLICATION_TEST_ACCESS=false. Para a abertura completa futura, definir
+TEMPORARY_SITE=false somente após validar os fluxos e as configurações de produção.
