@@ -17,6 +17,7 @@ import { OrganizationsRepository } from "./modules/organizations/organizations.r
 import { OrganizationsService } from "./modules/organizations/organizations.service.js";
 import { OrganizationsController } from "./modules/organizations/organizations.controller.js";
 import { organizationsRoutes } from "./modules/organizations/organizations.routes.js";
+import { organizationFunctionsRoutes } from "./modules/organizations/organization-functions.routes.js";
 import { EventsRepository } from "./modules/events/events.repository.js";
 import { EventsService } from "./modules/events/events.service.js";
 import { EventsController } from "./modules/events/events.controller.js";
@@ -47,6 +48,8 @@ import {
 } from "./core/decision-mail.js";
 import { DecisionNoticesService } from "./modules/registrations/decision-notices.service.js";
 import { decisionNoticesRoutes } from "./modules/registrations/decision-notices.routes.js";
+import { GuardianService } from "./modules/registrations/guardian.service.js";
+import { guardianRoutes } from "./modules/registrations/guardian.routes.js";
 
 export function createApp(
   dependencies: {
@@ -82,6 +85,12 @@ export function createApp(
     config.WEB_URL,
   );
   const app = express();
+  const guardians = new GuardianService(
+    db,
+    dependencies.decisionEmail ?? decisionEmailSender,
+    dependencies.decisionLinkSecret ?? config.REGISTRATION_LINK_SECRET,
+    config.WEB_URL,
+  );
   app.disable("x-powered-by");
   app.set("trust proxy", config.TRUST_PROXY);
   app.use(helmet());
@@ -139,6 +148,7 @@ export function createApp(
     res.json({ status: "ok", service: "fac-api" }),
   );
   app.get("/api/v1/openapi", (_req, res) => res.json(openapi));
+  app.use("/api/v1", organizationFunctionsRoutes(db, auth, limit));
   app.get("/api/v1/readiness", async (_req, res) => {
     try {
       await Promise.all([
@@ -160,6 +170,7 @@ export function createApp(
           ? await registrationStage.ready()
           : false,
         decisionNoticesReady: await notices.ready(),
+        guardianAuthorizationsReady: await guardians.ready(),
         departmentsReady: await new DepartmentsRepository(db).ready(),
         authConfigured: Boolean(
           config.SUPABASE_URL &&
@@ -196,10 +207,12 @@ export function createApp(
               (eventManagementEnabled && (await setupsRepo.ready())),
           ),
           dependencies.mail ?? mailer,
+          dependencies.artworkStorage ?? artworkStorage,
         ),
       ),
       db,
       auth,
+      limit,
     ),
   );
   if (eventManagementEnabled) {
@@ -224,6 +237,7 @@ export function createApp(
       const managed =
         /^\/public\/(events|campaigns|drafts)(\/|$)/.test(req.path) ||
         /^\/public\/decision-responses(\/|$)/.test(req.path) ||
+        /^\/public\/guardian-authorizations(\/|$)/.test(req.path) ||
         /^\/organizations\/[^/]+\/(events|campaigns|registrations)(\/|$)/.test(
           req.path,
         ) ||
@@ -243,6 +257,7 @@ export function createApp(
         next();
       });
     registrations.use(decisionNoticesRoutes(notices, db, auth, limit));
+    registrations.use(guardianRoutes(guardians, db, auth, limit));
     registrations.use(
       eventsRoutes(
         new EventsController(
@@ -268,6 +283,7 @@ export function createApp(
             new RegistrationsRepository(db),
             !eventsEnabled,
             notices,
+            guardians,
           ),
         ),
         db,

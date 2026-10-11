@@ -107,12 +107,17 @@ export function PageHeading({
 export function OrganizationAvatar({
   organization,
 }: {
-  organization: Pick<Organization, "name" | "logoUrl">;
+  organization: Pick<Organization, "name" | "logoUrl" | "logoThumbnailUrl">;
 }) {
   return (
     <div className="org-avatar">
       {organization.logoUrl ? (
-        <img src={organization.logoUrl} alt="" />
+        <img
+          src={organization.logoThumbnailUrl || organization.logoUrl}
+          alt=""
+          decoding="async"
+          loading="lazy"
+        />
       ) : (
         <Church size={25} />
       )}

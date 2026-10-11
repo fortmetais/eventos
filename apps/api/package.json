@@ -18,7 +18,9 @@
     "db:seed": "tsx prisma/seed.ts",
     "admin:bootstrap": "tsx scripts/bootstrap-admin.ts",
     "storage:setup": "tsx scripts/setup-storage.ts",
-    "drafts:cleanup": "tsx scripts/cleanup-drafts.ts"
+    "drafts:cleanup": "tsx scripts/cleanup-drafts.ts",
+    "images:thumbnails": "tsx scripts/backfill-image-thumbnails.ts",
+    "images:cleanup": "tsx scripts/cleanup-profile-photos.ts"
   },
   "dependencies": {
     "@prisma/client": "6.12.0",

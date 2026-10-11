@@ -1,6 +1,10 @@
 import { Prisma } from "@prisma/client";
 import { assert } from "../../core/errors.js";
 import { json } from "../../core/security.js";
+import {
+  eventThumbnail,
+  organizationThumbnail,
+} from "../../core/image-thumbnails.js";
 import { EventsRepository, publicOrganization } from "./events.repository.js";
 import {
   campaignIsOpen,
@@ -490,7 +494,8 @@ export class EventsService {
     });
     assert(event, 404, "Evento indisponível.");
     return {
-      ...event,
+      ...eventThumbnail(event),
+      organization: organizationThumbnail(event.organization),
       campaigns: event.campaigns.map((c) => ({
         ...c,
         forms: undefined,
@@ -528,6 +533,10 @@ export class EventsService {
     const { forms, ...data } = campaign;
     return {
       ...data,
+      event: {
+        ...eventThumbnail(data.event),
+        organization: organizationThumbnail(data.event.organization),
+      },
       open: campaignIsOpen(campaign),
       form: { ...forms[0], config: forms[0].config as unknown as FormConfig },
     };

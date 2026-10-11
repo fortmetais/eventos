@@ -6,7 +6,7 @@ import { createApp } from "../src/app.js";
 
 const url = process.env.TEST_INITIAL_DATABASE_URL;
 const integration = url ? describe : describe.skip;
-integration("Etapa inicial com SOMENTE as seis tabelas do DBeaver", () => {
+integration("Etapa inicial com as tabelas de organizações e funções", () => {
   if (url && new URL(url).pathname !== "/fac_initial_tests")
     throw new Error("Use somente a base isolada fac_initial_tests.");
   const db = new PrismaClient({
@@ -55,7 +55,7 @@ integration("Etapa inicial com SOMENTE as seis tabelas do DBeaver", () => {
     const tables = await db.$queryRaw<
       { total: bigint }[]
     >`SELECT count(*) AS total FROM pg_tables WHERE schemaname IN ('acesso','organizacoes','pessoas','public')`;
-    expect(Number(tables[0].total)).toBe(6);
+    expect(Number(tables[0].total)).toBe(7);
   });
   it("identidade verificada cria conta comum, sem promoção automática", async () => {
     await request(app)

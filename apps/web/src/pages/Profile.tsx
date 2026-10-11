@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Heart, CalendarDays } from "lucide-react";
 import { useAuth } from "../lib/auth";
@@ -14,7 +14,7 @@ import {
   Notice,
   PageHeading,
 } from "../components/ui";
-import { PhotoPicker } from "../components/PhotoPicker";
+import { PhotoPicker, type PhotoPickerHandle } from "../components/PhotoPicker";
 export function Profile() {
   const auth = useAuth();
   const profile = useRemote<{
@@ -29,23 +29,49 @@ export function Profile() {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
+  const [photoPending, setPhotoPending] = useState(false);
+  const [photoError, setPhotoError] = useState("");
+  const photoRequest = useRef(0);
+  const photoPicker = useRef<PhotoPickerHandle>(null);
+  const saving = useRef(false);
   useEffect(() => {
+    let active = true;
+    const request = ++photoRequest.current;
     if (profile.data) {
       setValues(profile.data.profile);
+      setPhotoError("");
       if (profile.data.profile.photoAssetId)
         void api<{ url: string }>(
           `/me/photos/${profile.data.profile.photoAssetId}`,
         )
-          .then((r) => setPhoto(r.url))
-          .catch(() => {});
+          .then((r) => {
+            if (active && request === photoRequest.current) setPhoto(r.url);
+          })
+          .catch(() => {
+            if (active && request === photoRequest.current)
+              setPhotoError(
+                "Não foi possível carregar sua foto de perfil. Atualize a página para tentar novamente.",
+              );
+          });
+      else setPhoto("");
     }
+    return () => {
+      active = false;
+    };
   }, [profile.data]);
   async function save(e: FormEvent) {
     e.preventDefault();
+    if (saving.current || photoUploading) return;
+    saving.current = true;
     setBusy(true);
     setError("");
+    setInfo("");
     try {
-      await api("/me/profile", { method: "PUT", body: values });
+      const fields = { ...values };
+      delete fields.photoAssetId;
+      if ((await photoPicker.current?.uploadPendingPhoto()) === false) return;
+      await api("/me/profile", { method: "PUT", body: fields });
       profile.refresh();
       await auth.refresh();
       setEditing(false);
@@ -53,6 +79,7 @@ export function Profile() {
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   }
@@ -68,6 +95,7 @@ export function Profile() {
         action={
           <button
             className="button outline"
+            disabled={busy || photoUploading || photoPending || profile.loading}
             onClick={() => setEditing((v) => !v)}
           >
             Editar meu perfil
@@ -80,23 +108,35 @@ export function Profile() {
       {error && <Notice>{error}</Notice>}
       {info && <Notice kind="success">{info}</Notice>}
       {profile.error && <Notice>{profile.error}</Notice>}
+      {photoError && <Notice>{photoError}</Notice>}
       {editing ? (
         <form className="panel" onSubmit={save}>
           <h2>Meu perfil</h2>
           {(auth.eventsEnabled || auth.volunteerRegistrationsReady) && (
             <PhotoPicker
+              ref={photoPicker}
               endpoint="/me/photo"
               currentUrl={photo}
+              disabled={busy || profile.loading}
+              onUploadingChange={setPhotoUploading}
+              onPendingChange={setPhotoPending}
+              uploadedMessage="Foto do perfil salva. Os demais campos são salvos em Salvar perfil."
               onUploaded={(id, url) => {
+                photoRequest.current += 1;
                 setValues((v) => ({ ...v, photoAssetId: id }));
                 setPhoto(url);
+                setPhotoError("");
               }}
             />
           )}
           <div className="form-grid">
             <Field label="Nome completo" required>
               <input
+                id="profile-name"
+                name="name"
+                autoComplete="name"
                 required
+                disabled={busy}
                 minLength={2}
                 value={values.name ?? ""}
                 onChange={(e) =>
@@ -106,7 +146,11 @@ export function Profile() {
             </Field>
             <Field label="Telefone">
               <input
+                id="profile-phone"
+                name="phone"
+                autoComplete="tel"
                 type="tel"
+                disabled={busy}
                 value={values.phone ?? ""}
                 onChange={(e) =>
                   setValues((v) => ({ ...v, phone: e.target.value }))
@@ -115,7 +159,11 @@ export function Profile() {
             </Field>
             <Field label="Nascimento">
               <input
+                id="profile-birth-date"
+                name="birthDate"
+                autoComplete="bday"
                 type="date"
+                disabled={busy}
                 value={values.birthDate ?? ""}
                 onChange={(e) =>
                   setValues((v) => ({ ...v, birthDate: e.target.value }))
@@ -124,6 +172,10 @@ export function Profile() {
             </Field>
             <Field label="Cidade">
               <input
+                id="profile-city"
+                name="city"
+                autoComplete="address-level2"
+                disabled={busy}
                 value={values.city ?? ""}
                 onChange={(e) =>
                   setValues((v) => ({ ...v, city: e.target.value }))
@@ -132,7 +184,16 @@ export function Profile() {
             </Field>
           </div>
           <p className="muted">E-mail verificado: {profile.data?.email}</p>
-          <button className="button primary" disabled={busy}>
+          {photoPending && !photoUploading && (
+            <Notice kind="info">
+              A foto escolhida será salva ao clicar em “Salvar perfil”. Você
+              também pode confirmar em “Usar esta foto” ou descartá-la.
+            </Notice>
+          )}
+          <button
+            className="button primary"
+            disabled={busy || photoUploading || profile.loading}
+          >
             Salvar perfil
           </button>
         </form>

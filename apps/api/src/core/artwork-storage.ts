@@ -43,6 +43,7 @@ export const artworkStorage: ArtworkStorage = {
     const { error } = await storage.upload(key, buffer, {
       contentType: "image/webp",
       upsert: false,
+      cacheControl: "31536000",
     });
     if (error)
       throw new AppError(

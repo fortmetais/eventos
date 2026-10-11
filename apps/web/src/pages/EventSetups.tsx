@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CalendarDays, ImagePlus, Plus } from "lucide-react";
 import { useOrganization } from "./Organization";
 import { Link } from "react-router-dom";
@@ -52,6 +52,8 @@ export function EventSetups() {
   );
   const [editor, setEditor] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [detailsOnly, setDetailsOnly] = useState(false);
+  const [datesLocked, setDatesLocked] = useState(false);
   const [values, setValues] = useState(blank);
   const [range, setRange] = useState(false);
   const [periods, setPeriods] = useState(blankPeriods);
@@ -62,6 +64,7 @@ export function EventSetups() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
+  const saving = useRef(false);
   const [editorVersion, setEditorVersion] = useState(0);
   const editable = membership.role === "ORGANIZER";
   useEffect(() => {
@@ -74,8 +77,16 @@ export function EventSetups() {
     return () => URL.revokeObjectURL(url);
   }, [artwork]);
   function begin(event?: EventEdition) {
+    if (saving.current) return;
     setEditorVersion((value) => value + 1);
     setEditingId(event?.id ?? null);
+    setDetailsOnly(Boolean(event && event.status !== "DRAFT"));
+    setDatesLocked(
+      Boolean(
+        event?.hasRegistrations ||
+        event?.campaigns.some((c) => (c._count?.registrations ?? 0) > 0),
+      ),
+    );
     setValues(
       event
         ? {
@@ -105,27 +116,34 @@ export function EventSetups() {
     setError("");
     setSuccess("");
     setEditor(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
   async function save(e: FormEvent) {
     e.preventDefault();
+    if (saving.current) return;
+    saving.current = true;
     setError("");
     setSuccess("");
     setBusy(true);
     try {
       const data = {
         event: { ...values, endsAt: range ? values.endsAt : values.startsAt },
-        departments: departmentPayload(departments),
-        campaigns: (["VOLUNTEER", "CAMPER"] as const).map((kind) => ({
-          kind,
-          opensAt: `${periods[kind].open}:00-03:00`,
-          closesAt: `${periods[kind].close}:00-03:00`,
-          capacity: periods[kind].capacity
-            ? Number(periods[kind].capacity)
-            : null,
-          allowWaitlist: periods[kind].waitlist,
-        })),
+        ...(!detailsOnly
+          ? {
+              departments: departmentPayload(departments),
+              campaigns: (["VOLUNTEER", "CAMPER"] as const).map((kind) => ({
+                kind,
+                opensAt: `${periods[kind].open}:00-03:00`,
+                closesAt: `${periods[kind].close}:00-03:00`,
+                capacity: periods[kind].capacity
+                  ? Number(periods[kind].capacity)
+                  : null,
+                allowWaitlist: periods[kind].waitlist,
+              })),
+            }
+          : {}),
       };
-      for (const c of data.campaigns)
+      for (const c of data.campaigns ?? [])
         if (Date.parse(c.closesAt) <= Date.parse(c.opensAt))
           throw new Error(
             `O encerramento das inscrições de ${c.kind === "CAMPER" ? "campistas" : "servos"} deve ser posterior à abertura.`,
@@ -138,7 +156,7 @@ export function EventSetups() {
       body.append("data", JSON.stringify(data));
       if (artwork) body.append("artwork", artwork);
       await api(
-        `/organizations/${organizationId}/event-setups${editingId ? `/${editingId}` : ""}`,
+        `/organizations/${organizationId}/event-setups${editingId ? `/${editingId}${detailsOnly ? "/details" : ""}` : ""}`,
         {
           method: editingId ? "PUT" : "POST",
           body,
@@ -147,7 +165,9 @@ export function EventSetups() {
       setEditor(false);
       setArtwork(null);
       setSuccess(
-        "Evento salvo em preparação, com departamentos, vagas e períodos de inscrição.",
+        detailsOnly
+          ? "Dados do evento atualizados. Inscrições e fichas foram preservadas."
+          : "Evento salvo em preparação, com departamentos, vagas e períodos de inscrição.",
       );
       state.refresh();
     } catch (error) {
@@ -159,6 +179,7 @@ export function EventSetups() {
           : "";
       setError(details || (error as Error).message);
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   }
@@ -168,7 +189,11 @@ export function EventSetups() {
         title="Eventos"
         action={
           editable && !state.loading && !state.error ? (
-            <button className="button primary" onClick={() => begin()}>
+            <button
+              className="button primary"
+              disabled={busy}
+              onClick={() => begin()}
+            >
               <Plus size={17} /> Novo evento
             </button>
           ) : undefined
@@ -186,6 +211,19 @@ export function EventSetups() {
           onSubmit={save}
         >
           <h2>{editingId ? "Editar evento" : "Novo evento"}</h2>
+          {detailsOnly && (
+            <Notice kind="info">
+              Edite os dados e a arte de divulgação. O estado do evento, os
+              períodos de inscrição, os departamentos e as fichas serão
+              preservados.
+            </Notice>
+          )}
+          {datesLocked && (
+            <Notice kind="info">
+              Este evento já possui inscrições. As datas estão protegidas; os
+              demais dados e a arte podem ser alterados.
+            </Notice>
+          )}
           <fieldset disabled={busy}>
             <div className="form-grid">
               <Field label="Nome do evento" required>
@@ -215,6 +253,7 @@ export function EventSetups() {
             <label className="checkbox">
               <input
                 type="checkbox"
+                disabled={datesLocked}
                 checked={range}
                 onChange={(e) => setRange(e.target.checked)}
               />
@@ -227,6 +266,7 @@ export function EventSetups() {
               >
                 <input
                   type="date"
+                  disabled={datesLocked}
                   required
                   value={values.startsAt}
                   onChange={(e) =>
@@ -238,6 +278,7 @@ export function EventSetups() {
                 <Field label="Data de término" required>
                   <input
                     type="date"
+                    disabled={datesLocked}
                     required
                     min={values.startsAt}
                     value={values.endsAt}
@@ -281,71 +322,84 @@ export function EventSetups() {
                 }
               />
             </Field>
-            <h3>Períodos de inscrição</h3>
-            <p>
-              Horários de Brasília (America/Sao_Paulo). Os períodos são
-              independentes e podem se sobrepor.
-            </p>
-            <div className="registration-periods">
-              {(["VOLUNTEER", "CAMPER"] as const).map((kind) => {
-                const label = kind === "VOLUNTEER" ? "Servos" : "Campistas";
-                const value = periods[kind];
-                const change = (changes: Partial<typeof value>) =>
-                  setPeriods({ ...periods, [kind]: { ...value, ...changes } });
-                return (
-                  <section className="period-panel" key={kind}>
-                    <h4>{label}</h4>
-                    <Field label={`Abertura — ${label.toLowerCase()}`} required>
-                      <input
-                        type="datetime-local"
-                        required
-                        value={value.open}
-                        onChange={(e) => change({ open: e.target.value })}
-                      />
-                    </Field>
-                    <Field
-                      label={`Encerramento — ${label.toLowerCase()}`}
-                      required
-                    >
-                      <input
-                        type="datetime-local"
-                        required
-                        min={value.open}
-                        value={value.close}
-                        onChange={(e) => change({ close: e.target.value })}
-                      />
-                    </Field>
-                    {kind === "CAMPER" && (
-                      <>
-                        <Field label="Vagas de campistas (opcional nesta etapa)">
+            {!detailsOnly && (
+              <>
+                <h3>Períodos de inscrição</h3>
+                <p>
+                  Horários de Brasília (America/Sao_Paulo). Os períodos são
+                  independentes e podem se sobrepor.
+                </p>
+                <div className="registration-periods">
+                  {(["VOLUNTEER", "CAMPER"] as const).map((kind) => {
+                    const label = kind === "VOLUNTEER" ? "Servos" : "Campistas";
+                    const value = periods[kind];
+                    const change = (changes: Partial<typeof value>) =>
+                      setPeriods({
+                        ...periods,
+                        [kind]: { ...value, ...changes },
+                      });
+                    return (
+                      <section className="period-panel" key={kind}>
+                        <h4>{label}</h4>
+                        <Field
+                          label={`Abertura — ${label.toLowerCase()}`}
+                          required
+                        >
                           <input
-                            type="number"
-                            min={1}
-                            max={100000}
-                            step={1}
-                            value={value.capacity}
-                            onChange={(e) =>
-                              change({ capacity: e.target.value })
-                            }
+                            type="datetime-local"
+                            required
+                            value={value.open}
+                            onChange={(e) => change({ open: e.target.value })}
                           />
                         </Field>
-                        <label className="checkbox">
+                        <Field
+                          label={`Encerramento — ${label.toLowerCase()}`}
+                          required
+                        >
                           <input
-                            type="checkbox"
-                            checked={value.waitlist}
-                            onChange={(e) =>
-                              change({ waitlist: e.target.checked })
-                            }
-                          />{" "}
-                          Permitir lista de espera
-                        </label>
-                      </>
-                    )}
-                  </section>
-                );
-              })}
-            </div>
-            <DepartmentsEditor rows={departments} onChange={setDepartments} />
+                            type="datetime-local"
+                            required
+                            min={value.open}
+                            value={value.close}
+                            onChange={(e) => change({ close: e.target.value })}
+                          />
+                        </Field>
+                        {kind === "CAMPER" && (
+                          <>
+                            <Field label="Vagas de campistas (opcional nesta etapa)">
+                              <input
+                                type="number"
+                                min={1}
+                                max={100000}
+                                step={1}
+                                value={value.capacity}
+                                onChange={(e) =>
+                                  change({ capacity: e.target.value })
+                                }
+                              />
+                            </Field>
+                            <label className="checkbox">
+                              <input
+                                type="checkbox"
+                                checked={value.waitlist}
+                                onChange={(e) =>
+                                  change({ waitlist: e.target.checked })
+                                }
+                              />{" "}
+                              Permitir lista de espera
+                            </label>
+                          </>
+                        )}
+                      </section>
+                    );
+                  })}
+                </div>
+                <DepartmentsEditor
+                  rows={departments}
+                  onChange={setDepartments}
+                />
+              </>
+            )}
             <h3>Arte do evento</h3>
             <div className="artwork-editor">
               <div className="artwork-preview">
@@ -403,8 +457,9 @@ export function EventSetups() {
               </div>
             </div>
             <p>
-              Ao salvar, o evento fica em preparação. A publicação será liberada
-              após a configuração das fichas.
+              {detailsOnly
+                ? "As alterações serão aplicadas ao evento sem interromper as inscrições."
+                : "Ao salvar, o evento fica em preparação. A publicação será liberada após a configuração das fichas."}
             </p>
             <div className="button-row">
               <button className="button primary" disabled={busy}>
@@ -440,7 +495,9 @@ export function EventSetups() {
             {event.imageUrl && (
               <img
                 className="event-artwork-thumbnail"
-                src={event.imageUrl}
+                src={event.imageThumbnailUrl || event.imageUrl}
+                loading="lazy"
+                decoding="async"
                 alt={`Arte de ${event.name}`}
               />
             )}
@@ -490,8 +547,12 @@ export function EventSetups() {
                   </span>
                 </div>
               ))}
-              {editable && event.status === "DRAFT" && (
-                <button className="button outline" onClick={() => begin(event)}>
+              {editable && (
+                <button
+                  className="button outline"
+                  disabled={busy}
+                  onClick={() => begin(event)}
+                >
                   Editar evento
                 </button>
               )}

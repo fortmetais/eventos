@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { assert } from "../../core/errors.js";
 export class ProfilesRepository {
   constructor(public db: PrismaClient) {}
   get(accountId: string) {
@@ -7,11 +8,32 @@ export class ProfilesRepository {
       select: { id: true, email: true, profile: true },
     });
   }
-  update(accountId: string, profile: Prisma.InputJsonValue) {
-    return this.db.account.update({
-      where: { id: accountId },
-      data: { profile },
-      select: { id: true, email: true, profile: true },
+  update(accountId: string, profile: Prisma.InputJsonObject) {
+    return this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT conta_id FROM acesso.contas WHERE conta_id = ${accountId}::uuid FOR UPDATE`;
+      if (typeof profile.photoAssetId === "string")
+        assert(
+          await tx.mediaAsset.findFirst({
+            where: { id: profile.photoAssetId, accountId, purpose: "PROFILE" },
+          }),
+          422,
+          "Foto inválida para este perfil.",
+        );
+      const account = await tx.account.findUniqueOrThrow({
+        where: { id: accountId },
+        select: { profile: true },
+      });
+      const current =
+        account.profile &&
+        typeof account.profile === "object" &&
+        !Array.isArray(account.profile)
+          ? account.profile
+          : {};
+      return tx.account.update({
+        where: { id: accountId },
+        data: { profile: { ...current, ...profile } },
+        select: { id: true, email: true, profile: true },
+      });
     });
   }
   registrations(accountId: string) {

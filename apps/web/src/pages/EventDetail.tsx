@@ -17,7 +17,7 @@ export function EventDetail() {
   const event = state.data!;
   return (
     <div className="narrow-shell">
-      <BackLink to="/">Todos os eventos</BackLink>
+      <BackLink to="/eventos">Todos os eventos</BackLink>
       <PageHeading eyebrow={event.type.name} title={event.name}>
         {event.organization?.name}
       </PageHeading>

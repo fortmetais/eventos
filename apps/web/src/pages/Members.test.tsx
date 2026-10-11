@@ -13,10 +13,25 @@ import { Members } from "./Organization";
 
 const mocks = vi.hoisted(() => ({ api: vi.fn() }));
 vi.mock("../lib/api", () => ({ api: mocks.api }));
+vi.mock("../lib/auth", () => ({
+  useAuth: () => ({
+    refresh: async () => {},
+    access: { account: { platformAdmin: false } },
+  }),
+}));
 
 const email = "organizador@example.com";
 function response(accepted: boolean) {
   return {
+    functions: [
+      {
+        id: "organizer-function",
+        name: "Organizador",
+        role: "ORGANIZER",
+        defaultRole: "ORGANIZER",
+        active: true,
+      },
+    ],
     members: accepted
       ? [
           {

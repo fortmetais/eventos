@@ -7,6 +7,7 @@ import { useAuth } from "../lib/auth";
 import { useRemote } from "../lib/hooks";
 import { api } from "../lib/api";
 import { DecisionNotice } from "../components/DecisionNotice";
+import { GuardianNotice } from "../components/GuardianNotice";
 import type {
   EventEdition,
   Page,
@@ -374,6 +375,13 @@ export function ReviewRegistrations() {
         </section>
         {selected && (
           <aside className="panel registration-detail">
+            {registration && (
+              <GuardianNotice
+                key={registration.id}
+                organizationId={organizationId!}
+                registrationId={registration.id}
+              />
+            )}
             <button className="text-button" onClick={() => setSelected(null)}>
               Fechar ficha ×
             </button>

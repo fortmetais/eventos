@@ -76,6 +76,14 @@ const operations: Operation[] = [
     multipart: true,
   },
   {
+    method: "put",
+    path: "/organizations/{organizationId}/event-setups/{eventId}/details",
+    summary:
+      "Editar dados e arte de evento publicado, preservando inscrições e fichas",
+    security: "account",
+    multipart: true,
+  },
+  {
     method: "get",
     path: "/me/access",
     summary: "Conta e vínculos ativos",
@@ -106,6 +114,33 @@ const operations: Operation[] = [
     method: "get",
     path: "/organizations/{organizationId}/members",
     summary: "Listar membros e convites",
+    security: "account",
+  },
+  {
+    method: "get",
+    path: "/organizations/{organizationId}/functions",
+    summary: "Listar funções e vínculos da organização",
+    security: "account",
+  },
+  {
+    method: "post",
+    path: "/organizations/{organizationId}/functions",
+    summary: "Cadastrar função com perfil de acesso",
+    security: "account",
+    body: "OrganizationFunction",
+  },
+  {
+    method: "put",
+    path: "/organizations/{organizationId}/functions/{functionId}",
+    summary:
+      "Atualizar função e propagar perfil aos vínculos e convites válidos",
+    security: "account",
+    body: "OrganizationFunction",
+  },
+  {
+    method: "delete",
+    path: "/organizations/{organizationId}/functions/{functionId}",
+    summary: "Inativar função preservando membros e convites",
     security: "account",
   },
   {
@@ -358,6 +393,19 @@ const organization = {
   city: string,
   state: string,
   contact: string,
+  cnpj: {
+    ...string,
+    nullable: true,
+    description:
+      "CNPJ numérico ou alfanumérico, com dígitos verificadores válidos.",
+  },
+  legalName: { ...string, nullable: true },
+  tradeName: { ...string, nullable: true },
+  postalCode: { ...string, nullable: true },
+  street: { ...string, nullable: true },
+  number: { ...string, nullable: true },
+  complement: { ...string, nullable: true },
+  neighborhood: { ...string, nullable: true },
   logoUrl: { type: "string", format: "uri", nullable: true },
 };
 const schemas = {
@@ -376,21 +424,50 @@ const schemas = {
     "contact",
     "active",
   ]),
-  Invitation: object(
+  OrganizationFunction: object(
     {
-      email: { type: "string", format: "email" },
-      role: { enum: ["ORGANIZER", "SECRETARY", "HEALTH"] },
-    },
-    ["email", "role"],
-  ),
-  Membership: object(
-    {
+      name: { type: "string", minLength: 2, maxLength: 80 },
+      description: { type: "string", nullable: true, maxLength: 500 },
       role: { enum: ["ORGANIZER", "SECRETARY", "HEALTH"] },
       active: boolean,
-      healthEventIds: { type: "array", items: uuid },
     },
-    ["role", "active"],
+    ["name", "role"],
   ),
+  Invitation: {
+    oneOf: [
+      object({ email: { type: "string", format: "email" }, functionId: uuid }, [
+        "email",
+        "functionId",
+      ]),
+      object(
+        {
+          email: { type: "string", format: "email" },
+          role: { enum: ["ORGANIZER", "SECRETARY", "HEALTH"] },
+        },
+        ["email", "role"],
+      ),
+    ],
+  },
+  Membership: {
+    oneOf: [
+      object(
+        {
+          functionId: uuid,
+          active: boolean,
+          healthEventIds: { type: "array", items: uuid },
+        },
+        ["functionId", "active"],
+      ),
+      object(
+        {
+          role: { enum: ["ORGANIZER", "SECRETARY", "HEALTH"] },
+          active: boolean,
+          healthEventIds: { type: "array", items: uuid },
+        },
+        ["role", "active"],
+      ),
+    ],
+  },
   Event: object(
     {
       typeName: string,
@@ -610,6 +687,28 @@ for (const operation of operations) {
           "application/json": {
             schema: { $ref: `#/components/schemas/${operation.body}` },
           },
+          ...(operation.body === "Organization" ||
+          operation.body === "OrganizationUpdate"
+            ? {
+                "multipart/form-data": {
+                  schema: object(
+                    {
+                      data: {
+                        ...string,
+                        description: `JSON conforme ${operation.body}; não enviar URL do logotipo ao substituir por arquivo.`,
+                      },
+                      logo: {
+                        type: "string",
+                        format: "binary",
+                        description:
+                          "JPEG, PNG ou WebP estático, até 10 MB; opcional.",
+                      },
+                    },
+                    ["data"],
+                  ),
+                },
+              }
+            : {}),
         },
       }
     : operation.multipart
@@ -622,8 +721,9 @@ for (const operation of operations) {
                   ? {
                       data: {
                         ...string,
-                        description:
-                          "JSON com event e campaigns (servos e campistas).",
+                        description: operation.path.endsWith("/details")
+                          ? "JSON com apenas event. Não altera períodos, departamentos, fichas ou estado. Datas são preservadas quando há inscrições."
+                          : "JSON com event, departments e campaigns (servos e campistas).",
                       },
                       artwork: { type: "string", format: "binary" },
                     }

@@ -33,7 +33,7 @@ export function Layout() {
             encontro<span className="brand-dot">.</span>
           </Link>
           <nav aria-label="Menu principal">
-            <NavLink to="/" end>
+            <NavLink to={auth.temporaryHome ? "/eventos" : "/"} end>
               {auth.eventsEnabled || auth.volunteerRegistrationsReady
                 ? "Explorar eventos"
                 : "Início"}

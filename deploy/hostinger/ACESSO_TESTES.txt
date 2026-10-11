@@ -3,21 +3,33 @@ ACESSO À APLICAÇÃO DURANTE A PÁGINA TEMPORÁRIA
 TEMPORARY_SITE=true mantém o cartaz, inscrição externa e música no início.
 APPLICATION_TEST_ACCESS=true libera /entrar, /nova-senha, convites e os painéis
 de administrador, organização e perfil. As permissões normais continuam exigidas.
-As páginas e APIs públicas de eventos e inscrições permanecem indisponíveis.
+Também libera /eventos, /eventos/:id, /inscricao/:campaignId,
+/resposta/:noticeId e /autorizacao/:authorizationId, além de /api/v1/public/*.
+Os links de resposta e autorização precisam do token recebido. Rascunhos e
+fotos continuam protegidos pelas credenciais; dados administrativos exigem login.
 O retorno ao início recarrega o cartaz, inclusive ao navegar por dentro do React.
+O menu Explorar eventos e os links de retorno abrem /eventos.
+Essa liberação está preparada localmente. Publicar/sincronizar com a Hostinger
+somente quando o usuário solicitar.
 
 Configurar DATABASE_URL, DIRECT_URL e as chaves do mesmo projeto Supabase somente
 nas variáveis privadas da Hostinger. O login aceita chaves publishable/secret ou
 anon/service_role. Nenhuma chave privada deve entrar no Git ou no bundle React.
 
 No Supabase, Authentication > URL Configuration:
-Site URL: https://facnsaloanda.com.br
+Site URL: https://facnsaloanda.com.br/entrar
 Redirect URLs:
 https://facnsaloanda.com.br/entrar
 https://facnsaloanda.com.br/entrar?next=**
 https://facnsaloanda.com.br/nova-senha
 https://facnsaloanda.com.br/nova-senha?next=**
 Preservar as URLs de localhost enquanto os testes locais continuarem necessários.
+O destino padrão /entrar processa a sessão do Auth; o cartaz na raiz não faz isso.
+O login no site envia /entrar como retorno, e a recuperação envia /nova-senha.
+Salvar a configuração e solicitar um novo e-mail para testar o domínio correto.
+Nos templates, manter {{ .ConfirmationURL }} no link de autenticação. Links
+enviados anteriormente não são corrigidos ao alterar a configuração do painel.
+WEB_URL na Hostinger permanece https://facnsaloanda.com.br (sem /entrar).
 
 VALIDAR
 1. / mostra o cartaz, botão de inscrição externa e ícone da música.
@@ -25,8 +37,28 @@ VALIDAR
 3. Sem sessão, /admin pede login; /api/v1/admin/organizations responde 401.
 4. Após entrar, cada conta vê somente seus painéis e organizações autorizados.
 5. Atualizar a página dentro do painel mantém a rota.
-6. O botão Início retorna ao cartaz; /api/v1/public/events continua bloqueado.
+6. A marca Encontro retorna ao cartaz; Explorar eventos abre /eventos.
 7. /api/v1/readiness deve retornar status ready antes de testar gravações no banco.
+8. /api/v1/public/events retorna JSON, com eventos publicados disponíveis.
+9. Abrir o link de uma ficha publicada em período aberto; iniciar, salvar,
+   retomar e enviar uma inscrição de teste. Inscrições fechadas continuam bloqueadas.
+10. Abrir o link de aceite/recusa e o termo do responsável. Confirmar presença
+    e assinar o termo de teste sem login, usando os links completos válidos.
+11. Sem token, links de resposta/autorização não mostram os dados da pessoa.
+
+PRÉ-REQUISITOS DA INSTALAÇÃO GRADUAL
+EVENTS_ENABLED=false, EVENT_MANAGEMENT_ENABLED=true e
+VOLUNTEER_REGISTRATIONS_ENABLED=true mantêm o fluxo atual de servos.
+Aplicar os scripts aditivos ainda pendentes na base de destino: SQL 05/06 para
+eventos/fichas, 07 para avisos de decisão, 08 para departamentos, 09 para o termo,
+10 para a ficha da organização e 11 para funções. Conferir os nomes e a ordem
+nos guias; não repetir migrações Prisma numa base gradual existente.
+Na cópia já importada no Supabase, o SQL 09 está incluído: não repetir seu
+CREATE TABLE. Usar deploy/supabase/CONFERIR_ATUALIZACOES.sql para conferir
+as colunas antes e depois de aplicar os SQLs 10 e 11.
+REGISTRATION_LINK_SECRET deve estar configurado (mínimo 32 caracteres).
+WEB_URL deve ser https://facnsaloanda.com.br para os links enviados.
+Não publicar automaticamente fichas nem abrir períodos ao liberar as rotas.
 
 Para suspender os testes e retornar ao modo público isolado, definir
 APPLICATION_TEST_ACCESS=false. Para a abertura completa futura, definir

@@ -203,7 +203,7 @@ export function Login() {
           uma conta.
         </p>
       </form>
-      <Link className="back-link" to="/">
+      <Link className="back-link" to="/eventos">
         Voltar para os eventos
       </Link>
     </div>

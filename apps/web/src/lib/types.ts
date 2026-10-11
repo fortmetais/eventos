@@ -14,7 +14,16 @@ export interface Organization {
   city: string;
   state: string;
   contact?: string;
+  cnpj?: string | null;
+  legalName?: string | null;
+  tradeName?: string | null;
+  postalCode?: string | null;
+  street?: string | null;
+  number?: string | null;
+  complement?: string | null;
+  neighborhood?: string | null;
   logoUrl?: string | null;
+  logoThumbnailUrl?: string | null;
   active: boolean;
   _count?: { events: number; memberships: number };
 }
@@ -23,10 +32,22 @@ export interface Membership {
   organizationId: string;
   accountId: string;
   role: Role;
+  functionId?: string | null;
+  function?: OrganizationFunction | null;
   active: boolean;
   healthEventIds: string[];
   organization?: Organization;
   account?: { id: string; email: string };
+}
+export interface OrganizationFunction {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string | null;
+  role: Role;
+  active: boolean;
+  defaultRole?: Role | null;
+  _count?: { members: number; invitations: number };
 }
 export interface Account {
   id: string;
@@ -95,11 +116,13 @@ export interface Team {
 }
 export interface EventEdition {
   departmentsReady?: boolean;
+  hasRegistrations?: boolean;
   id: string;
   organizationId: string;
   name: string;
   description: string;
   imageUrl?: string | null;
+  imageThumbnailUrl?: string | null;
   location: string;
   city: string;
   startsAt: string;
@@ -130,6 +153,7 @@ export interface Payload {
   emergencyRelationship?: string;
   guardianName?: string;
   guardianPhone?: string;
+  guardianEmail?: string;
   guardianRelationship?: string;
   guardianAuthorization?: boolean;
   availability?: string;
@@ -168,6 +192,7 @@ export interface Draft {
     status: RegistrationStatus;
     accountId?: string | null;
   };
+  guardian?: import("./guardian").GuardianSummary | null;
   email?: string;
 }
 export interface Registration {

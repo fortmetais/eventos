@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Link,
   Navigate,
@@ -16,15 +16,18 @@ import {
   Users,
   Church,
   RefreshCw,
+  UserCog,
 } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { clearPendingInvitation, rememberInvitation } from "../lib/navigation";
 import { useRemote } from "../lib/hooks";
 import { api } from "../lib/api";
+import { OrganizationForm } from "../components/OrganizationForm";
 import type {
   EventEdition,
   Membership,
   Organization,
+  OrganizationFunction,
   Page,
   Role,
 } from "../lib/types";
@@ -73,7 +76,8 @@ export function OrganizationPicker() {
               <div>
                 <h3>{m.organization.name}</h3>
                 <p>
-                  {m.organization.city} · {roleLabels[m.role]}
+                  {m.organization.city} ·{" "}
+                  {m.function?.name ?? roleLabels[m.role]}
                 </p>
               </div>
               <span>→</span>
@@ -108,7 +112,9 @@ export function OrganizationLayout() {
         <div className="sidebar-org">
           <OrganizationAvatar organization={membership.organization} />
           <h3>{membership.organization.name}</h3>
-          <small>{roleLabels[membership.role]}</small>
+          <small>
+            {membership.function?.name ?? roleLabels[membership.role]}
+          </small>
         </div>
         <nav aria-label="Organização">
           <NavLink end to={base}>
@@ -133,6 +139,12 @@ export function OrganizationLayout() {
               </>
             )}
           {membership.role === "ORGANIZER" && (
+            <NavLink to={`${base}/funcoes`}>
+              <UserCog size={18} />
+              Funções
+            </NavLink>
+          )}
+          {membership.role === "ORGANIZER" && (
             <NavLink to={`${base}/membros`}>
               <Users size={18} />
               Membros e convites
@@ -145,10 +157,12 @@ export function OrganizationLayout() {
                 Cuidados de saúde
               </NavLink>
             )}
-          <Link to="/organizacao">
-            <Church size={18} />
-            Trocar organização
-          </Link>
+          {(auth.access?.organizations.length ?? 0) >= 2 && (
+            <Link to="/organizacao">
+              <Church size={18} />
+              Trocar organização
+            </Link>
+          )}
         </nav>
       </aside>
       <div className="admin-main">
@@ -167,9 +181,31 @@ export function OrganizationLayout() {
 }
 export function OrganizationDashboard() {
   const auth = useAuth();
-  if (!auth.eventsEnabled && auth.eventManagementEnabled)
-    return <EventPreparationDashboard />;
-  return <FullOrganizationDashboard />;
+  const { organizationId, membership } = useOrganization();
+  return (
+    <>
+      {!auth.eventsEnabled && auth.eventManagementEnabled ? (
+        <EventPreparationDashboard />
+      ) : (
+        <FullOrganizationDashboard />
+      )}
+      {membership.role === "ORGANIZER" && (
+        <section className="panel">
+          <h2>Funções da organização</h2>
+          <p>
+            Cadastre as funções dos responsáveis e defina o perfil de acesso
+            usado em Membros e convites.
+          </p>
+          <Link
+            className="button outline"
+            to={`/organizacao/${organizationId}/funcoes`}
+          >
+            <UserCog size={17} /> Gerenciar funções
+          </Link>
+        </section>
+      )}
+    </>
+  );
 }
 function EventPreparationDashboard() {
   const { organizationId, membership } = useOrganization();
@@ -326,50 +362,7 @@ export function PlatformAdmin() {
   const [editing, setEditing] = useState(false);
   const [editingOrganization, setEditingOrganization] =
     useState<Organization | null>(null);
-  const [organizationActive, setOrganizationActive] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [values, setValues] = useState({
-    name: "",
-    kind: "PARISH",
-    city: "",
-    state: "PR",
-    contact: "",
-    logoUrl: "",
-  });
-  async function save(e: FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError("");
-    try {
-      await api(
-        `/admin/organizations${editingOrganization ? `/${editingOrganization.id}` : ""}`,
-        {
-          method: editingOrganization ? "PUT" : "POST",
-          body: {
-            ...values,
-            logoUrl: values.logoUrl || null,
-            ...(editingOrganization ? { active: organizationActive } : {}),
-          },
-        },
-      );
-      setEditing(false);
-      setEditingOrganization(null);
-      setValues({
-        name: "",
-        kind: "PARISH",
-        city: "",
-        state: "PR",
-        contact: "",
-        logoUrl: "",
-      });
-      state.refresh();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
   return (
     <div className="wide-shell">
       <PageHeading
@@ -378,17 +371,10 @@ export function PlatformAdmin() {
         action={
           <button
             className="button primary"
+            disabled={busy}
             onClick={() => {
               setEditingOrganization(null);
-              setValues({
-                name: "",
-                kind: "PARISH",
-                city: "",
-                state: "PR",
-                contact: "",
-                logoUrl: "",
-              });
-              setEditing((v) => !v);
+              setEditing(true);
             }}
           >
             <Plus size={17} />
@@ -399,102 +385,17 @@ export function PlatformAdmin() {
         Cadastre uma comunidade e convide seu primeiro organizador.
       </PageHeading>
       {editing && (
-        <form className="panel" onSubmit={save}>
-          <h2>
-            {editingOrganization ? "Editar organização" : "Nova organização"}
-          </h2>
-          {error && <Notice>{error}</Notice>}
-          <div className="form-grid">
-            <Field label="Nome" required>
-              <input
-                required
-                value={values.name}
-                onChange={(e) =>
-                  setValues((v) => ({ ...v, name: e.target.value }))
-                }
-              />
-            </Field>
-            <Field label="Tipo">
-              <select
-                value={values.kind}
-                onChange={(e) =>
-                  setValues((v) => ({ ...v, kind: e.target.value }))
-                }
-              >
-                <option value="PARISH">Paróquia</option>
-                <option value="COMMUNITY">Comunidade</option>
-                <option value="ORGANIZATION">Organização</option>
-              </select>
-            </Field>
-            <Field label="Cidade" required>
-              <input
-                required
-                value={values.city}
-                onChange={(e) =>
-                  setValues((v) => ({ ...v, city: e.target.value }))
-                }
-              />
-            </Field>
-            <Field label="UF" required>
-              <input
-                required
-                maxLength={2}
-                pattern="[A-Z]{2}"
-                value={values.state}
-                onChange={(e) =>
-                  setValues((v) => ({
-                    ...v,
-                    state: e.target.value.toUpperCase(),
-                  }))
-                }
-              />
-            </Field>
-            <Field label="Contato" required>
-              <input
-                required
-                value={values.contact}
-                onChange={(e) =>
-                  setValues((v) => ({ ...v, contact: e.target.value }))
-                }
-              />
-            </Field>
-            <Field label="URL HTTPS do logotipo (opcional)">
-              <input
-                type="url"
-                value={values.logoUrl}
-                onChange={(e) =>
-                  setValues((v) => ({ ...v, logoUrl: e.target.value }))
-                }
-              />
-            </Field>
-          </div>
-          {editingOrganization && (
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={organizationActive}
-                onChange={(e) => setOrganizationActive(e.target.checked)}
-              />
-              Organização ativa
-            </label>
-          )}
-          <div className="button-row">
-            <button disabled={busy} className="button primary">
-              {busy
-                ? "Salvando…"
-                : editingOrganization
-                  ? "Salvar organização"
-                  : "Cadastrar organização"}
-            </button>
-            <button
-              type="button"
-              className="button outline"
-              onClick={() => setEditing(false)}
-            >
-              Fechar
-            </button>
-          </div>
-        </form>
+        <OrganizationForm
+          key={editingOrganization?.id ?? "new"}
+          organization={editingOrganization}
+          onBusyChange={setBusy}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            setEditingOrganization(null);
+            state.refresh();
+          }}
+        />
       )}
       {state.loading ? (
         <Loading />
@@ -513,23 +414,39 @@ export function PlatformAdmin() {
                   </p>
                 </div>
               </div>
+              {o.tradeName && <p>Nome fantasia: {o.tradeName}</p>}
+              {o.legalName && <p>Razão social: {o.legalName}</p>}
+              {o.cnpj && (
+                <p>
+                  CNPJ:{" "}
+                  {o.cnpj.replace(
+                    /^(.{2})(.{3})(.{3})(.{4})(.{2})$/,
+                    "$1.$2.$3/$4-$5",
+                  )}
+                </p>
+              )}
+              {o.street && (
+                <p>
+                  {[
+                    o.street,
+                    o.number,
+                    o.complement,
+                    o.neighborhood,
+                    o.postalCode,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              )}
               <p>
                 {o._count?.events ?? 0} eventos · {o._count?.memberships ?? 0}{" "}
                 membros · {o.active ? "Ativa" : "Suspensa"}
               </p>
               <button
                 className="text-button"
+                disabled={busy}
                 onClick={() => {
                   setEditingOrganization(o);
-                  setOrganizationActive(o.active);
-                  setValues({
-                    name: o.name,
-                    kind: o.kind,
-                    city: o.city,
-                    state: o.state,
-                    contact: o.contact ?? "",
-                    logoUrl: o.logoUrl ?? "",
-                  });
                   setEditing(true);
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
@@ -538,7 +455,7 @@ export function PlatformAdmin() {
               </button>
               <Link
                 className="button outline full"
-                to={`/admin/organizacoes/${o.id}/membros`}
+                to={"/admin/organizacoes/" + o.id + "/membros"}
               >
                 Gerir membros e enviar convite <Users size={17} />
               </Link>
@@ -554,11 +471,14 @@ export function PlatformAdmin() {
   );
 }
 interface MembersResponse {
+  functions: OrganizationFunction[];
   members: Membership[];
   invitations: {
     id: string;
     email: string;
     role: Role;
+    functionId?: string | null;
+    function?: OrganizationFunction | null;
     expiresAt: string;
     acceptedAt: string | null;
     revokedAt: string | null;
@@ -566,6 +486,7 @@ interface MembersResponse {
   events?: { id: string; name: string }[];
 }
 export function Members() {
+  const auth = useAuth();
   const params = useParams();
   const organizationId = params.organizationId!;
   const state = useRemote<MembersResponse>(
@@ -595,20 +516,45 @@ export function Members() {
     };
   }, [state.refreshInBackground, hasPendingInvitations]);
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<Role>("ORGANIZER");
+  const [functionId, setFunctionId] = useState("");
+  const functions = state.data?.functions ?? [];
+  const activeFunctions = functions.filter((value) => value.active);
+  const selectedId = functionId
+    ? activeFunctions.some((value) => value.id === functionId)
+      ? functionId
+      : ""
+    : ((
+        activeFunctions.find((value) => value.defaultRole === "ORGANIZER") ??
+        activeFunctions[0]
+      )?.id ?? "");
+  const selectedFunction = activeFunctions.find(
+    (value) => value.id === selectedId,
+  );
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [busy, setBusy] = useState(false);
   const [edit, setEdit] = useState<Membership | null>(null);
+  const saving = useRef(false);
+  useEffect(() => {
+    setFunctionId("");
+    setEdit(null);
+    setError("");
+    setInfo("");
+    setEmail("");
+  }, [organizationId]);
   async function invite(e: FormEvent) {
     e.preventDefault();
+    if (saving.current) return;
+    saving.current = true;
     setBusy(true);
     setError("");
     setInfo("");
     try {
+      if (!selectedFunction)
+        throw new Error("Selecione uma função ativa da organização.");
       const response = await api<{ delivery: string; link: string }>(
         `/organizations/${organizationId}/invitations`,
-        { method: "POST", body: { email, role } },
+        { method: "POST", body: { email, functionId: selectedFunction.id } },
       );
       setInfo(
         response.delivery === "sent"
@@ -620,32 +566,42 @@ export function Members() {
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   }
   async function updateMember(e: FormEvent) {
     e.preventDefault();
-    if (!edit) return;
+    if (!edit || saving.current) return;
+    saving.current = true;
     setBusy(true);
     setError("");
     try {
       await api(`/organizations/${organizationId}/members/${edit.id}`, {
         method: "PATCH",
         body: {
-          role: edit.role,
+          ...(edit.functionId
+            ? { functionId: edit.functionId }
+            : { role: edit.role }),
           active: edit.active,
           healthEventIds: edit.healthEventIds,
         },
       });
       setEdit(null);
       state.refresh();
+      await auth.refresh();
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      saving.current = false;
       setBusy(false);
     }
   }
   async function revoke(invitationId: string) {
+    if (saving.current) return;
+    saving.current = true;
+    setBusy(true);
+    setError("");
     try {
       await api(
         `/organizations/${organizationId}/invitations/${invitationId}`,
@@ -654,6 +610,9 @@ export function Members() {
       state.refresh();
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      saving.current = false;
+      setBusy(false);
     }
   }
   return (
@@ -664,7 +623,7 @@ export function Members() {
           <button
             className="button outline"
             onClick={state.refresh}
-            disabled={state.loading}
+            disabled={state.loading || busy}
           >
             <RefreshCw size={17} />
             {state.loading ? "Atualizando…" : "Atualizar lista"}
@@ -675,51 +634,104 @@ export function Members() {
       </PageHeading>
       {error && <Notice>{error}</Notice>}
       {info && <Notice kind="success">{info}</Notice>}
+      <Link
+        className="button outline"
+        to={
+          auth.access?.account.platformAdmin
+            ? `/admin/organizacoes/${organizationId}/funcoes`
+            : `/organizacao/${organizationId}/funcoes`
+        }
+      >
+        Gerenciar funções
+      </Link>
       <form className="panel inline-form" onSubmit={invite}>
         <Field label="E-mail da pessoa convidada" required>
           <input
             type="email"
+            disabled={busy || state.loading || Boolean(state.error)}
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
         </Field>
-        <Field label="Função">
+        <Field label="Função" required>
           <select
-            value={role}
-            onChange={(e) => setRole(e.target.value as Role)}
+            required
+            disabled={busy || state.loading || Boolean(state.error)}
+            value={selectedId}
+            onChange={(e) => setFunctionId(e.target.value)}
           >
-            {Object.entries(roleLabels).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
+            <option value="">Selecione uma função</option>
+            {activeFunctions.map((value) => (
+              <option key={value.id} value={value.id}>
+                {value.name} · {roleLabels[value.role]}
               </option>
             ))}
           </select>
         </Field>
-        <button className="button primary" disabled={busy}>
+        <button
+          className="button primary"
+          disabled={
+            busy || state.loading || Boolean(state.error) || !selectedId
+          }
+        >
           Enviar convite
         </button>
       </form>
+      {!state.loading && !state.error && !activeFunctions.length && (
+        <Notice kind="info">
+          Cadastre ou reative uma função para enviar novos convites.
+        </Notice>
+      )}
       {edit && (
         <form className="panel" onSubmit={updateMember}>
           <h3>Permissões de {edit.account?.email}</h3>
-          <Field label="Função">
+          <Field label="Função do membro" required>
             <select
-              value={edit.role}
-              onChange={(e) =>
-                setEdit((v) => (v ? { ...v, role: e.target.value as Role } : v))
-              }
+              required
+              disabled={busy}
+              value={edit.functionId ?? ""}
+              onChange={(e) => {
+                const value = functions.find(
+                  (value) => value.id === e.target.value,
+                );
+                if (value)
+                  setEdit((v) =>
+                    v
+                      ? {
+                          ...v,
+                          functionId: value.id,
+                          role: value.role,
+                          healthEventIds:
+                            value.role === v.role ? v.healthEventIds : [],
+                        }
+                      : v,
+                  );
+              }}
             >
-              {Object.entries(roleLabels).map(([key, label]) => (
-                <option key={key} value={key}>
-                  {label}
+              {!edit.functionId && (
+                <option value="">
+                  {roleLabels[edit.role]} — vínculo anterior
                 </option>
-              ))}
+              )}
+              {functions
+                .filter((value) => value.active || value.id === edit.functionId)
+                .map((value) => (
+                  <option
+                    key={value.id}
+                    value={value.id}
+                    disabled={!value.active}
+                  >
+                    {value.name} · {roleLabels[value.role]}
+                    {!value.active ? " — inativa (vínculo atual)" : ""}
+                  </option>
+                ))}
             </select>
           </Field>
           <label className="checkbox">
             <input
               type="checkbox"
+              disabled={busy}
               checked={edit.active}
               onChange={(e) =>
                 setEdit((v) => (v ? { ...v, active: e.target.checked } : v))
@@ -735,6 +747,7 @@ export function Members() {
             <label className="checkbox" key={event.id}>
               <input
                 type="checkbox"
+                disabled={busy}
                 checked={edit.healthEventIds.includes(event.id)}
                 onChange={(e) =>
                   setEdit((v) =>
@@ -759,6 +772,7 @@ export function Members() {
             <button
               type="button"
               className="button outline"
+              disabled={busy}
               onClick={() => setEdit(null)}
             >
               Fechar
@@ -789,7 +803,10 @@ export function Members() {
                     {state.data.members.map((m) => (
                       <tr key={m.id}>
                         <td>{m.account?.email}</td>
-                        <td>{roleLabels[m.role]}</td>
+                        <td>
+                          {m.function?.name ?? roleLabels[m.role]}
+                          <p className="muted">Perfil: {roleLabels[m.role]}</p>
+                        </td>
                         <td>
                           <span className="badge neutral">
                             {m.active ? "Ativo" : "Suspenso"}
@@ -798,7 +815,25 @@ export function Members() {
                         <td>
                           <button
                             className="text-button"
-                            onClick={() => setEdit({ ...m })}
+                            disabled={busy}
+                            onClick={() =>
+                              setEdit({
+                                ...m,
+                                functionId:
+                                  m.functionId ??
+                                  functions.find(
+                                    (value) =>
+                                      value.active &&
+                                      value.role === m.role &&
+                                      value.defaultRole === m.role,
+                                  )?.id ??
+                                  functions.find(
+                                    (value) =>
+                                      value.active && value.role === m.role,
+                                  )?.id ??
+                                  null,
+                              })
+                            }
                           >
                             Editar permissões
                           </button>
@@ -819,7 +854,7 @@ export function Members() {
                 <div>
                   <strong>{i.email}</strong>
                   <p>
-                    {roleLabels[i.role]} ·{" "}
+                    {i.function?.name ?? roleLabels[i.role]} ·{" "}
                     {i.acceptedAt
                       ? "Aceito"
                       : i.revokedAt
@@ -832,6 +867,7 @@ export function Members() {
                 {!i.acceptedAt && !i.revokedAt && (
                   <button
                     className="text-button danger"
+                    disabled={busy}
                     onClick={() => void revoke(i.id)}
                   >
                     Revogar

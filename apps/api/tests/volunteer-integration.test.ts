@@ -1,9 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import sharp from "sharp";
 import { createApp } from "../src/app.js";
+import { createPreviewApp } from "../src/core/preview-app.js";
 import {
   volunteerTemplate,
   volunteerTeams,
@@ -24,11 +26,18 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
         { id: randomUUID(), email: `${name}@volunteer.test` },
       ]),
     );
-    const app = createApp({
+    const artworkUpload = vi.fn(async (key: string, _buffer: Buffer) => ({
+      bucket: "artes-eventos",
+      key,
+      url: `https://storage.test/${key}`,
+    }));
+    const artworkRemove = vi.fn(async (_bucket: string, _key: string) => {});
+    const api = createApp({
       db,
       eventsEnabled: false,
       volunteerRegistrationsEnabled: true,
       rateLimits: false,
+      artworkStorage: { upload: artworkUpload, remove: artworkRemove },
       resolveIdentity: async (token) => users[token] ?? null,
       storage: {
         async upload() {},
@@ -37,6 +46,11 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
         },
         async remove() {},
       },
+    });
+    const app = createPreviewApp(api, {
+      webRoot: fileURLToPath(
+        new URL("./fixtures/preview-web/", import.meta.url),
+      ),
     });
     const auth = (name = "organizer") => ({ Authorization: `Bearer ${name}` });
     let orgA: string,
@@ -159,14 +173,14 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
     afterAll(async () => {
       await db.$disconnect();
     });
-    it("estrutura manual possui 18 tabelas, RLS e prontidão sem liberar campistas", async () => {
+    it("estrutura manual possui 20 tabelas, RLS e prontidão sem liberar campistas", async () => {
       const result = await request(app).get("/api/v1/config").expect(200);
       expect(result.body.volunteerRegistrationsReady).toBe(true);
       expect(result.body.eventsEnabled).toBe(false);
       const tables = await db.$queryRaw<
         { rowsecurity: boolean }[]
       >`SELECT rowsecurity FROM pg_tables WHERE schemaname IN ('acesso','organizacoes','pessoas','eventos','inscricoes','saude','arquivos')`;
-      expect(tables).toHaveLength(18);
+      expect(tables).toHaveLength(21);
       expect(tables.every((t) => t.rowsecurity)).toBe(true);
       await request(app)
         .get(`/api/v1/public/campaigns/${camperId}`)
@@ -385,6 +399,218 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
           reason: "Equipe definida e participação confirmada",
         })
         .expect(200);
+    });
+    const detailsPath = () =>
+      `/api/v1/organizations/${orgA}/event-setups/${eventId}/details`;
+    const currentDetails = async () => {
+      const event = await db.event.findUniqueOrThrow({
+        where: { id: eventId },
+        include: { type: true },
+      });
+      return {
+        event: {
+          typeName: event.type.name,
+          name: event.name,
+          description: event.description,
+          location: event.location,
+          city: event.city,
+          startsAt: event.startsAt.toISOString().slice(0, 10),
+          endsAt: event.endsAt.toISOString().slice(0, 10),
+        },
+      };
+    };
+    it("edita nome, local e arte com inscrições ativas preservando status, fichas, equipes e candidatos", async () => {
+      const before = {
+        campaigns: await db.campaign.findMany({
+          where: { eventId },
+          orderBy: { id: "asc" },
+        }),
+        teams: await db.team.findMany({
+          where: { eventId },
+          orderBy: { id: "asc" },
+        }),
+        forms: await db.formVersion.findMany({
+          where: { campaign: { eventId } },
+          orderBy: { id: "asc" },
+        }),
+        registrations: await db.registration.findMany({
+          where: { campaign: { eventId } },
+          orderBy: { id: "asc" },
+        }),
+      };
+      expect(before.registrations.length).toBeGreaterThan(0);
+      const listing = await request(app)
+        .get(`/api/v1/organizations/${orgA}/event-setups`)
+        .set(auth())
+        .expect(200);
+      expect(
+        listing.body.find((e: { id: string }) => e.id === eventId)
+          .hasRegistrations,
+      ).toBe(true);
+      const input = await currentDetails();
+      input.event.name = "FAC Servos atualizado";
+      input.event.location = "Chácara da comunidade";
+      const image = await sharp({
+        create: { width: 90, height: 160, channels: 3, background: "#7053cc" },
+      })
+        .png()
+        .toBuffer();
+      const result = await request(app)
+        .put(detailsPath())
+        .set(auth())
+        .field("data", JSON.stringify(input))
+        .attach("artwork", image, "nova-arte.png")
+        .expect(200);
+      expect(result.body).toMatchObject({
+        name: input.event.name,
+        location: input.event.location,
+        status: "PUBLISHED",
+      });
+      expect(result.body.imageUrl).toMatch(/^https:\/\/storage.test\//);
+      expect(
+        await db.campaign.findMany({
+          where: { eventId },
+          orderBy: { id: "asc" },
+        }),
+      ).toEqual(before.campaigns);
+      expect(
+        await db.team.findMany({ where: { eventId }, orderBy: { id: "asc" } }),
+      ).toEqual(before.teams);
+      expect(
+        await db.formVersion.findMany({
+          where: { campaign: { eventId } },
+          orderBy: { id: "asc" },
+        }),
+      ).toEqual(before.forms);
+      expect(
+        await db.registration.findMany({
+          where: { campaign: { eventId } },
+          orderBy: { id: "asc" },
+        }),
+      ).toEqual(before.registrations);
+      const event = await db.event.findUniqueOrThrow({
+        where: { id: eventId },
+      });
+      await request(app).put(detailsPath()).set(auth()).send(input).expect(200);
+      expect(
+        (await db.event.findUniqueOrThrow({ where: { id: eventId } })).imageKey,
+      ).toBe(event.imageKey);
+      await request(app)
+        .put(detailsPath())
+        .set(auth())
+        .field("data", JSON.stringify(input))
+        .attach("artwork", image, "substituida.png")
+        .expect(200);
+      expect(artworkRemove).toHaveBeenCalledWith(
+        event.imageBucket,
+        event.imageKey,
+      );
+    });
+    it("datas com inscrições são recusadas sem alterar o evento; arte enviada é removida no rollback", async () => {
+      const original = await db.event.findUniqueOrThrow({
+        where: { id: eventId },
+      });
+      const auditCount = await db.auditLog.count({
+        where: { entityId: eventId },
+      });
+      const input = await currentDetails();
+      input.event.startsAt = "2027-05-31";
+      input.event.name = "Alteração que será recusada";
+      const image = await sharp({
+        create: { width: 90, height: 160, channels: 3, background: "#fff" },
+      })
+        .png()
+        .toBuffer();
+      const result = await request(app)
+        .put(detailsPath())
+        .set(auth())
+        .field("data", JSON.stringify(input))
+        .attach("artwork", image, "rollback.png")
+        .expect(409);
+      expect(result.body.error.message).toContain("preservam suas datas");
+      const uploaded = await artworkUpload.mock.results.at(-1)!.value;
+      expect(artworkRemove).toHaveBeenCalledWith(uploaded.bucket, uploaded.key);
+      expect(
+        await db.event.findUniqueOrThrow({ where: { id: eventId } }),
+      ).toEqual(original);
+      expect(await db.auditLog.count({ where: { entityId: eventId } })).toBe(
+        auditCount,
+      );
+    });
+    it("edição de detalhes respeita organização e papel e não aceita períodos, departamentos ou estado", async () => {
+      const input = await currentDetails();
+      const count = artworkUpload.mock.calls.length;
+      for (const user of ["secretary", "other"])
+        await request(app)
+          .put(detailsPath())
+          .set(auth(user))
+          .field("data", JSON.stringify(input))
+          .attach("artwork", Buffer.from("fake"), "fake.png")
+          .expect(403);
+      await request(app)
+        .put(`/api/v1/organizations/${orgB}/event-setups/${eventId}/details`)
+        .set(auth("other"))
+        .field("data", JSON.stringify(input))
+        .attach("artwork", Buffer.from("fake"), "fake.png")
+        .expect(404);
+      await request(app).put(detailsPath()).send(input).expect(401);
+      for (const extra of [
+        { campaigns: [] },
+        { departments: [] },
+        { status: "DRAFT" },
+      ])
+        await request(app)
+          .put(detailsPath())
+          .set(auth())
+          .send({ ...input, ...extra })
+          .expect(422);
+      expect(artworkUpload.mock.calls.length).toBe(count);
+    });
+    it("período de inscrição aberto sem candidatos não impede corrigir datas de publicado", async () => {
+      const original = await db.event.findUniqueOrThrow({
+        where: { id: eventId },
+      });
+      const event = await db.event.create({
+        data: {
+          organizationId: orgA,
+          typeId: original.typeId,
+          name: "FAC ainda sem inscritos",
+          description: original.description,
+          location: original.location,
+          city: original.city,
+          startsAt: original.startsAt,
+          endsAt: original.endsAt,
+          status: "PUBLISHED",
+          campaigns: {
+            create: {
+              kind: "VOLUNTEER",
+              opensAt: new Date(now - 3600000),
+              closesAt: new Date(now + 3600000),
+            },
+          },
+        },
+      });
+      const input = await currentDetails();
+      input.event.startsAt = "2027-07-01";
+      input.event.endsAt = "2027-07-03";
+      const result = await request(app)
+        .put(`/api/v1/organizations/${orgA}/event-setups/${event.id}/details`)
+        .set(auth())
+        .send(input)
+        .expect(200);
+      expect(result.body).toMatchObject({
+        status: "PUBLISHED",
+        startsAt: "2027-07-01T00:00:00.000Z",
+        endsAt: "2027-07-03T00:00:00.000Z",
+      });
+      const listing = await request(app)
+        .get(`/api/v1/organizations/${orgA}/event-setups`)
+        .set(auth())
+        .expect(200);
+      expect(
+        listing.body.find((e: { id: string }) => e.id === event.id)
+          .hasRegistrations,
+      ).toBe(false);
     });
     it("recusa candidatura e impede ações do membro suspenso", async () => {
       const original = await db.registration.findUniqueOrThrow({

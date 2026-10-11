@@ -28,12 +28,15 @@ import {
   departmentName,
 } from "../events/departments.repository.js";
 import { departmentCapacitySchema } from "../events/departments.validation.js";
+import type { GuardianService } from "./guardian.service.js";
+import { requiresGuardian } from "./guardian.validation.js";
 
 export class RegistrationsService {
   constructor(
     private repo: RegistrationsRepository,
     private volunteersOnly = false,
     private notices?: DecisionNoticesService,
+    private guardians?: GuardianService,
   ) {}
   async createDraft(campaignId: string) {
     const campaign = await this.repo.db.campaign.findUnique({
@@ -93,6 +96,10 @@ export class RegistrationsService {
         form: draft.form,
         submitted: true,
         registration: draft.registration,
+        guardian:
+          this.guardians && (await this.guardians.ready())
+            ? await this.guardians.forRegistration(draft.registration.id)
+            : null,
         email: (draft.payload as Record<string, unknown>).email ?? "",
       };
     return {
@@ -145,7 +152,7 @@ export class RegistrationsService {
     });
   }
   async submit(draftId: string, token: string) {
-    return this.repo.db.$transaction(
+    const result = await this.repo.db.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT rascunho_id FROM inscricoes.rascunhos WHERE rascunho_id = ${draftId}::uuid FOR UPDATE`;
         const draft = await tx.draft.findFirst({
@@ -190,6 +197,20 @@ export class RegistrationsService {
           campaign.event.startsAt,
           campaign.kind,
         );
+        const minor = requiresGuardian(
+          payload.birthDate,
+          campaign.event.startsAt,
+        );
+        if (minor) {
+          assert(
+            this.guardians,
+            503,
+            "A autorização de menores aguarda configuração.",
+          );
+          await this.guardians.requireReady();
+          payload.guardianAuthorization = false;
+          payload.imageAuthorized = false;
+        }
         const photo = await tx.mediaAsset.findFirst({
           where: {
             id: payload.photoAssetId,
@@ -260,17 +281,44 @@ export class RegistrationsService {
                 termsText: (draft.form.config as unknown as FormConfig).terms,
                 accepted: true,
                 imageAuthorized: payload.imageAuthorized,
-                guardianAuthorized: payload.guardianAuthorization ?? false,
+                guardianAuthorized: false,
               },
             },
           },
           select: { id: true, protocol: true, status: true },
         });
+        if (minor)
+          await this.guardians!.prepare(
+            tx,
+            registration.id,
+            payload,
+            campaign.event,
+            campaign.kind,
+            (draft.form.config as unknown as FormConfig).terms,
+            health,
+          );
         await tx.draftHealth.deleteMany({ where: { draftId } });
         return registration;
       },
       { timeout: 15000 },
     );
+    let guardian = null;
+    if (this.guardians && (await this.guardians.ready())) {
+      guardian = await this.guardians.forRegistration(result.id);
+      if (
+        guardian &&
+        !guardian.signedAt &&
+        guardian.emailStatus === "PENDENTE"
+      ) {
+        try {
+          await this.guardians.deliver(result.id);
+        } catch {
+          /* Inscrição persistida; envio pode ser retomado no painel. */
+        }
+        guardian = await this.guardians.forRegistration(result.id);
+      }
+    }
+    return { ...result, guardian };
   }
   async list(
     organizationId: string,
@@ -364,6 +412,22 @@ export class RegistrationsService {
             "Esta campanha não possui lista de espera.",
           );
         if (status === "CONFIRMED") {
+          const snapshot = registration.snapshot as { birthDate?: string };
+          if (
+            snapshot.birthDate &&
+            requiresGuardian(
+              snapshot.birthDate,
+              registration.campaign.event.startsAt,
+            )
+          ) {
+            assert(
+              this.guardians,
+              503,
+              "A autorização de menores aguarda configuração.",
+            );
+            await this.guardians.requireReady();
+            await this.guardians.requireSigned(tx, registrationId);
+          }
           if (registration.campaign.kind === "VOLUNTEER" && noticesReady)
             await this.notices!.requirePresence(tx, registrationId);
           if (registration.campaign.kind === "VOLUNTEER")

@@ -31,14 +31,17 @@ export class OrganizationsRepository {
   mine(accountId: string) {
     return this.db.membership.findMany({
       where: { accountId, active: true, organization: { active: true } },
-      include: { organization: true },
+      include: { organization: true, function: true },
       orderBy: { organization: { name: "asc" } },
     });
   }
   members(organizationId: string) {
     return this.db.membership.findMany({
       where: { organizationId },
-      include: { account: { select: { id: true, email: true } } },
+      include: {
+        account: { select: { id: true, email: true } },
+        function: true,
+      },
       orderBy: { role: "asc" },
     });
   }
@@ -49,6 +52,8 @@ export class OrganizationsRepository {
         id: true,
         email: true,
         role: true,
+        functionId: true,
+        function: true,
         expiresAt: true,
         acceptedAt: true,
         revokedAt: true,

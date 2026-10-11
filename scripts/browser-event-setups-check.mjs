@@ -164,6 +164,17 @@ await context.route("**/*", async (route) => {
       return json(route, events[0], 201);
     }
   }
+  if (url.pathname === `/api/v1/organizations/${id}/event-setups/event-test/details` && request.method() === "PUT") {
+    const match = request.postData().match(/name="data"\r\n\r\n([^\r]+)\r\n/);
+    assert(match);
+    const data = JSON.parse(match[1]);
+    assert.deepEqual(Object.keys(data), ["event"]);
+    assert.equal(data.event.startsAt, events[0].startsAt.slice(0, 10));
+    assert.equal(data.event.endsAt, events[0].endsAt.slice(0, 10));
+    events[0] = { ...events[0], ...data.event };
+    writes++;
+    return json(route, events[0]);
+  }
   if (url.pathname.startsWith("/api/v1/")) {
     errors.push(`API inesperada: ${url.pathname}`);
     return json(route, {}, 400);
@@ -265,9 +276,35 @@ try {
     await page.getByLabel("Abertura — servos", { exact: false }).inputValue(),
     "2026-11-20T09:00",
   );
+  await page.getByRole("button", { name: "Cancelar edição" }).click();
+  events[0].status = "PUBLISHED";
+  events[0].hasRegistrations = true;
+  events[0].imageUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB1kAAAAASUVORK5CYII=";
+  const preserved = structuredClone({ campaigns: events[0].campaigns, teams: events[0].teams, imageUrl: events[0].imageUrl });
+  await page.reload();
+  await page.getByRole("button", { name: "Editar evento", exact: true }).click();
+  assert.equal(await page.getByLabel("Data de início", { exact: false }).isDisabled(), true);
+  assert.equal(await page.getByLabel("Data de término", { exact: false }).isDisabled(), true);
+  assert.equal(await page.getByLabel("O evento dura mais de um dia").isDisabled(), true);
+  assert.equal(await page.getByLabel("Abertura — servos", { exact: false }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "Adicionar departamento" }).count(), 0);
+  for (const [name, viewport] of [["desktop", { width: 1366, height: 1000 }], ["celular", { width: 390, height: 844 }]]) {
+    await page.setViewportSize(viewport);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.screenshot({ path: `.local/screenshots/evento-publicado-edicao-${name}.png`, fullPage: true });
+  }
+  await page.getByLabel("Nome do evento", { exact: false }).fill("FAC 2027 — Evento atualizado");
+  await page.getByLabel("Local do evento", { exact: false }).fill("Novo local da comunidade");
+  await page.getByRole("button", { name: "Salvar evento", exact: true }).click();
+  await page.getByText("Dados do evento atualizados. Inscrições e fichas foram preservadas.").waitFor();
+  await page.reload();
+  await page.getByRole("heading", { name: "FAC 2027 — Evento atualizado", exact: true }).waitFor();
+  assert.equal(events[0].status, "PUBLISHED");
+  assert.deepEqual({ campaigns: events[0].campaigns, teams: events[0].teams, imageUrl: events[0].imageUrl }, preserved);
+  assert.equal(writes, 2);
   assert.deepEqual(errors, []);
   console.log(
-    "Cadastro e edição de evento, dois períodos, seleção de arte e layout móvel validados no navegador. Nenhum registro real criado.",
+    "Cadastro, edição de publicado com inscritos, proteção das datas e layout móvel validados no navegador. Nenhum registro real criado.",
   );
 } catch (error) {
   await page.screenshot({

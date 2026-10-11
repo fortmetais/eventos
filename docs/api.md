@@ -4,6 +4,8 @@ Prefixo `/api/v1`. Dados JSON. Fotos multipart. Erros: `{ "error": { "code": "..
 
 Autenticação: `Authorization: Bearer <access_token Supabase>`. Inscrições anônimas: `X-Draft-Token: <token do rascunho>`. Credenciais de rascunho nunca vão na URL. Respostas são `Cache-Control: no-store`.
 
+Com `TEMPORARY_SITE=true` e `APPLICATION_TEST_ACCESS=true`, o cartaz permanece na raiz e os caminhos `/eventos`, `/inscricao/:campaignId`, `/resposta/:noticeId` e `/autorizacao/:authorizationId` usam React. A API `/api/v1/public/*` é encaminhada para os serviços e preserva validação, períodos, tokens e limites de requisições. A documentação `/api/v1/openapi` continua bloqueada nesse modo. Com `APPLICATION_TEST_ACCESS=false`, o modo temporário isolado continua bloqueando a API de negócio. A liberação está local; produção aguarda solicitação de sincronização.
+
 ## Plataforma e organização
 
 | Método e caminho                                                  | Permissão                                    |
@@ -18,11 +20,25 @@ Autenticação: `Authorization: Bearer <access_token Supabase>`. Inscrições an
 | PATCH `/organizations/:organizationId/members/:memberId`          | Função, suspensão e eventos de saúde         |
 | POST `/invitations/:token/accept`                                 | Conta com e-mail confirmado correspondente   |
 
-Organização: `name`, `kind` (PARISH/COMMUNITY/ORGANIZATION), `city`, `state` (UF), `contact`, `logoUrl` HTTPS opcional. Atualização também exige `active`.
+Organização: `name`, `kind` (PARISH/COMMUNITY/ORGANIZATION), `city`, `state` (UF), `contact`. Atualização também exige `active`. Dados complementares opcionais: `cnpj`, `legalName` (razão social), `tradeName` (nome fantasia), `postalCode` (CEP), `street` (logradouro), `number`, `complement` e `neighborhood` (bairro). CNPJ numérico ou alfanumérico é validado pelos dígitos verificadores e salvo sem pontuação; CEP é salvo com oito dígitos. Campos opcionais vazios são salvos como `null`; campos omitidos na edição são preservados.
 
-Convite: `email`, `role` (ORGANIZER/SECRETARY/HEALTH). Retorna prazo, link de uso único e `delivery` (sent/manual). Falha de SMTP mantém o convite disponível para compartilhamento manual pela tela autorizada. Prazo: sete dias.
+Para cadastrar ou editar com logotipo, envie `multipart/form-data`: `data` contém o JSON acima e `logo` contém um arquivo JPEG, PNG ou WebP estático de até 10 MB. Sem arquivo, JSON continua aceito. A interface usa envio de arquivo; `logoUrl` permanece na resposta e no contrato legado HTTPS. As imagens são convertidas para WebP, com até 800 × 800 pixels, sem corte, mantendo proporção e transparência, no armazenamento público de artes separado das fotos privadas. Cadastro e logotipo são confirmados juntos: falha de envio não grava os novos dados; falha de gravação remove a nova imagem; a substituição só remove a imagem anterior após salvar. Edição sem arquivo mantém o logotipo existente. Bucket/chave internos não podem ser enviados pelo cliente.
 
-Membro: `role`, `active`, `healthEventIds`. O último organizador ativo não pode ser suspenso. Eventos de autorização precisam pertencer à organização.
+Para bases existentes, aplique `database/manual/10_ficha_organizacao.sql` antes de executar a versão com esses campos. O script é aditivo e repetível. A migração equivalente está em `202610100001_organization_details`; não é necessário recriar organizações.
+
+Convite: `email`, `functionId` de uma função ativa desta organização. Retorna prazo, link de uso único e `delivery` (sent/manual). Falha de SMTP mantém o convite disponível para compartilhamento manual pela tela autorizada. Prazo: sete dias. O contrato legado aceita `role` (ORGANIZER/SECRETARY/HEALTH) no lugar de `functionId` e o resolve para uma função ativa do mesmo perfil; enviar os dois é recusado.
+
+Membro: `functionId`, `active`, `healthEventIds`. O perfil efetivo `role` vem da função selecionada. O contrato legado aceita `role` no lugar do ID. O último organizador ativo não pode ser suspenso ou rebaixado. Eventos de autorização precisam pertencer à organização. Listas e acesso incluem `functionId` e `function` (nome, perfil e disponibilidade), preservando `role` para autorização.
+
+## Funções por organização
+
+GET/POST `/organizations/:organizationId/functions` lista/cadastra funções. PUT `.../functions/:functionId` atualiza e DELETE inativa, sem exclusão física. Somente organizador ativo da organização ou administrador global pode gerenciar o catálogo. Cadastro e edição recebem `name`, `description` opcional, `role` (perfil ORGANIZER/SECRETARY/HEALTH) e `active` (padrão true). Nomes são normalizados por espaços e Unicode e não se repetem na mesma organização.
+
+Alterar o perfil atualiza, na mesma transação, todos os membros vinculados (inclusive suspensos) e os convites pendentes ainda válidos. Convites aceitos, revogados e expirados mantêm o perfil histórico. Ao mudar o perfil, as autorizações individuais de saúde são limpas e devem ser concedidas explicitamente por evento. Uma função inativa não pode receber novos vínculos ou convites; os membros existentes continuam com seu acesso, o vínculo atual pode ser mantido ao editar o membro e os convites válidos anteriores continuam aceitando. O aceite usa o perfil atual da função.
+
+A alteração de função, o convite, o aceite, a revogação e a edição de membro compartilham o bloqueio da organização e revalidam o acesso de gestão na transação. Isso protege o último organizador e a consistência do perfil em operações simultâneas. GET `.../members` também retorna `functions` para os seletores. GET `.../functions` inclui contagens de membros e convites pendentes válidos.
+
+Em bases graduais, aplique `database/manual/11_funcoes_organizacao.sql` antes desta versão. A atualização é aditiva e repetível, cria Organizador, Secretaria e Saúde por organização e associa os vínculos e convites antigos sem mudar seus perfis, suspensão ou autorizações. Novas organizações recebem esses padrões automaticamente. A migração equivalente é `202610100002_organization_functions`. A versão local foi preparada; produção e Hostinger aguardam solicitação do usuário.
 
 ## Eventos e fichas
 
@@ -39,6 +55,8 @@ Membro: `role`, `active`, `healthEventIds`. O último organizador ativo não pod
 | POST `/organizations/:organizationId/campaigns/:campaignId/forms/:formId/publish` | Publicar versão                                      |
 
 Edição: `typeName`, `name`, `description`, `imageUrl` HTTPS opcional, `location`, `city`, `startsAt`, `endsAt`. Datas do evento: `YYYY-MM-DD`.
+
+No modo gradual (`EVENTS_ENABLED=false`), o organizador edita o evento publicado por PUT `/organizations/:organizationId/event-setups/:eventId/details`, com JSON `{ event }` ou multipart `data` e `artwork` opcional. A rota preserva estado, períodos, departamentos, fichas e candidatos; não aceita esses campos no corpo. A imagem é otimizada pelas mesmas regras do cadastro e mantida quando não há arquivo novo. Datas do evento ficam protegidas quando há inscrições, com verificação e bloqueio das campanhas na transação. GET `/organizations/:organizationId/event-setups` inclui `hasRegistrations` para a interface apresentar essa restrição. O formulário completo de preparação continua limitado a eventos DRAFT.
 
 Campanha: `kind` (CAMPER/VOLUNTEER), `opensAt`, `closesAt` (ISO com offset), `paused`, `capacity`, `allowWaitlist`. Campistas exigem capacidade positiva. Intervalo inclui abertura e exclui encerramento. Datas são armazenadas como instantes; a interface mostra America/Sao_Paulo.
 

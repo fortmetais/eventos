@@ -2,6 +2,15 @@ import type { Request, Response } from "express";
 import { account } from "../../core/auth.js";
 import { invitationToken, pageQuery, param } from "../../core/security.js";
 import type { OrganizationsService } from "./organizations.service.js";
+import { AppError } from "../../core/errors.js";
+function input(req: Request) {
+  if (!req.is("multipart/form-data")) return req.body;
+  try {
+    return JSON.parse(req.body.data);
+  } catch {
+    throw new AppError(400, "Os dados da organização não puderam ser lidos.");
+  }
+}
 export class OrganizationsController {
   constructor(private service: OrganizationsService) {}
   list = async (req: Request, res: Response) => {
@@ -9,13 +18,14 @@ export class OrganizationsController {
     res.json(await this.service.list(page, pageSize));
   };
   create = async (req: Request, res: Response) => {
-    res.status(201).json(await this.service.create(req.body));
+    res.status(201).json(await this.service.create(input(req), req.file));
   };
   updateOrganization = async (req: Request, res: Response) => {
     res.json(
       await this.service.updateOrganization(
         param(req, "organizationId"),
-        req.body,
+        input(req),
+        req.file,
       ),
     );
   };
@@ -57,6 +67,7 @@ export class OrganizationsController {
       await this.service.revoke(
         param(req, "organizationId"),
         param(req, "invitationId"),
+        account(req).id,
       ),
     );
   };

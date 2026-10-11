@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { date, dateTime } from "../lib/types";
-import { Loading, Notice } from "../components/ui";
+import { BackLink, Loading, Notice } from "../components/ui";
 
 interface ResponseSummary {
   kind: "ACEITE" | "RECUSA";
@@ -75,6 +75,7 @@ function ResponseForm({ noticeId }: { noticeId: string }) {
   }
   return (
     <div className="auth-shell">
+      <BackLink to="/eventos">Eventos</BackLink>
       {loading ? (
         <Loading />
       ) : (

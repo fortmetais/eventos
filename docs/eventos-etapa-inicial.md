@@ -42,6 +42,9 @@ O evento e as duas campanhas são salvos na mesma transação. Vagas e lista de 
 - `GET /api/v1/organizations/:organizationId/event-setups`: consulta administrativa.
 - `POST /api/v1/organizations/:organizationId/event-setups`: cria evento e dois períodos.
 - `PUT /api/v1/organizations/:organizationId/event-setups/:eventId`: edita um evento em preparação e seus períodos.
+- `PUT /api/v1/organizations/:organizationId/event-setups/:eventId/details`: edita os dados e a arte de um evento, inclusive publicado. Recebe JSON `{ event }` ou multipart com esse JSON em `data` e a arte opcional em `artwork`. Mantém estado, campanhas, departamentos, fichas e inscrições. Datas só podem ser alteradas enquanto não houver inscrições; a API também verifica essa regra ao salvar.
+
+O botão **Editar evento** continua disponível ao organizador após publicar a ficha. Para eventos publicados, o formulário permite alterar nome, tipo, descrição, local, cidade e arte. Se houver inscritos, as datas aparecem protegidas. Abrir o período de inscrição sem receber candidatos não bloqueia as datas. Recarregue a página após salvar para conferir a persistência. Secretaria continua com acesso de consulta.
 
 POST e PUT recebem JSON `{ event, campaigns }` ou `multipart/form-data` com `data` (esse JSON) e `artwork` (arquivo opcional). A organização é determinada pelo endereço e pelo vínculo verificado no servidor. Rotas → controller → service (validação, imagem, transação e regras) → repository/Prisma → PostgreSQL; a View é o React.
 

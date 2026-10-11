@@ -181,7 +181,7 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       const tables = await db.$queryRaw<
         { rowsecurity: boolean }[]
       >`SELECT rowsecurity FROM pg_tables WHERE schemaname IN ('acesso','organizacoes','pessoas','eventos','inscricoes','saude','arquivos')`;
-      expect(tables).toHaveLength(19);
+      expect(tables).toHaveLength(20);
       expect(tables.every((t) => t.rowsecurity)).toBe(true);
     });
     it("aceite gera e envia link individual depois de salvar decisão e histórico", async () => {
@@ -277,7 +277,9 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       expect(response.body.confirmedAt).toBeNull();
       expect(response.body.email).toBeUndefined();
       expect(response.body.phone).toBeUndefined();
-      const team = await db.team.create({ data: { eventId, name: "Cozinha", capacity: 2 } });
+      const team = await db.team.create({
+        data: { eventId, name: "Cozinha", capacity: 2 },
+      });
       await request(app)
         .put(`${base()}/team`)
         .set(auth())

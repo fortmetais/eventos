@@ -27,6 +27,11 @@ const DecisionResponse = lazy(() =>
     default: m.DecisionResponse,
   })),
 );
+const GuardianAuthorization = lazy(() =>
+  import("./pages/GuardianAuthorization").then((m) => ({
+    default: m.GuardianAuthorization,
+  })),
+);
 const Profile = lazy(() =>
   import("./pages/Profile").then((m) => ({ default: m.Profile })),
 );
@@ -38,6 +43,11 @@ const Invitation = lazy(() =>
 );
 const Members = lazy(() =>
   import("./pages/Organization").then((m) => ({ default: m.Members })),
+);
+const OrganizationFunctions = lazy(() =>
+  import("./pages/OrganizationFunctions").then((m) => ({
+    default: m.OrganizationFunctions,
+  })),
 );
 const OrganizationDashboard = lazy(() =>
   import("./pages/Organization").then((m) => ({
@@ -114,9 +124,14 @@ export function App() {
         <Routes>
           <Route element={<Layout />}>
             <Route index element={<Explore />} />
+            <Route path="eventos" element={<Explore />} />
             <Route path="eventos/:id" element={<EventDetail />} />
             <Route path="inscricao/:campaignId" element={<Registration />} />
             <Route path="resposta/:noticeId" element={<DecisionResponse />} />
+            <Route
+              path="autorizacao/:authorizationId"
+              element={<GuardianAuthorization />}
+            />
             <Route path="entrar" element={<Login />} />
             <Route path="nova-senha" element={<NewPassword />} />
             <Route path="convite/:token" element={<Invitation />} />
@@ -153,6 +168,16 @@ export function App() {
               }
             />
             <Route
+              path="admin/organizacoes/:organizationId/funcoes"
+              element={
+                <Protected admin>
+                  <div className="narrow-shell">
+                    <OrganizationFunctions />
+                  </div>
+                </Protected>
+              }
+            />
+            <Route
               path="organizacao/:organizationId"
               element={
                 <Protected>
@@ -168,6 +193,7 @@ export function App() {
               />
               <Route path="inscricoes" element={<ReviewRegistrations />} />
               <Route path="membros" element={<Members />} />
+              <Route path="funcoes" element={<OrganizationFunctions />} />
               <Route path="saude" element={<Health />} />
             </Route>
             <Route

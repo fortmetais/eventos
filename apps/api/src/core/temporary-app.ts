@@ -20,9 +20,13 @@ const page = `<!doctype html>
     <main class="poster-page">
       <h1 class="screen-reader-only">FAC 2027 — o melhor carnaval da sua vida está chegando!</h1>
       <div class="poster-frame">
+        <picture>
+          <source type="image/webp" srcset="/fac-2027-720-v1.webp 720w, /fac-2027-1041-v1.webp 1041w"
+            sizes="(max-width: 720px) calc(100vw - 40px), min(1041px, max(280px, calc((100vh - 40px) * 1041 / 1510)))">
         <img class="poster" src="/fac-2027.jpg" width="1041" height="1510"
           alt="FAC: o melhor carnaval da sua vida está chegando! De 05 a 09 de fevereiro de 2027. Paróquia Nossa Senhora Aparecida, Loanda, Paraná, e Comunidade Santa Teresinha do Menino Jesus."
           fetchpriority="high" decoding="async">
+        </picture>
         <a class="registration-link"
           href="https://docs.google.com/forms/d/e/1FAIpQLSfLJ440VZ0P-7V405JhBBys9uXtFSjv7VRryltkQOROb93Cjw/viewform?pli=1"
           target="_blank" rel="noopener noreferrer"
@@ -77,18 +81,30 @@ body { min-height: 100vh; min-height: 100svh; background: radial-gradient(ellips
 
 /** This server never creates the business API, Auth client, or database client. */
 export function createTemporaryApp(
-  options: { posterPath?: string; musicPath?: string; trustProxy?: number } = {},
+  options: {
+    posterPath?: string;
+    musicPath?: string;
+    trustProxy?: number;
+  } = {},
 ) {
   const posterPath =
     options.posterPath ??
     fileURLToPath(new URL("../../public/fac-2027.jpg", import.meta.url));
   if (!existsSync(posterPath))
     throw new Error("A arte da página temporária não foi encontrada.");
-  const musicPath = options.musicPath ?? fileURLToPath(new URL("../../public/lazaro.mp3", import.meta.url));
-  const musicScriptPath = fileURLToPath(new URL("../../public/musica.js", import.meta.url));
-  const faviconRoot = fileURLToPath(new URL("../../../web/public/", import.meta.url));
+  const musicPath =
+    options.musicPath ??
+    fileURLToPath(new URL("../../public/lazaro.mp3", import.meta.url));
+  const musicScriptPath = fileURLToPath(
+    new URL("../../public/musica.js", import.meta.url),
+  );
+  const faviconRoot = fileURLToPath(
+    new URL("../../../web/public/", import.meta.url),
+  );
   if (!existsSync(musicPath) || !existsSync(musicScriptPath))
-    throw new Error("Os arquivos da música da página temporária não foram encontrados.");
+    throw new Error(
+      "Os arquivos da música da página temporária não foram encontrados.",
+    );
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", options.trustProxy ?? 0);
@@ -114,14 +130,12 @@ export function createTemporaryApp(
   app.use((req, res, next) => {
     if (req.path === "/api" || req.path.startsWith("/api/")) {
       res.setHeader("Cache-Control", "no-store");
-      res
-        .status(503)
-        .json({
-          error: {
-            code: "TEMPORARY_SITE",
-            message: "As funcionalidades estarão disponíveis em breve.",
-          },
-        });
+      res.status(503).json({
+        error: {
+          code: "TEMPORARY_SITE",
+          message: "As funcionalidades estarão disponíveis em breve.",
+        },
+      });
       return;
     }
     next();
@@ -130,6 +144,19 @@ export function createTemporaryApp(
     res.setHeader("Cache-Control", "public, max-age=3600");
     res.sendFile(posterPath, { dotfiles: "allow" });
   });
+  for (const width of [720, 1041]) {
+    app.get(`/fac-2027-${width}-v1.webp`, (_req, res) => {
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+      res
+        .type("image/webp")
+        .sendFile(
+          fileURLToPath(
+            new URL(`../../public/fac-2027-${width}-v1.webp`, import.meta.url),
+          ),
+          { dotfiles: "allow" },
+        );
+    });
+  }
   app.get("/pagina-temporaria.css", (_req, res) => {
     res.setHeader("Cache-Control", "public, max-age=3600");
     res.type("text/css").send(styles);
@@ -140,9 +167,14 @@ export function createTemporaryApp(
   });
   app.get("/musica.js", (_req, res) => {
     res.setHeader("Cache-Control", "public, max-age=3600");
-    res.type("application/javascript").sendFile(musicScriptPath, { dotfiles: "allow" });
+    res
+      .type("application/javascript")
+      .sendFile(musicScriptPath, { dotfiles: "allow" });
   });
-  for (const [file, type] of [["favicon.svg", "image/svg+xml"], ["favicon.ico", "image/x-icon"]]) {
+  for (const [file, type] of [
+    ["favicon.svg", "image/svg+xml"],
+    ["favicon.ico", "image/x-icon"],
+  ]) {
     app.get(`/${file}`, (_req, res) => {
       res.setHeader("Cache-Control", "public, max-age=3600");
       res.type(type).sendFile(file, { root: faviconRoot, dotfiles: "allow" });
@@ -162,11 +194,9 @@ export function createTemporaryApp(
     next();
   });
   app.use((_req, res) =>
-    res
-      .status(404)
-      .json({
-        error: { code: "NOT_FOUND", message: "Recurso não encontrado." },
-      }),
+    res.status(404).json({
+      error: { code: "NOT_FOUND", message: "Recurso não encontrado." },
+    }),
   );
   return app;
 }

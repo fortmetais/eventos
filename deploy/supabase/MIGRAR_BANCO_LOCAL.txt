@@ -1,0 +1,155 @@
+MIGRAR EVENTOS_BETA DO POSTGRESQL LOCAL PARA O SUPABASE
+
+O banco da aplicação está no PostgreSQL local. O Supabase já fornece o Auth.
+A ligação da Hostinger com o Supabase configura o acesso ao projeto remoto;
+ela não copia as tabelas e os registros que estão no computador.
+
+PREPARAÇÃO CONCLUÍDA
+
+Foi preparada uma cópia dos sete esquemas da aplicação:
+acesso, organizacoes, pessoas, eventos, inscricoes, saude e arquivos.
+Ela contém a estrutura efetivamente existente no banco, incluindo as etapas
+já aplicadas pelo DBeaver, dados, UUIDs, enums, índices, relações e RLS.
+Não cria outro banco no projeto Supabase nem substitui auth ou storage.
+
+Os arquivos privados da cópia atual estão em:
+C:\desenvolvimento\beta_i_social\.local\hostinger\migracao-supabase-1791571140329
+
+- eventos_beta.dump: backup PostgreSQL dos esquemas da aplicação.
+- 01_importar_no_supabase.sql: importação para executar no DBeaver.
+- 02_conferir_registros.sql: comparação das contagens com esta cópia.
+- manifesto.json: estrutura e contagens da cópia.
+- VALIDACAO_LOCAL.txt: resultado do ensaio de restauração.
+
+O ensaio local passou: 21 tabelas, 32 registros no total, relações e RLS
+preservadas, reimportação bloqueada. O banco temporário foi removido.
+A importação no Supabase foi concluída pelo DBeaver e as contagens das
+21 tabelas coincidiram com a cópia. A autenticação PostgreSQL da aplicação
+ainda precisa ser validada; a página temporária permanece ativa.
+Estes arquivos contêm cadastros privados e ficam em .local, que é ignorado
+pelo GitHub.
+
+1. CONECTAR O DBEAVER AO SUPABASE
+
+No Supabase, abra o projeto eventos-beta e clique Connect.
+Selecione Session pooler, porta 5432. Copie os dados exibidos pelo projeto.
+No DBeaver, crie uma NOVA conexão PostgreSQL com esses dados:
+- Host: o host do Session pooler informado no Supabase.
+- Porta: 5432.
+- Banco: postgres, conforme a conexão fornecida pelo Supabase.
+- Usuário: o usuário completo informado, normalmente postgres.REFERENCIA.
+- Senha: a senha do banco definida na criação do projeto Supabase.
+- SSL: habilitado, usando a configuração indicada pelo provedor.
+
+O nome eventos-beta identifica o projeto. O banco remoto fornecido pela
+conexão normalmente se chama postgres; a aplicação usa os mesmos esquemas
+em português dentro dele. A URL HTTPS do projeto é usada pelo Auth/Storage;
+a conexão PostgreSQL é a que contém host, porta, usuário, senha e banco.
+
+2. CONFERIR O DESTINO
+
+Abra CONFERIR_DESTINO.sql desta pasta na conexão do Supabase.
+Confirme o projeto escolhido e os esquemas de negócio presentes.
+O destino pode conter auth, storage, public e outros esquemas do Supabase.
+A importação preparada exige que os sete esquemas da aplicação ainda não
+existam no destino. Se algum já existir, revisar a estrutura antes de
+importar. Não apagar objetos nem tentar mesclar dados automaticamente.
+
+As duas contas locais foram conferidas com o Auth do projeto mostrado
+pelo usuário. A importação também confere UUID e e-mail em auth.users.
+Ela preserva admin, vínculos das organizações e dados existentes; não
+cria identidades, senhas ou novos administradores no Supabase Auth.
+
+3. IMPORTAR E CONFERIR
+
+Abra 01_importar_no_supabase.sql na conexão do Supabase.
+Execute o arquivo INTEIRO como script, com interrupção no primeiro erro.
+No DBeaver, retire qualquer seleção de trecho e use Executar script SQL
+(Alt+X). Nas preferências de execução de scripts, use Commit type: No commit
+e Error handling: Stop + rollback. O próprio arquivo controla BEGIN/COMMIT.
+O script usa BEGIN/COMMIT. Se houver erro, pare, execute ROLLBACK e revise
+o diagnóstico antes de continuar. Ele não contém DROP nem CREATE DATABASE.
+Estrutura, dados e verificações precisam terminar juntos antes do COMMIT.
+
+Depois, execute 02_conferir_registros.sql.
+registros_esperados e registros_encontrados devem ser iguais em todas as
+21 tabelas. Atualize o navegador de esquemas do DBeaver.
+Não reexecute scripts 01–09 de instalação sobre os objetos já importados.
+
+Uma cópia é um retrato do banco. Registros adicionados localmente após sua
+geração não são sincronizados automaticamente. Regenerar a cópia se houver
+novos cadastros antes da transferência final.
+
+4. CONFIGURAR A APLICAÇÃO NA HOSTINGER
+
+Preencha a conexão PostgreSQL remota em DATABASE_URL no arquivo privado:
+C:\desenvolvimento\beta_i_social\.local\hostinger\.env.production
+Mantenha também DIRECT_URL, conforme o projeto. Para migração em redes IPv4,
+o Session pooler é a opção indicada pelo Supabase. A conexão direta exige
+suporte IPv6 ou a opção IPv4 correspondente do provedor.
+
+Nesta instalação, o arquivo privado possui SUPABASE_DATABASE_PASSWORD="".
+Preencha esse campo com a senha do banco utilizada no DBeaver, entre aspas,
+sem enviá-la na conversa. A preparação local monta DATABASE_URL e DIRECT_URL
+com o mesmo Session pooler e codifica caracteres especiais.
+O campo de senha auxiliar é removido somente quando a validação termina
+com sucesso. Se a autenticação falhar, desconecte a sessão do DBeaver e
+teste uma nova conexão com essa senha para conferir a credencial atual.
+Ferramenta local: .local/hostinger/configure-supabase-database.mjs.
+Validação somente leitura: .local/hostinger/check-production-database.mjs.
+O domínio de produção é https://facnsaloanda.com.br.
+TEMPORARY_SITE=true mantém a arte no site mesmo depois de conectar o banco.
+
+Importe as variáveis privadas no painel da Hostinger e confira DATABASE_URL,
+DIRECT_URL, SUPABASE_URL e as chaves pública/privada do projeto existente.
+O assistente da Hostinger pode configurar variáveis do Supabase; conferir
+as duas conexões exigidas pelo Prisma continua necessário para esta API.
+
+O projeto já possui @supabase/supabase-js para Auth e Storage. O acesso aos
+dados de negócio permanece no Prisma e na API Express; a amostra db.js do
+assistente é uma orientação genérica para outra forma de acesso aos dados.
+Mantenha os nomes dos buckets e o mesmo projeto para preservar as fotos.
+O arquivo SQL contém os registros dos arquivos, não os objetos do Storage.
+
+Siga deploy/hostinger/CONFIGURAR_PUBLICACAO.txt para compilar e reimplantar.
+Depois valide /api/v1/health, /api/v1/readiness, login do administrador,
+seleção da organização, eventos, convites e fotos.
+
+5. ATUALIZAR A BASE JÁ IMPORTADA ANTES DA PRÓXIMA PUBLICAÇÃO
+
+A importação anterior já incluiu inscricoes.autorizacoes_responsavel e
+saude.termos_responsavel com a estrutura do SQL 09. Não repetir esse CREATE
+TABLE sobre elas. Conferir a base atual com CONFERIR_ATUALIZACOES.sql, que
+consulta somente a estrutura e não altera registros.
+
+As alterações novas de organização e funções são:
+- database/manual/10_ficha_organizacao.sql: dez colunas opcionais de texto
+  em organizacoes.organizacoes para cadastro completo e arquivo do logotipo.
+- database/manual/11_funcoes_organizacao.sql: organizacoes.funcoes e
+  funcao_id em membros/convites, com vínculos, índices e funções iniciais.
+- database/manual/12_miniaturas_imagens.sql: duas referências opcionais
+  para miniaturas de artes e logotipos, sem duplicar imagens no banco.
+
+Antes de atualizar, guardar um backup atual da base remota. Na conexão do
+Supabase, executar cada arquivo inteiro, primeiro 10, depois 11 e por último 12, com parada
+no primeiro erro. Esses scripts são aditivos e repetíveis. Não importar
+novamente a cópia antiga nem executar migrations Prisma sobre esta base gradual.
+O SQL 11 associa os membros/convites existentes às funções padrão sem mudar
+seus perfis de acesso. Dados complementares antigos permanecem opcionais.
+
+Executar novamente CONFERIR_ATUALIZACOES.sql. As 41 linhas devem indicar OK.
+Se houver tipo ou nulabilidade divergente, revisar antes da publicação.
+Editar eventos, liberar rotas públicas e esconder Trocar organização para
+quem tem apenas uma organização não exigem novas tabelas ou colunas.
+Fotos de perfil continuam usando photoAssetId no JSON acesso.contas.perfil.
+Logotipos usam o Storage já utilizado para artes; o banco guarda a referência.
+
+Esta orientação e os scripts foram preparados localmente. Nenhum script foi
+aplicado ao Supabase nesta revisão. Sincronizar com a Hostinger somente quando
+o usuário solicitar, após a atualização da estrutura e a validação da aplicação.
+
+REFERÊNCIAS OFICIAIS
+
+https://supabase.com/docs/guides/platform/migrating-to-supabase/postgres
+https://supabase.com/docs/guides/database/connecting-to-postgres
+https://www.hostinger.com/support/connecting-a-supabase-database-to-a-hostinger-node-js-application/

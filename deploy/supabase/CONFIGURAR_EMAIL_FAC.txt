@@ -1,0 +1,60 @@
+REMETENTE DE E-MAIL — FAC LOANDA
+
+Caixa existente: contato@facnsaloanda.com.br (Hostinger Email).
+Host SMTP: smtp.hostinger.com
+Porta: 465 (SSL/TLS)
+Usuário: contato@facnsaloanda.com.br
+Senha: a senha da caixa de e-mail; não a senha da Hostinger, banco ou Supabase.
+Nome do remetente: FAC Loanda
+
+1. SUPABASE AUTH — ACESSO, CONFIRMAÇÃO E RECUPERAÇÃO
+No projeto eventos-beta, abrir Authentication > Emails > SMTP Settings.
+Ativar Enable custom SMTP e preencher:
+Sender email: contato@facnsaloanda.com.br
+Sender name: FAC Loanda
+Host: smtp.hostinger.com
+Port number: 465
+Minimum interval per user: 60 segundos
+Username: contato@facnsaloanda.com.br
+Password: senha da caixa (preencher somente no painel).
+Salvar as alterações.
+
+Em Authentication > URL Configuration, durante a página temporária:
+Site URL: https://facnsaloanda.com.br/entrar
+Redirect URLs:
+https://facnsaloanda.com.br/entrar
+https://facnsaloanda.com.br/entrar?next=**
+https://facnsaloanda.com.br/nova-senha
+https://facnsaloanda.com.br/nova-senha?next=**
+Preservar os retornos locais autorizados para desenvolvimento.
+Nos templates de links de autenticação, usar {{ .ConfirmationURL }}.
+O remetente novo e o retorno corrigido se aplicam aos novos e-mails solicitados.
+
+2. APLICAÇÃO — CONVITES E AVISOS AOS CANDIDATOS
+O SMTP da API é separado da configuração do Supabase Auth.
+As variáveis privadas de produção devem conter:
+SMTP_HOST=smtp.hostinger.com
+SMTP_PORT=465
+SMTP_USER=contato@facnsaloanda.com.br
+SMTP_PASSWORD=(preencher a senha somente no arquivo privado ou painel)
+SMTP_FROM="FAC Loanda <contato@facnsaloanda.com.br>"
+WEB_URL=https://facnsaloanda.com.br
+
+Arquivo local de preparação: .local/hostinger/.env.production (fora do Git).
+Para verificar a conexão SMTP sem enviar mensagem:
+node .local/hostinger/check-smtp.mjs
+Depois de validar, transferir o conjunto completo de variáveis reais para a
+Hostinger e reiniciar a aplicação. A API mascara valores na leitura; jamais
+substituir variáveis existentes por ******** ou publicar o .env no GitHub.
+
+3. VALIDAÇÃO
+Pelo site publicado /entrar, solicitar um novo acesso para um e-mail de teste
+sob seu controle. Conferir remetente, caixa de entrada/spam e destino do link.
+Testar recuperação pelo botão Esqueci minha senha, com a conta de teste.
+Para validar convites da API, criar um convite somente para essa conta de teste.
+No painel Hostinger Email, conferir domínio conectado e registros de SPF e DKIM.
+
+Referências oficiais:
+https://supabase.com/docs/guides/auth/auth-smtp
+https://supabase.com/docs/guides/auth/redirect-urls
+https://www.hostinger.com/br/support/4305847-como-configurar-os-e-mails-da-hostinger-em-dispositivos-e-plataformas/

@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import request from "supertest";
 import sharp from "sharp";
 import { PrismaClient } from "@prisma/client";
 import { createApp } from "../src/app.js";
 import type { PrivateStorage } from "../src/core/supabase.js";
+import { AppError } from "../src/core/errors.js";
+import { cleanupProfilePhoto } from "../src/modules/media/profile-photo-cleanup.js";
 const url = process.env.TEST_DATABASE_URL;
 const integration = url ? describe : describe.skip;
 integration(
@@ -502,6 +504,398 @@ integration(
         .send({ name: "Nome", platformAdmin: true })
         .expect(422);
     });
+    it("confirmação de foto da câmera fica salva em perfil vazio sem outro salvamento", async () => {
+      const profileApp = createApp({
+        db,
+        storage,
+        eventsEnabled: false,
+        volunteerRegistrationsEnabled: true,
+        rateLimits: false,
+        resolveIdentity: async (token) =>
+          identities[token as keyof typeof identities] ?? null,
+      });
+      const before = await request(profileApp)
+        .get("/api/v1/me/profile")
+        .set(auth("invited"))
+        .expect(200);
+      expect(before.body.profile).toEqual({});
+      const uploaded = await request(profileApp)
+        .post("/api/v1/me/photo")
+        .set(auth("invited"))
+        .attach("photo", photo, {
+          filename: "camera.jpg",
+          contentType: "image/jpeg",
+        })
+        .expect(201);
+      const reloaded = await request(profileApp)
+        .get("/api/v1/me/profile")
+        .set(auth("invited"))
+        .expect(200);
+      expect(reloaded.body.profile).toEqual({ photoAssetId: uploaded.body.id });
+      const asset = await db.mediaAsset.findUniqueOrThrow({
+        where: { id: uploaded.body.id },
+      });
+      expect(asset).toMatchObject({
+        accountId: identities.invited.id,
+        purpose: "PROFILE",
+        mimeType: "image/webp",
+      });
+      const optimized = await sharp(images.get(asset.objectKey)!).metadata();
+      expect(optimized).toMatchObject({
+        width: 500,
+        height: 500,
+        format: "webp",
+      });
+      const displayed = await request(profileApp)
+        .get(`/api/v1/me/photos/${reloaded.body.profile.photoAssetId}`)
+        .set(auth("invited"))
+        .expect(200);
+      expect(displayed.body.url).toBe(uploaded.body.url);
+    });
+    it("arquivo escolhido substitui a foto e preserva os outros dados do perfil", async () => {
+      const previous = await request(app)
+        .get("/api/v1/me/profile")
+        .set(auth("invited"))
+        .expect(200);
+      const oldAsset = await db.mediaAsset.findUniqueOrThrow({
+        where: { id: previous.body.profile.photoAssetId },
+      });
+      const fields = {
+        name: "Perfil de teste",
+        phone: "44988889999",
+        birthDate: "1990-07-01",
+        city: "Loanda",
+      };
+      await request(app)
+        .put("/api/v1/me/profile")
+        .set(auth("invited"))
+        .send(fields)
+        .expect(200);
+      const png = await sharp(photo).png().toBuffer();
+      const replacement = await request(app)
+        .post("/api/v1/me/photo")
+        .set(auth("invited"))
+        .attach("photo", png, {
+          filename: "arquivo.png",
+          contentType: "image/png",
+        })
+        .expect(201);
+      expect(replacement.body.id).not.toBe(previous.body.profile.photoAssetId);
+      expect(
+        await db.mediaAsset.findUnique({ where: { id: oldAsset.id } }),
+      ).toBeNull();
+      expect(images.has(oldAsset.objectKey)).toBe(false);
+      await request(app)
+        .get(`/api/v1/me/photos/${oldAsset.id}`)
+        .set(auth("invited"))
+        .expect(404);
+      const reloaded = await request(app)
+        .get("/api/v1/me/profile")
+        .set(auth("invited"))
+        .expect(200);
+      expect(reloaded.body.profile).toEqual({
+        ...fields,
+        photoAssetId: replacement.body.id,
+      });
+      await request(app)
+        .get(`/api/v1/me/photos/${replacement.body.id}`)
+        .set(auth("invited"))
+        .expect(200);
+    });
+    it.each(["draft", "registration"])(
+      "preserva uma foto anterior ainda referenciada em %s",
+      async (kind) => {
+        const before = await request(app)
+          .get("/api/v1/me/profile")
+          .set(auth("invited"))
+          .expect(200);
+        const id = before.body.profile.photoAssetId;
+        const asset = await db.mediaAsset.findUniqueOrThrow({ where: { id } });
+        const draft = await db.draft.findUniqueOrThrow({
+          where: { id: first.id },
+        });
+        const registration = await db.registration.findUniqueOrThrow({
+          where: { id: first.registrationId },
+        });
+        let copiedDraftId: string | undefined,
+          copiedRegistrationId: string | undefined;
+        try {
+          if (kind === "draft")
+            await db.draft.update({
+              where: { id: draft.id },
+              data: {
+                payload: { ...(draft.payload as object), photoAssetId: id },
+              },
+            });
+          else {
+            const copiedDraft = await db.draft.create({
+              data: {
+                ...draft,
+                id: randomUUID(),
+                tokenHash: createHash("sha256")
+                  .update(randomUUID())
+                  .digest("hex"),
+                payload: {},
+              },
+            });
+            copiedDraftId = copiedDraft.id;
+            const copied = await db.registration.create({
+              data: {
+                ...registration,
+                id: randomUUID(),
+                protocol: randomUUID(),
+                draftId: copiedDraft.id,
+                snapshot: {
+                  ...(registration.snapshot as object),
+                  photoAssetId: id,
+                },
+              },
+            });
+            copiedRegistrationId = copied.id;
+          }
+          await request(app)
+            .post("/api/v1/me/photo")
+            .set(auth("invited"))
+            .attach("photo", photo, {
+              filename: "foto.jpg",
+              contentType: "image/jpeg",
+            })
+            .expect(201);
+          expect(
+            await db.mediaAsset.findUnique({ where: { id } }),
+          ).not.toBeNull();
+          expect(images.has(asset.objectKey)).toBe(true);
+          expect(await cleanupProfilePhoto(db, storage, id, true)).toBe(false);
+        } finally {
+          await db.draft.update({
+            where: { id: draft.id },
+            data: { payload: draft.payload! },
+          });
+          if (copiedRegistrationId)
+            await db.registration.delete({
+              where: { id: copiedRegistrationId },
+            });
+          if (copiedDraftId)
+            await db.draft.delete({ where: { id: copiedDraftId } });
+        }
+        expect(await cleanupProfilePhoto(db, storage, id, true)).toBe(true);
+        expect(images.has(asset.objectKey)).toBe(true);
+        expect(await cleanupProfilePhoto(db, storage, id)).toBe(true);
+        expect(images.has(asset.objectKey)).toBe(false);
+      },
+    );
+    it("falha na limpeza não desfaz a nova foto e permite nova tentativa", async () => {
+      const before = await request(app)
+        .get("/api/v1/me/profile")
+        .set(auth("invited"))
+        .expect(200);
+      const asset = await db.mediaAsset.findUniqueOrThrow({
+        where: { id: before.body.profile.photoAssetId },
+      });
+      const cleanupFailureApp = createApp({
+        db,
+        storage: {
+          ...storage,
+          async remove() {
+            throw new Error("Falha temporária");
+          },
+        },
+        resolveIdentity: async (token) =>
+          identities[token as keyof typeof identities] ?? null,
+        rateLimits: false,
+        eventsEnabled: true,
+      });
+      const uploaded = await request(cleanupFailureApp)
+        .post("/api/v1/me/photo")
+        .set(auth("invited"))
+        .attach("photo", photo, {
+          filename: "foto.jpg",
+          contentType: "image/jpeg",
+        })
+        .expect(201);
+      const account = await db.account.findUniqueOrThrow({
+        where: { id: identities.invited.id },
+      });
+      expect((account.profile as { photoAssetId: string }).photoAssetId).toBe(
+        uploaded.body.id,
+      );
+      expect(
+        await db.mediaAsset.findUnique({ where: { id: asset.id } }),
+      ).not.toBeNull();
+      expect(await cleanupProfilePhoto(db, storage, asset.id)).toBe(true);
+    });
+    it("substituições simultâneas preservam somente a foto vigente", async () => {
+      const uploaded = await Promise.all(
+        [1, 2].map(() =>
+          request(app)
+            .post("/api/v1/me/photo")
+            .set(auth("invited"))
+            .attach("photo", photo, {
+              filename: "foto.jpg",
+              contentType: "image/jpeg",
+            })
+            .expect(201),
+        ),
+      );
+      const current = await request(app)
+        .get("/api/v1/me/profile")
+        .set(auth("invited"))
+        .expect(200);
+      const assets = await db.mediaAsset.findMany({
+        where: { accountId: identities.invited.id, purpose: "PROFILE" },
+      });
+      expect(assets.map((a) => a.id)).toEqual([
+        current.body.profile.photoAssetId,
+      ]);
+      expect(
+        uploaded.some((r) => r.body.id === current.body.profile.photoAssetId),
+      ).toBe(true);
+      expect(images.has(assets[0].objectKey)).toBe(true);
+    });
+    it("salvar dados sem photoAssetId mantém a foto já confirmada e campos omitidos", async () => {
+      const before = await request(app)
+        .get("/api/v1/me/profile")
+        .set(auth("invited"))
+        .expect(200);
+      const saved = await request(app)
+        .put("/api/v1/me/profile")
+        .set(auth("invited"))
+        .send({ name: "Nome atualizado" })
+        .expect(200);
+      expect(saved.body.profile).toEqual({
+        ...before.body.profile,
+        name: "Nome atualizado",
+      });
+      await request(app)
+        .get(`/api/v1/me/photos/${saved.body.profile.photoAssetId}`)
+        .set(auth("invited"))
+        .expect(200);
+    });
+    it("outra conta não consegue ler nem associar a foto de perfil alheia", async () => {
+      const owner = await request(app)
+        .get("/api/v1/me/profile")
+        .set(auth("invited"))
+        .expect(200);
+      const otherBefore = await request(app)
+        .get("/api/v1/me/profile")
+        .set(auth("other"))
+        .expect(200);
+      await request(app)
+        .get(`/api/v1/me/photos/${owner.body.profile.photoAssetId}`)
+        .set(auth("other"))
+        .expect(404);
+      await request(app)
+        .put("/api/v1/me/profile")
+        .set(auth("other"))
+        .send({
+          name: "Outro perfil",
+          photoAssetId: owner.body.profile.photoAssetId,
+        })
+        .expect(422);
+      const otherAfter = await request(app)
+        .get("/api/v1/me/profile")
+        .set(auth("other"))
+        .expect(200);
+      expect(otherAfter.body.profile).toEqual(otherBefore.body.profile);
+    });
+    it("falha ao guardar foto conserva a anterior e não cria referência nova", async () => {
+      const before = await db.account.findUniqueOrThrow({
+        where: { id: identities.invited.id },
+      });
+      const count = await db.mediaAsset.count({
+        where: { accountId: identities.invited.id },
+      });
+      const failureApp = createApp({
+        db,
+        eventsEnabled: true,
+        rateLimits: false,
+        resolveIdentity: async () => identities.invited,
+        storage: {
+          ...storage,
+          async upload() {
+            throw new AppError(503, "Armazenamento indisponível no teste.");
+          },
+        },
+      });
+      await request(failureApp)
+        .post("/api/v1/me/photo")
+        .set(auth("invited"))
+        .attach("photo", photo, "camera.jpg")
+        .expect(503);
+      const after = await db.account.findUniqueOrThrow({
+        where: { id: identities.invited.id },
+      });
+      expect(after.profile).toEqual(before.profile);
+      expect(
+        await db.mediaAsset.count({
+          where: { accountId: identities.invited.id },
+        }),
+      ).toBe(count);
+    });
+    it("falha de URL antes do commit remove o novo arquivo e preserva foto e dados anteriores", async () => {
+      const before = await db.account.findUniqueOrThrow({
+        where: { id: identities.invited.id },
+      });
+      const count = await db.mediaAsset.count({
+        where: { accountId: identities.invited.id },
+      });
+      const objectKeys = [...images.keys()].sort();
+      const failureApp = createApp({
+        db,
+        eventsEnabled: true,
+        rateLimits: false,
+        resolveIdentity: async () => identities.invited,
+        storage: {
+          ...storage,
+          async signedUrl() {
+            throw new AppError(503, "URL indisponível no teste.");
+          },
+        },
+      });
+      await request(failureApp)
+        .post("/api/v1/me/photo")
+        .set(auth("invited"))
+        .attach("photo", photo, "camera.jpg")
+        .expect(503);
+      const after = await db.account.findUniqueOrThrow({
+        where: { id: identities.invited.id },
+      });
+      expect(after.profile).toEqual(before.profile);
+      expect(
+        await db.mediaAsset.count({
+          where: { accountId: identities.invited.id },
+        }),
+      ).toBe(count);
+      expect([...images.keys()].sort()).toEqual(objectKeys);
+    });
+    it("salvamentos concorrentes de foto e dados preservam ambas as alterações", async () => {
+      const before = await request(app)
+        .get("/api/v1/me/profile")
+        .set(auth("invited"))
+        .expect(200);
+      const [uploaded] = await Promise.all([
+        request(app)
+          .post("/api/v1/me/photo")
+          .set(auth("invited"))
+          .attach("photo", photo, "camera.jpg")
+          .expect(201),
+        request(app)
+          .put("/api/v1/me/profile")
+          .set(auth("invited"))
+          .send({ name: "Nome concorrente", city: "Nova cidade" })
+          .expect(200),
+      ]);
+      const reloaded = await request(app)
+        .get("/api/v1/me/profile")
+        .set(auth("invited"))
+        .expect(200);
+      expect(reloaded.body.profile).toEqual({
+        ...before.body.profile,
+        name: "Nome concorrente",
+        city: "Nova cidade",
+        photoAssetId: uploaded.body.id,
+      });
+    });
     it("não duplica inscrição ativa usando os mesmos dados sem expor o cadastro existente", async () => {
       const duplicate = await draft(camper, "Campista Primeiro", "44988881111");
       const result = await request(app)
@@ -740,7 +1134,14 @@ integration(
       const tables = await db.$queryRaw<
         { tablename: string; rowsecurity: boolean }[]
       >`SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname IN ('public', 'acesso', 'organizacoes', 'pessoas', 'eventos', 'inscricoes', 'saude', 'arquivos') AND tablename <> '_prisma_migrations'`;
-      expect(tables.length).toBe(19);
+      expect(tables.length).toBe(22);
+      expect(tables.map((table) => table.tablename)).toContain("funcoes");
+      expect(tables.map((table) => table.tablename)).toContain(
+        "autorizacoes_responsavel",
+      );
+      expect(tables.map((table) => table.tablename)).toContain(
+        "termos_responsavel",
+      );
       expect(tables.every((table) => table.rowsecurity)).toBe(true);
     });
   },

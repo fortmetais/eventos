@@ -1,5 +1,9 @@
 PÁGINA TEMPORÁRIA DO FAC 2027
 
+Este guia descreve o modo isolado APPLICATION_TEST_ACCESS=false.
+Com APPLICATION_TEST_ACCESS=true, o cartaz permanece no início, mas os fluxos
+da aplicação e as rotas públicas são liberados conforme ACESSO_TESTES.txt.
+
 A página usa a arte enviada, inteira e sem recortes, em celular e desktop.
 Não apresenta menu, login, formulários ou botões. Apenas a imagem, com
 descrição acessível e título da página. Nenhum JavaScript é carregado.

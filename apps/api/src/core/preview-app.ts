@@ -5,6 +5,8 @@ import { createTemporaryApp } from "./temporary-app.js";
 
 const posterAssets = new Set([
   "/fac-2027.jpg",
+  "/fac-2027-720-v1.webp",
+  "/fac-2027-1041-v1.webp",
   "/pagina-temporaria.css",
   "/lazaro.mp3",
   "/musica.js",
@@ -16,7 +18,7 @@ function within(path: string, prefix: string) {
   return path === prefix || path.startsWith(`${prefix}/`);
 }
 
-/** Keeps the public poster while allowing the authenticated application to be tested. */
+/** Keeps the poster at home while serving public participation flows and protected panels. */
 export function createPreviewApp(
   api: Express,
   options: {
@@ -49,10 +51,7 @@ export function createPreviewApp(
       return;
     }
     if (within(path, "/api")) {
-      if (
-        within(path, "/api/v1/public") ||
-        within(path, "/api/v1/openapi")
-      ) {
+      if (within(path, "/api/v1/openapi")) {
         next();
         return;
       }
@@ -66,8 +65,18 @@ export function createPreviewApp(
     }
     const withoutTrailingSlash = path.replace(/\/+$/, "");
     if (
-      ["/entrar", "/nova-senha", "/meu-perfil"].includes(withoutTrailingSlash) ||
-      ["/convite", "/admin", "/organizacao"].some((prefix) => within(path, prefix)) ||
+      ["/entrar", "/nova-senha", "/meu-perfil"].includes(
+        withoutTrailingSlash,
+      ) ||
+      [
+        "/convite",
+        "/admin",
+        "/organizacao",
+        "/eventos",
+        "/inscricao",
+        "/resposta",
+        "/autorizacao",
+      ].some((prefix) => within(path, prefix)) ||
       path.startsWith("/assets/")
     ) {
       hosted(req, res, next);

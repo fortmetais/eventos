@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { eventThumbnail } from "../../core/image-thumbnails.js";
 import { AppError } from "../../core/errors.js";
 import { DepartmentsRepository } from "./departments.repository.js";
 
@@ -19,6 +20,11 @@ export class EventSetupsRepository {
         "EVENT_SETUP_REQUIRED",
       );
   }
+  async registrationsReady() {
+    const [stage] = await this.db.$queryRaw<{ exists: boolean }[]>`
+      SELECT to_regclass('inscricoes.inscricoes') IS NOT NULL AS exists`;
+    return stage?.exists === true;
+  }
   async list(organizationId: string) {
     const events = await this.db.event.findMany({
       where: { organizationId },
@@ -37,10 +43,26 @@ export class EventSetupsRepository {
         )
       : [];
     const departmentsReady = await departments.ready();
+    const registrations = (await this.registrationsReady())
+      ? await this.db.registration.groupBy({
+          by: ["campaignId"],
+          where: {
+            campaignId: {
+              in: events.flatMap((event) => event.campaigns.map((c) => c.id)),
+            },
+          },
+        })
+      : [];
+    const campaignsWithRegistrations = new Set(
+      registrations.map((r) => r.campaignId),
+    );
     return events.map((event) => ({
-      ...event,
+      ...eventThumbnail(event),
       teams: teams.filter((team) => team.eventId === event.id),
       departmentsReady,
+      hasRegistrations: event.campaigns.some((c) =>
+        campaignsWithRegistrations.has(c.id),
+      ),
     }));
   }
 }

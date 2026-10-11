@@ -2,6 +2,8 @@ import { z } from "zod";
 import { eventSchema } from "./events.validation.js";
 import { departmentsSchema } from "./departments.validation.js";
 
+export const eventDetailsSchema = z.object({ event: eventSchema }).strict();
+
 const period = z
   .object({
     kind: z.enum(["VOLUNTEER", "CAMPER"]),

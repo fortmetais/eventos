@@ -27,7 +27,9 @@
     "admin:bootstrap": "npm run admin:bootstrap -w @fac/api",
     "storage:setup": "npm run storage:setup -w @fac/api",
     "drafts:cleanup": "npm run drafts:cleanup -w @fac/api",
-    "format": "prettier --write \"apps/**/*.{ts,tsx,json,css,html}\" \"scripts/**/*.mjs\" \"docs/**/*.md\" \"*.{json,md,yaml}\""
+    "format": "prettier --write \"apps/**/*.{ts,tsx,json,css,html}\" \"scripts/**/*.mjs\" \"docs/**/*.md\" \"*.{json,md,yaml}\"",
+    "images:thumbnails": "npm run images:thumbnails -w @fac/api --",
+    "images:cleanup": "npm run images:cleanup -w @fac/api --"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.0",

@@ -1,10 +1,19 @@
 import type { Account } from "@prisma/client";
-import type { z } from "zod";
+import { randomUUID } from "node:crypto";
+import { organizationThumbnail } from "../../core/image-thumbnails.js";
+import type { ArtworkStorage } from "../../core/artwork-storage.js";
+import { uploadOrganizationLogo } from "./organization-logo.js";
+import { z } from "zod";
 import { assert } from "../../core/errors.js";
 import { hashToken, newToken } from "../../core/security.js";
 import type { InvitationMailer } from "../../core/mail.js";
 import { config } from "../../config.js";
 import { OrganizationsRepository } from "./organizations.repository.js";
+import {
+  OrganizationFunctionsService,
+  requireOrganizationManager,
+  resolveOrganizationFunction,
+} from "./organization-functions.service.js";
 import {
   invitationSchema,
   membershipSchema,
@@ -15,23 +24,67 @@ export class OrganizationsService {
   constructor(
     private repo: OrganizationsRepository,
     private mail: InvitationMailer,
+    private logoStorage: ArtworkStorage,
   ) {}
   async list(page: number, pageSize: number) {
     const [items, total] = await this.repo.list(
       (page - 1) * pageSize,
       pageSize,
     );
-    return { items, total, page, pageSize };
+    return { items: items.map(organizationThumbnail), total, page, pageSize };
   }
-  create(data: unknown) {
-    return this.repo.create(organizationSchema.parse(data));
+  async create(input: unknown, file?: Express.Multer.File) {
+    const data = organizationSchema.parse(input);
+    const id = randomUUID();
+    const logo = file
+      ? await uploadOrganizationLogo(this.logoStorage, id, file)
+      : null;
+    try {
+      return organizationThumbnail(
+        await this.repo.db.organization.create({
+          data: {
+            ...data,
+            id,
+            ...(logo
+              ? {
+                  logoUrl: logo.url,
+                  logoBucket: logo.bucket,
+                  logoKey: logo.key,
+                  logoThumbnailKey: logo.thumbnailKey,
+                }
+              : {}),
+          },
+        }),
+      );
+    } catch (error) {
+      if (logo) await this.removeLogo(logo.bucket, logo.key, logo.thumbnailKey);
+      throw error;
+    }
   }
-  mine(accountId: string) {
-    return this.repo.mine(accountId);
+  private async removeLogo(
+    bucket: string,
+    key: string,
+    thumbnailKey?: string | null,
+  ) {
+    if (thumbnailKey) await this.removeLogo(bucket, thumbnailKey);
+    await this.logoStorage.remove(bucket, key).catch(() => {
+      console.warn(
+        JSON.stringify({
+          level: "warn",
+          event: "organization_logo_cleanup_failed",
+        }),
+      );
+    });
+  }
+  async mine(accountId: string) {
+    return (await this.repo.mine(accountId)).map((member) => ({
+      ...member,
+      organization: organizationThumbnail(member.organization),
+    }));
   }
   async members(organizationId: string) {
     const eventsEnabled = await this.repo.eventsAvailable();
-    const [members, invitations, events] = await Promise.all([
+    const [members, invitations, events, functions] = await Promise.all([
       this.repo.members(organizationId),
       this.repo.invitations(organizationId),
       eventsEnabled
@@ -41,24 +94,39 @@ export class OrganizationsService {
             orderBy: { startsAt: "desc" },
           })
         : Promise.resolve([]),
+      new OrganizationFunctionsService(this.repo.db).list(organizationId),
     ]);
-    return { members, invitations, events };
+    return { members, invitations, events, functions };
   }
   async invite(organizationId: string, actorId: string, input: unknown) {
     const data = invitationSchema.parse(input);
-    const organization = await this.repo.db.organization.findUniqueOrThrow({
-      where: { id: organizationId },
-    });
     const token = newToken();
-    const invitation = await this.repo.db.invitation.create({
-      data: {
-        ...data,
-        organizationId,
-        createdBy: actorId,
-        tokenHash: hashToken(token),
-        expiresAt: new Date(Date.now() + 7 * 86400000),
+    const { invitation, organization } = await this.repo.db.$transaction(
+      async (tx) => {
+        const organization = await requireOrganizationManager(
+          tx,
+          organizationId,
+          actorId,
+        );
+        const selected = await resolveOrganizationFunction(
+          tx,
+          organizationId,
+          data,
+        );
+        const invitation = await tx.invitation.create({
+          data: {
+            email: data.email,
+            role: selected.role,
+            functionId: selected.id,
+            organizationId,
+            createdBy: actorId,
+            tokenHash: hashToken(token),
+            expiresAt: new Date(Date.now() + 7 * 86400000),
+          },
+        });
+        return { invitation, organization };
       },
-    });
+    );
     const link = `${config.WEB_URL}/convite/${token}`;
     const sent = await this.mail.send(data.email, organization.name, link);
     return {
@@ -69,7 +137,15 @@ export class OrganizationsService {
     };
   }
   async accept(token: string, user: Account) {
+    const target = await this.repo.db.invitation.findUnique({
+      where: { tokenHash: hashToken(token) },
+      select: { organizationId: true },
+    });
+    assert(target, 410, "Convite expirado, revogado ou já utilizado.");
     return this.repo.db.$transaction(async (tx) => {
+      // A mesma ordem de bloqueio usada em funções, convites e membros evita
+      // aceitar um convite com perfil anterior durante uma alteração de função.
+      await tx.$queryRaw`SELECT organizacao_id FROM organizacoes.organizacoes WHERE organizacao_id = ${target.organizationId}::uuid FOR UPDATE`;
       await tx.$queryRaw`SELECT convite_id FROM organizacoes.convites WHERE hash_token = ${hashToken(token)} FOR UPDATE`;
       const invitation = await tx.invitation.findUnique({
         where: { tokenHash: hashToken(token) },
@@ -89,6 +165,17 @@ export class OrganizationsService {
         403,
         "Entre com o e-mail que recebeu o convite.",
       );
+      const selected = invitation.functionId
+        ? await tx.organizationFunction.findFirst({
+            where: {
+              id: invitation.functionId,
+              organizationId: invitation.organizationId,
+            },
+          })
+        : await resolveOrganizationFunction(tx, invitation.organizationId, {
+            role: invitation.role,
+          });
+      assert(selected, 410, "A função do convite não está mais disponível.");
       const existing = await tx.membership.findUnique({
         where: {
           organizationId_accountId: {
@@ -116,7 +203,8 @@ export class OrganizationsService {
         data: {
           organizationId: invitation.organizationId,
           accountId: user.id,
-          role: invitation.role,
+          role: selected.role,
+          functionId: selected.id,
         },
       });
       await tx.auditLog.create({
@@ -130,9 +218,13 @@ export class OrganizationsService {
       return membership;
     });
   }
-  async updateOrganization(organizationId: string, input: unknown) {
+  async updateOrganization(
+    organizationId: string,
+    input: unknown,
+    file?: Express.Multer.File,
+  ) {
     const data = organizationSchema
-      .extend({ active: membershipSchema.shape.active })
+      .extend({ active: z.boolean() })
       .parse(input);
     assert(
       await this.repo.db.organization.findUnique({
@@ -141,10 +233,56 @@ export class OrganizationsService {
       404,
       "Organização não encontrada.",
     );
-    return this.repo.db.organization.update({
-      where: { id: organizationId },
-      data,
-    });
+    const logo = file
+      ? await uploadOrganizationLogo(this.logoStorage, organizationId, file)
+      : null;
+    let previous: {
+      logoBucket: string | null;
+      logoKey: string | null;
+      logoThumbnailKey: string | null;
+    } | null = null;
+    let result;
+    try {
+      result = await this.repo.db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT organizacao_id FROM organizacoes.organizacoes WHERE organizacao_id = ${organizationId}::uuid FOR UPDATE`;
+        const organization = await tx.organization.findUnique({
+          where: { id: organizationId },
+        });
+        assert(organization, 404, "Organização não encontrada.");
+        const replaced =
+          logo ||
+          (data.logoUrl !== undefined && data.logoUrl !== organization.logoUrl);
+        if (replaced) previous = organization;
+        return tx.organization.update({
+          where: { id: organizationId },
+          data: {
+            ...data,
+            ...(logo
+              ? {
+                  logoUrl: logo.url,
+                  logoBucket: logo.bucket,
+                  logoKey: logo.key,
+                  logoThumbnailKey: logo.thumbnailKey,
+                }
+              : replaced
+                ? { logoBucket: null, logoKey: null, logoThumbnailKey: null }
+                : {}),
+          },
+        });
+      });
+    } catch (error) {
+      if (logo) await this.removeLogo(logo.bucket, logo.key, logo.thumbnailKey);
+      throw error;
+    }
+    // Só excluir após confirmar o novo cadastro; nunca usar bucket/chave da requisição.
+    const old = previous as {
+      logoBucket: string | null;
+      logoKey: string | null;
+      logoThumbnailKey: string | null;
+    } | null;
+    if (old?.logoBucket && old.logoKey)
+      await this.removeLogo(old.logoBucket, old.logoKey, old.logoThumbnailKey);
+    return organizationThumbnail(result);
   }
   async updateMember(
     organizationId: string,
@@ -155,15 +293,23 @@ export class OrganizationsService {
     const data: z.infer<typeof membershipSchema> =
       membershipSchema.parse(input);
     return this.repo.db.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT organizacao_id FROM organizacoes.organizacoes WHERE organizacao_id = ${organizationId}::uuid FOR UPDATE`;
+      await requireOrganizationManager(tx, organizationId, actorId);
       const member = await tx.membership.findFirst({
         where: { id: memberId, organizationId },
       });
       assert(member, 404, "Membro não encontrado.");
+      const selected = await resolveOrganizationFunction(
+        tx,
+        organizationId,
+        !data.functionId && data.role === member.role && member.functionId
+          ? { functionId: member.functionId }
+          : data,
+        member.functionId,
+      );
       if (
         member.role === "ORGANIZER" &&
         member.active &&
-        (!data.active || data.role !== "ORGANIZER")
+        (!data.active || selected.role !== "ORGANIZER")
       ) {
         const others = await tx.membership.count({
           where: {
@@ -196,7 +342,13 @@ export class OrganizationsService {
       );
       const result = await tx.membership.update({
         where: { id: memberId },
-        data,
+        data: {
+          active: data.active,
+          role: selected.role,
+          functionId: selected.id,
+          healthEventIds: data.healthEventIds,
+        },
+        include: { function: true },
       });
       await tx.auditLog.create({
         data: {
@@ -209,12 +361,15 @@ export class OrganizationsService {
       return result;
     });
   }
-  async revoke(organizationId: string, invitationId: string) {
-    const result = await this.repo.db.invitation.updateMany({
-      where: { id: invitationId, organizationId, acceptedAt: null },
-      data: { revokedAt: new Date() },
+  async revoke(organizationId: string, invitationId: string, actorId: string) {
+    return this.repo.db.$transaction(async (tx) => {
+      await requireOrganizationManager(tx, organizationId, actorId);
+      const result = await tx.invitation.updateMany({
+        where: { id: invitationId, organizationId, acceptedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      assert(result.count, 404, "Convite não encontrado.");
+      return { revoked: true };
     });
-    assert(result.count, 404, "Convite não encontrado.");
-    return { revoked: true };
   }
 }

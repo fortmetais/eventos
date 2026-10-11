@@ -1,8 +1,11 @@
 ATIVAR SUPABASE AUTH COM O POSTGRESQL LOCAL
 
-O Prisma já usa as seis tabelas do banco eventos_beta com os nomes em
-português. Não copie essas tabelas para o Supabase nem altere DATABASE_URL
-ou DIRECT_URL para usar o banco do projeto Supabase.
+Este roteiro configura o Auth durante o desenvolvimento com o banco de
+negócio local. Nessa etapa, o Prisma mantém DATABASE_URL e DIRECT_URL
+apontando para eventos_beta no computador.
+Para publicar na Hostinger com o banco no Supabase, siga o roteiro
+deploy/supabase/MIGRAR_BANCO_LOCAL.txt e configure as conexões remotas
+no arquivo privado de produção após importar a estrutura e os dados.
 
 1. CRIAR O PROJETO
 Entre em https://supabase.com/dashboard e crie um projeto, por exemplo
@@ -23,9 +26,18 @@ Habilite o provedor Email e a criação de contas, se desejar que o primeiro
 acesso por código crie a identidade. Se o cadastro estiver desabilitado,
 crie primeiro a identidade no painel. Uma conta nova não será admin.
 
-Na configuração de URLs:
-Site URL: http://localhost:5174
-Redirect URLs:
+Na configuração de URLs (Authentication > URL Configuration), o projeto
+Supabase compartilhado entre desenvolvimento e produção deve usar o domínio
+publicado como destino padrão. Durante a página temporária, apontar para
+/entrar, pois o cartaz na raiz não processa a confirmação do Auth:
+Site URL: https://facnsaloanda.com.br/entrar
+Redirect URLs de produção:
+https://facnsaloanda.com.br/entrar
+https://facnsaloanda.com.br/entrar?next=**
+https://facnsaloanda.com.br/nova-senha
+https://facnsaloanda.com.br/nova-senha?next=**
+
+Preservar também as Redirect URLs locais para os testes no computador:
 http://localhost:5174/entrar**
 http://127.0.0.1:5174/entrar**
 http://localhost:5174/nova-senha**
@@ -34,8 +46,16 @@ http://127.0.0.1:5174/nova-senha**
 O acesso aceita senha, link de e-mail e código. Os endereços /entrar**
 permitem o retorno /entrar?next=/convite/... após clicar no link recebido,
 inclusive quando o e-mail é aberto em outra aba. Não remova /nova-senha.
-Em produção, configure os endereços do domínio real e restrinja o retorno
-ao caminho /entrar ou /nova-senha e sua query; não libere domínios externos.
+Não definir Site URL como localhost neste projeto compartilhado. O React
+envia a origem da página aberta como retorno; essa origem precisa constar
+na lista autorizada. Restringir os retornos aos caminhos acima e suas queries.
+Salvar as alterações e pedir um novo e-mail pelo site publicado. Não editar
+links antigos manualmente: os links já enviados não são corrigidos pelo painel.
+Nos templates de confirmação, Magic Link, convite e recuperação, o botão
+de autenticação deve usar {{ .ConfirmationURL }}, que verifica a credencial
+antes do retorno. Não substituir por um link simples para {{ .SiteURL }}
+ou {{ .RedirectTo }}, nem colocar localhost diretamente no template.
+Na Hostinger, WEB_URL continua https://facnsaloanda.com.br, sem /entrar.
 O retorno next é preservado na criação do acesso por e-mail e ao definir
 senha. Uma credencial de retorno com prazo de 24h permite retomar em outra
 aba do mesmo navegador/origem; ela é removida após o aceite ou Continuar depois.

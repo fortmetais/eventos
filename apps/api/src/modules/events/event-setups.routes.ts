@@ -32,6 +32,14 @@ export function eventSetupsRoutes(
     c.create,
   );
   r.put(
+    "/organizations/:organizationId/event-setups/:eventId/details",
+    auth,
+    write,
+    limit,
+    upload,
+    c.updateDetails,
+  );
+  r.put(
     "/organizations/:organizationId/event-setups/:eventId",
     auth,
     write,

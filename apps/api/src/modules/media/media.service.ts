@@ -6,6 +6,7 @@ import { assert, AppError } from "../../core/errors.js";
 import type { PrivateStorage } from "../../core/supabase.js";
 import { hashToken } from "../../core/security.js";
 import { MediaRepository } from "./media.repository.js";
+import { tryCleanupProfilePhoto } from "./profile-photo-cleanup.js";
 const cropSchema = z
   .object({
     left: z.number().min(0).max(1),
@@ -39,9 +40,9 @@ export class MediaService {
         422,
         "Escolha uma fotografia JPEG, PNG ou WebP estática.",
       );
-      const oriented = await source.rotate().toBuffer();
-      const dimensions = await sharp(oriented).metadata();
-      let image = sharp(oriented);
+      // Orient before extracting, without encoding an intermediate JPEG.
+      const dimensions = metadata.autoOrient;
+      let image = source.autoOrient();
       if (cropInput) {
         const crop = cropSchema.parse(
           typeof cropInput === "string" ? JSON.parse(cropInput) : cropInput,
@@ -138,19 +139,42 @@ export class MediaService {
     const assetId = randomUUID();
     const objectKey = `accounts/${accountId}/${assetId}.webp`;
     await this.storage.upload(objectKey, buffer);
+    let previousId: string | undefined;
     try {
-      const asset = await this.repo.db.mediaAsset.create({
-        data: {
-          id: assetId,
-          accountId,
-          objectKey,
-          bucket: config.SUPABASE_PRIVATE_BUCKET,
-          purpose: "PROFILE",
-          mimeType: "image/webp",
-          size: buffer.length,
-        },
+      const url = await this.storage.signedUrl(objectKey);
+      const asset = await this.repo.db.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT conta_id FROM acesso.contas WHERE conta_id = ${accountId}::uuid FOR UPDATE`;
+        const account = await tx.account.findUniqueOrThrow({
+          where: { id: accountId },
+          select: { profile: true },
+        });
+        const saved = await tx.mediaAsset.create({
+          data: {
+            id: assetId,
+            accountId,
+            objectKey,
+            bucket: config.SUPABASE_PRIVATE_BUCKET,
+            purpose: "PROFILE",
+            mimeType: "image/webp",
+            size: buffer.length,
+          },
+        });
+        const current =
+          account.profile &&
+          typeof account.profile === "object" &&
+          !Array.isArray(account.profile)
+            ? account.profile
+            : {};
+        if (typeof current.photoAssetId === "string")
+          previousId = current.photoAssetId;
+        await tx.account.update({
+          where: { id: accountId },
+          data: { profile: { ...current, photoAssetId: saved.id } },
+        });
+        return saved;
       });
-      return { id: asset.id, url: await this.storage.signedUrl(objectKey) };
+      await tryCleanupProfilePhoto(this.repo.db, this.storage, previousId);
+      return { id: asset.id, url };
     } catch (error) {
       await this.storage.remove(objectKey).catch(() => {});
       throw error;

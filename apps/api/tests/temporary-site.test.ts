@@ -28,6 +28,19 @@ describe("página temporária do FAC", () => {
     expect(css.text).toContain("object-fit: contain");
     expect(css.text).toContain("calc((100svh - 40px) * 1041 / 1510)");
   });
+  it("oferece cartazes WebP responsivos com cache e JPEG como alternativa", async () => {
+    const page = await request(app).get("/").expect(200);
+    expect(page.text).toContain("/fac-2027-720-v1.webp 720w");
+    expect(page.text).toContain("/fac-2027-1041-v1.webp 1041w");
+    expect(page.text).toContain('src="/fac-2027.jpg"');
+    for (const width of [720, 1041]) {
+      const response = await request(app)
+        .get(`/fac-2027-${width}-v1.webp`)
+        .expect("Content-Type", /image\/webp/)
+        .expect(200);
+      expect(response.headers["cache-control"]).toContain("31536000");
+    }
+  });
   it("bloqueia consultas e alterações da API de negócio", async () => {
     for (const path of [
       "/api/v1/config",
@@ -103,8 +116,13 @@ describe("ativação da página temporária", () => {
     expect(() => runtimeSettings({ TEMPORARY_SITE: "yes" })).toThrow();
   });
   it("libera os testes somente quando solicitado explicitamente", () => {
-    expect(runtimeSettings({ NODE_ENV: "production" }).APPLICATION_TEST_ACCESS).toBe(false);
-    expect(runtimeSettings({ APPLICATION_TEST_ACCESS: "true" }).APPLICATION_TEST_ACCESS).toBe(true);
+    expect(
+      runtimeSettings({ NODE_ENV: "production" }).APPLICATION_TEST_ACCESS,
+    ).toBe(false);
+    expect(
+      runtimeSettings({ APPLICATION_TEST_ACCESS: "true" })
+        .APPLICATION_TEST_ACCESS,
+    ).toBe(true);
     expect(() => runtimeSettings({ APPLICATION_TEST_ACCESS: "yes" })).toThrow();
   });
 });

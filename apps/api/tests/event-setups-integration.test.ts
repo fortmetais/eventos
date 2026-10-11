@@ -7,7 +7,7 @@ import { createApp } from "../src/app.js";
 
 const url = process.env.TEST_EVENTS_DATABASE_URL;
 const integration = url ? describe : describe.skip;
-integration("Eventos com apenas as nove tabelas do fluxo gradual", () => {
+integration("Eventos do fluxo gradual com catálogo de funções", () => {
   if (url && new URL(url).pathname !== "/fac_events_tests")
     throw new Error("Use apenas fac_events_tests isolado.");
   const db = new PrismaClient({
@@ -92,11 +92,15 @@ integration("Eventos com apenas as nove tabelas do fluxo gradual", () => {
     const result = await db.$queryRaw<
       { total: bigint }[]
     >`SELECT count(*) AS total FROM pg_tables WHERE schemaname IN ('acesso','organizacoes','pessoas','eventos','public')`;
-    expect(Number(result[0].total)).toBe(9);
+    expect(Number(result[0].total)).toBe(10);
     await request(app).get("/api/v1/public/events").expect(404);
   });
   it("organizador cria evento e períodos independentes juntos", async () => {
-    await request(app).post(path()).set(auth()).send({ ...data(), departments: [{ name: "ANJO", capacity: 2 }] }).expect(503);
+    await request(app)
+      .post(path())
+      .set(auth())
+      .send({ ...data(), departments: [{ name: "ANJO", capacity: 2 }] })
+      .expect(503);
     const result = await request(app)
       .post(path())
       .set(auth())
@@ -175,12 +179,18 @@ integration("Eventos com apenas as nove tabelas do fluxo gradual", () => {
       .field("data", JSON.stringify(data()))
       .attach("artwork", image, "arte.png")
       .expect(200);
-    const metadata = await sharp(upload.mock.calls.at(-1)![1]).metadata();
+    const metadata = await sharp(upload.mock.calls.at(-2)![1]).metadata();
+    const mini = await sharp(upload.mock.calls.at(-1)![1]).metadata();
+    expect(mini).toMatchObject({ width: 320, height: 569, format: "webp" });
+    expect(result.body.imageThumbnailUrl).toBe(
+      `https://storage.test/${result.body.imageThumbnailKey}`,
+    );
     expect(metadata.format).toBe("webp");
     expect(metadata.width).toBe(1080);
     expect(metadata.height).toBe(1920);
     expect(result.body.imageKey).toContain(`${orgA}/${eventId}/`);
     const oldKey = result.body.imageKey;
+    const oldThumbnail = result.body.imageThumbnailKey;
     await request(app)
       .put(`${path()}/${eventId}`)
       .set(auth())
@@ -196,6 +206,7 @@ integration("Eventos com apenas as nove tabelas do fluxo gradual", () => {
       .attach("artwork", image, "nova.png")
       .expect(200);
     expect(remove).toHaveBeenCalledWith("artes-eventos", oldKey);
+    expect(remove).toHaveBeenCalledWith("artes-eventos", oldThumbnail);
   });
   it("arquivo falsificado e acesso cruzado não chegam ao armazenamento", async () => {
     const count = upload.mock.calls.length;
@@ -249,7 +260,35 @@ integration("Eventos com apenas as nove tabelas do fluxo gradual", () => {
       );
     }
   });
-  it("evento publicado e membro suspenso não são alterados por este fluxo", async () => {
+  it("edita os dados de um publicado no banco gradual sem consultar tabelas futuras", async () => {
+    await db.event.update({
+      where: { id: eventId },
+      data: { status: "PUBLISHED" },
+    });
+    const campaigns = await db.campaign.findMany({ where: { eventId } });
+    const list = await request(app).get(path()).set(auth()).expect(200);
+    expect(
+      list.body.find((e: { id: string }) => e.id === eventId).hasRegistrations,
+    ).toBe(false);
+    const result = await request(app)
+      .put(`${path()}/${eventId}/details`)
+      .set(auth())
+      .send({
+        event: {
+          ...data().event,
+          name: "FAC atualizado",
+          startsAt: "2027-01-15",
+          endsAt: "2027-01-17",
+        },
+      })
+      .expect(200);
+    expect(result.body.status).toBe("PUBLISHED");
+    expect(result.body.name).toBe("FAC atualizado");
+    expect(await db.campaign.findMany({ where: { eventId } })).toEqual(
+      campaigns,
+    );
+  });
+  it("evento publicado e membro suspenso não são alterados pelo formulário de preparação", async () => {
     await db.event.update({
       where: { id: eventId },
       data: { status: "PUBLISHED" },
@@ -264,5 +303,10 @@ integration("Eventos com apenas as nove tabelas do fluxo gradual", () => {
       data: { active: false },
     });
     await request(app).post(path()).set(auth()).send(data()).expect(403);
+    await request(app)
+      .put(`${path()}/${eventId}/details`)
+      .set(auth())
+      .send({ event: data().event })
+      .expect(403);
   });
 });

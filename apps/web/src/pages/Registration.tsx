@@ -15,6 +15,7 @@ import { date } from "../lib/types";
 import { BackLink, Field, Loading, Notice } from "../components/ui";
 import { PhotoPicker } from "../components/PhotoPicker";
 import { Questions } from "../components/Questions";
+import type { GuardianSummary } from "../lib/guardian";
 const steps = [
   "Identificação",
   "Sua foto",
@@ -48,6 +49,7 @@ export function Registration() {
   const [saved, setSaved] = useState("");
   const [photoUrl, setPhotoUrl] = useState("");
   const [result, setResult] = useState<Draft["registration"]>();
+  const [guardian, setGuardian] = useState<GuardianSummary | null>(null);
   const current = useRef({ payload, health });
   current.current = { payload, health };
   const queue = useRef<Promise<unknown>>(Promise.resolve());
@@ -69,6 +71,7 @@ export function Registration() {
         setForm(draft.form);
         if (draft.submitted) {
           setResult(draft.registration);
+          setGuardian(draft.guardian ?? null);
           setPayload({ email: draft.email });
           return;
         }
@@ -180,7 +183,13 @@ export function Registration() {
     payload.birthDate && data
       ? (() => {
           const birth = new Date(payload.birthDate!);
-          const at = new Date(data.event.startsAt);
+          const today = new Date(
+            new Intl.DateTimeFormat("en-CA", {
+              timeZone: "America/Sao_Paulo",
+            }).format(new Date()),
+          );
+          const event = new Date(data.event.startsAt);
+          const at = event < today ? event : today;
           let age = at.getUTCFullYear() - birth.getUTCFullYear();
           if (
             at.getUTCMonth() < birth.getUTCMonth() ||
@@ -256,9 +265,13 @@ export function Registration() {
         need("guardianName", "o nome do responsável");
         need("guardianPhone", "o telefone do responsável");
         need("guardianRelationship", "o parentesco do responsável");
-        if (!payload.guardianAuthorization)
-          next.guardianAuthorization =
-            "A autorização do responsável é obrigatória.";
+        if ((payload.guardianPhone?.replace(/\D/g, "").length ?? 0) < 10)
+          next.guardianPhone = "Informe telefone com DDD.";
+        if (
+          payload.guardianEmail &&
+          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.guardianEmail)
+        )
+          next.guardianEmail = "Confira o e-mail do responsável.";
       }
     }
     setErrors(next);
@@ -291,11 +304,16 @@ export function Registration() {
     sending.current = true;
     try {
       await persist();
-      const sent = await api<NonNullable<Draft["registration"]>>(
-        `/public/drafts/${credential!.id}/submit`,
-        { method: "POST", draftToken: credential!.token },
-      );
+      const sent = await api<
+        NonNullable<Draft["registration"]> & {
+          guardian?: GuardianSummary | null;
+        }
+      >(`/public/drafts/${credential!.id}/submit`, {
+        method: "POST",
+        draftToken: credential!.token,
+      });
       setResult(sent);
+      setGuardian(sent.guardian ?? null);
       setSaved("");
       window.scrollTo({ top: 0 });
     } catch (e) {
@@ -333,7 +351,7 @@ export function Registration() {
   if (campaign.error)
     return (
       <div className="narrow-shell">
-        <BackLink to="/">Eventos</BackLink>
+        <BackLink to="/eventos">Eventos</BackLink>
         <Notice>{campaign.error}</Notice>
       </div>
     );
@@ -359,6 +377,68 @@ export function Registration() {
           </p>
           {error && <Notice>{error}</Notice>}
           {saved && <Notice kind="success">{saved}</Notice>}
+          {guardian && (
+            <div className="guardian-notice">
+              <h3>
+                {guardian.signedAt
+                  ? "Responsável já autorizou"
+                  : "Falta a assinatura do responsável"}
+              </h3>
+              <p>
+                {guardian.signedAt
+                  ? "O termo foi recebido pela organização."
+                  : "A participação depende do responsável conferir os dados e assinar o termo pelo link pessoal."}
+              </p>
+              {!guardian.signedAt && (
+                <>
+                  <p>
+                    {guardian.emailStatus === "ENVIADA"
+                      ? "Link enviado ao e-mail do responsável."
+                      : guardian.email
+                        ? "O e-mail ainda não foi enviado. Compartilhe pelo WhatsApp ou procure a organização."
+                        : "Compartilhe o link com o responsável pelo WhatsApp."}
+                  </p>
+                  {guardian.whatsappLink && (
+                    <a
+                      className="button primary"
+                      href={guardian.whatsappLink}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Enviar ao responsável pelo WhatsApp
+                    </a>
+                  )}
+                  {guardian.link && (
+                    <button
+                      type="button"
+                      className="button outline"
+                      onClick={() =>
+                        void navigator.clipboard
+                          .writeText(guardian.link!)
+                          .then(() =>
+                            setSaved(
+                              "Link copiado para enviar ao responsável.",
+                            ),
+                          )
+                          .catch(() =>
+                            setError(
+                              "Não foi possível copiar. Use o botão do WhatsApp.",
+                            ),
+                          )
+                      }
+                    >
+                      Copiar link do responsável
+                    </button>
+                  )}
+                  {guardian.expired && (
+                    <Notice>
+                      O link expirou. Procure a organização para renovar.
+                    </Notice>
+                  )}
+                </>
+              )}
+            </div>
+          )}
           {payload.email ? (
             <>
               <h3>Acompanhe sua caminhada</h3>
@@ -389,7 +469,7 @@ export function Registration() {
           <Link className="button outline full" to="/meu-perfil">
             Minha área
           </Link>
-          <Link className="text-button" to="/">
+          <Link className="text-button" to="/eventos">
             Agora não · Voltar aos eventos
           </Link>
         </section>
@@ -707,30 +787,26 @@ export function Registration() {
                 <hr />
                 <h3>Responsável legal</h3>
                 <p className="muted">
-                  Como você terá menos de 18 anos no início do evento,
-                  precisamos da autorização do responsável.
+                  Precisamos que o responsável legal preencha e assine o termo.
+                  Após enviar a ficha, um link pessoal será criado para ele.
                 </p>
                 {input("guardianName", "Nome do responsável", "text", true)}
                 {input("guardianPhone", "Telefone do responsável", "tel", true)}
+                {input(
+                  "guardianEmail",
+                  "E-mail do responsável (opcional)",
+                  "email",
+                )}
                 {input(
                   "guardianRelationship",
                   "Parentesco do responsável",
                   "text",
                   true,
                 )}
-                <label className="checkbox">
-                  <input
-                    type="checkbox"
-                    checked={payload.guardianAuthorization ?? false}
-                    onChange={(e) =>
-                      update("guardianAuthorization", e.target.checked)
-                    }
-                  />
-                  O responsável legal autoriza esta participação.
-                </label>
-                {errors.guardianAuthorization && (
-                  <Notice>{errors.guardianAuthorization}</Notice>
-                )}
+                <p className="safe-note">
+                  Informe o contato do responsável. A autorização será
+                  registrada quando ele assinar pelo link.
+                </p>
               </>
             )}
           </>
@@ -830,14 +906,16 @@ export function Registration() {
               são verdadeiras.
             </label>
             {errors.termsAccepted && <Notice>{errors.termsAccepted}</Notice>}
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={payload.imageAuthorized ?? false}
-                onChange={(e) => update("imageAuthorized", e.target.checked)}
-              />
-              Autorizo o uso de minha imagem conforme os termos (opcional).
-            </label>
+            {!minor && (
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={payload.imageAuthorized ?? false}
+                  onChange={(e) => update("imageAuthorized", e.target.checked)}
+                />
+                Autorizo o uso de minha imagem conforme os termos (opcional).
+              </label>
+            )}
             <p className="safe-note">
               <ShieldCheck size={16} /> Enviar esta ficha não garante uma vaga.
               Aguarde a análise da organização.

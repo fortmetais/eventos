@@ -1,4 +1,8 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
+import {
+  eventThumbnail,
+  organizationThumbnail,
+} from "../../core/image-thumbnails.js";
 import { DepartmentsRepository, basicTeam } from "./departments.repository.js";
 export const publicOrganization = {
   id: true,
@@ -6,6 +10,8 @@ export const publicOrganization = {
   city: true,
   state: true,
   logoUrl: true,
+  logoKey: true,
+  logoThumbnailKey: true,
 } as const;
 export class EventsRepository {
   constructor(
@@ -40,13 +46,13 @@ export class EventsRepository {
     );
     const departmentsReady = await repo.ready();
     return events.map((event) => ({
-      ...event,
+      ...eventThumbnail(event),
       teams: teams.filter((team) => team.eventId === event.id),
       departmentsReady,
     }));
   }
   async publicList(where: Prisma.EventWhereInput, skip: number, take: number) {
-    return this.db.$transaction([
+    const [items, total] = await this.db.$transaction([
       this.db.event.findMany({
         where,
         skip,
@@ -76,5 +82,12 @@ export class EventsRepository {
       }),
       this.db.event.count({ where }),
     ]);
+    return [
+      items.map((event) => ({
+        ...eventThumbnail(event),
+        organization: organizationThumbnail(event.organization),
+      })),
+      total,
+    ] as const;
   }
 }

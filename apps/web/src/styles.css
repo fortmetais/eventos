@@ -518,8 +518,9 @@ svg {
 .org-avatar img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  border-radius: 50%;
+  object-fit: contain;
+  padding: 6px;
+  border-radius: 0;
 }
 .event-type {
   font-size: 9px;
@@ -1077,6 +1078,22 @@ svg {
 .photo-picker {
   text-align: center;
   padding: 12px 0;
+}
+.photo-camera {
+  max-width: 400px;
+  margin: 0 auto 24px;
+}
+.photo-camera video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 18px;
+  background: #101828;
+  transform: scaleX(-1);
+}
+.photo-camera .photo-options {
+  flex-wrap: wrap;
 }
 .photo-preview {
   position: relative;
@@ -2234,5 +2251,128 @@ td strong {
   }
   .period-summary {
     flex-direction: column;
+  }
+}
+/* Autorização do responsável e assinatura por toque. */
+.guardian-page {
+  max-width: 850px;
+}
+.guardian-notice {
+  border: 1px solid var(--border, #ddd);
+  border-radius: 12px;
+  padding: 18px;
+  margin: 20px 0;
+}
+.guardian-notice .button {
+  margin: 6px 6px 6px 0;
+}
+.guardian-identity {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.guardian-identity dt {
+  font-weight: 600;
+}
+.guardian-identity dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.signature-pad svg,
+.signature-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 10 / 3;
+  border: 1px solid #8091a0;
+  border-radius: 8px;
+  background: #fff;
+  color: #162638;
+}
+.signature-pad svg {
+  touch-action: none;
+  cursor: crosshair;
+}
+.signature-pad .button {
+  margin: 10px 0;
+}
+.receipt-hash {
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .guardian-identity {
+    grid-template-columns: 1fr;
+  }
+  .signature-pad svg {
+    min-height: 130px;
+  }
+}
+@media print {
+  body:has(.guardian-page) header,
+  body:has(.guardian-page) footer,
+  .guardian-page .no-print {
+    display: none !important;
+  }
+  .guardian-page {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+  .guardian-page .panel {
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+  .guardian-page .terms-text {
+    max-height: none;
+    overflow: visible;
+    white-space: pre-wrap;
+  }
+  .guardian-page .signature-image {
+    break-inside: avoid;
+  }
+}
+.organization-form fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.organization-form h3 { margin-top: 1.5rem; }
+.organization-logo { display: grid; gap: .75rem; margin-bottom: 1.25rem; }
+.organization-logo img { width: 180px; height: 140px; object-fit: contain; border: 1px solid var(--border); border-radius: 12px; background: #fff; padding: 10px; }
+.organization-logo input[type="file"] { max-width: 100%; }
+.organization-logo small { color: var(--muted); }
+
+.organization-functions-form fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+@media (max-width: 600px) {
+  .organization-functions-table,
+  .organization-functions-table tbody,
+  .organization-functions-table tr,
+  .organization-functions-table td {
+    display: block;
+    width: 100%;
+  }
+  .organization-functions-table thead {
+    display: none;
+  }
+  .organization-functions-table tr {
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .organization-functions-table tr:last-child {
+    border-bottom: 0;
+  }
+  .organization-functions-table td {
+    padding: 6px 0;
+    border: 0;
+    overflow-wrap: anywhere;
+  }
+  .organization-functions-table td::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+    margin-bottom: 4px;
   }
 }

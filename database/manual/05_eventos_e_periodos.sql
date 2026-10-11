@@ -33,6 +33,7 @@ CREATE TABLE eventos.eventos (
     url_arte TEXT,
     bucket_arte TEXT,
     chave_arte TEXT,
+    chave_miniatura_arte TEXT,
     local TEXT NOT NULL,
     cidade TEXT NOT NULL,
     inicio_em DATE NOT NULL,

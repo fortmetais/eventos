@@ -44,6 +44,31 @@ function view() {
     </MemoryRouter>,
   );
 }
+const publishedEvent = {
+  id: "event-a",
+  organizationId: "org-a",
+  name: "FAC publicado",
+  type: { name: "FAC" },
+  description: "Acampamento comunitário publicado.",
+  location: "Chácara FAC",
+  city: "Toledo",
+  startsAt: "2027-02-05T00:00:00.000Z",
+  endsAt: "2027-02-09T00:00:00.000Z",
+  status: "PUBLISHED",
+  imageUrl: "https://storage.test/arte.webp",
+  hasRegistrations: true,
+  teams: [{ id: "team-a", name: "ANJO", capacity: 10 }],
+  campaigns: [
+    {
+      id: "campaign-a",
+      kind: "VOLUNTEER",
+      opensAt: "2026-09-01T12:00:00.000Z",
+      closesAt: "2027-01-31T21:00:00.000Z",
+      capacity: null,
+      allowWaitlist: false,
+    },
+  ],
+};
 async function begin() {
   view();
   await userEvent.click(
@@ -66,6 +91,140 @@ async function begin() {
     });
 }
 describe("Preparação de eventos", () => {
+  it("evento publicado com inscrições oferece edição e salva apenas dados e arte", async () => {
+    mocks.api.mockResolvedValue([publishedEvent]);
+    view();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Editar evento" }),
+    );
+    expect(screen.getByLabelText(/^Nome do evento/)).toHaveValue(
+      publishedEvent.name,
+    );
+    expect(screen.getByLabelText(/^Data de início/)).toBeDisabled();
+    expect(screen.getByLabelText(/^Data de término/)).toBeDisabled();
+    expect(
+      screen.getByRole("checkbox", { name: "O evento dura mais de um dia" }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByLabelText(/^Abertura — servos/),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Departamento 1/)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^Nome do evento/), {
+      target: { value: "FAC 2027 atualizado" },
+    });
+    const file = new File(["imagem"], "arte.png", { type: "image/png" });
+    await userEvent.upload(screen.getByLabelText(/^Substituir a arte/), file);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Salvar evento" }),
+    );
+    await screen.findByText(
+      "Dados do evento atualizados. Inscrições e fichas foram preservadas.",
+    );
+    const call = mocks.api.mock.calls.find(
+      ([, options]) => options?.method === "PUT",
+    )!;
+    expect(call[0]).toBe("/organizations/org-a/event-setups/event-a/details");
+    expect(call[1].body.get("artwork")).toBe(file);
+    const data = JSON.parse(call[1].body.get("data"));
+    expect(Object.keys(data)).toEqual(["event"]);
+    expect(data.event).toMatchObject({
+      name: "FAC 2027 atualizado",
+      startsAt: "2027-02-05",
+      endsAt: "2027-02-09",
+    });
+  });
+  it("publicado sem inscrições permite corrigir as datas; secretaria não recebe o botão", async () => {
+    mocks.api.mockResolvedValue([
+      { ...publishedEvent, hasRegistrations: false },
+    ]);
+    view();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Editar evento" }),
+    );
+    expect(screen.getByLabelText(/^Data de início/)).toBeEnabled();
+    expect(screen.getByLabelText(/^Data de término/)).toBeEnabled();
+    cleanup();
+    mocks.role = "SECRETARY";
+    view();
+    await screen.findByText(publishedEvent.name);
+    expect(
+      screen.queryByRole("button", { name: "Editar evento" }),
+    ).not.toBeInTheDocument();
+  });
+  it("falha ao editar publicado preserva dados e arte; envio em andamento bloqueia troca de evento", async () => {
+    let fail: (error: Error) => void = () => {};
+    mocks.api.mockImplementation(async (_path, options) => {
+      if (options?.method === "PUT")
+        return new Promise((_resolve, reject) => {
+          fail = reject;
+        });
+      return [publishedEvent];
+    });
+    view();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Editar evento" }),
+    );
+    fireEvent.change(screen.getByLabelText(/^Local do evento/), {
+      target: { value: "Novo local de teste" },
+    });
+    await userEvent.upload(
+      screen.getByLabelText(/^Substituir a arte/),
+      new File(["imagem"], "arte.png", { type: "image/png" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Salvar evento" }),
+    );
+    expect(screen.getByRole("button", { name: "Novo evento" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Editar evento" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Cancelar edição" }),
+    ).toBeDisabled();
+    fail(new Error("Falha ao salvar o evento."));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Falha ao salvar o evento.",
+    );
+    expect(screen.getByLabelText(/^Local do evento/)).toHaveValue(
+      "Novo local de teste",
+    );
+    expect(screen.getByAltText("Prévia da arte do evento")).toHaveAttribute(
+      "src",
+      "blob:test-artwork",
+    );
+    expect(screen.getByRole("button", { name: "Salvar evento" })).toBeEnabled();
+  });
+  it("edição de rascunho mantém o formulário completo e a rota de preparação", async () => {
+    mocks.api.mockResolvedValue([
+      { ...publishedEvent, status: "DRAFT", hasRegistrations: false },
+    ]);
+    view();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Editar evento" }),
+    );
+    expect(screen.getByLabelText(/^Departamento 1/)).toHaveValue("ANJO");
+    fireEvent.change(screen.getByLabelText(/^Abertura — campistas/), {
+      target: { value: "2026-09-01T09:00" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Encerramento — campistas/), {
+      target: { value: "2027-01-31T18:00" },
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Salvar evento" }),
+    );
+    await screen.findByText(
+      "Evento salvo em preparação, com departamentos, vagas e períodos de inscrição.",
+    );
+    const call = mocks.api.mock.calls.find(
+      ([, options]) => options?.method === "PUT",
+    )!;
+    expect(call[0]).toBe("/organizations/org-a/event-setups/event-a");
+    const data = JSON.parse(call[1].body.get("data"));
+    expect(data.departments).toEqual([
+      { id: "team-a", name: "ANJO", capacity: 10 },
+    ]);
+    expect(data.campaigns).toHaveLength(2);
+  });
   it("um dia e períodos independentes são enviados juntos no horário de Brasília", async () => {
     await begin();
     await userEvent.click(

@@ -3,6 +3,7 @@ import { departmentSchema } from "../events/departments.validation.js";
 import { dateOnly, type FormConfig } from "../events/events.validation.js";
 import { assert } from "../../core/errors.js";
 import { id } from "../../core/security.js";
+import { requiresGuardian } from "./guardian.validation.js";
 
 const optionalText = z.string().max(500).optional();
 export const draftPayloadSchema = z
@@ -20,6 +21,7 @@ export const draftPayloadSchema = z
     emergencyRelationship: optionalText,
     guardianName: optionalText,
     guardianPhone: optionalText,
+    guardianEmail: optionalText,
     guardianRelationship: optionalText,
     guardianAuthorization: z.boolean().optional(),
     availability: z.string().max(1000).optional(),
@@ -146,16 +148,17 @@ export function validateSubmission(
     );
     assert(data.shirt, 422, "Informe o tamanho da camiseta.");
   }
-  if (ageAt(data.birthDate, eventDate) < 18) {
+  if (requiresGuardian(data.birthDate, eventDate)) {
     assert(
       data.guardianName &&
         data.guardianName.trim().length >= 2 &&
-        data.guardianRelationship &&
-        data.guardianAuthorization,
+        data.guardianRelationship,
       422,
-      "Informe o responsável legal e sua autorização.",
+      "Informe o responsável legal para solicitar a autorização.",
     );
     phone.parse(data.guardianPhone);
+    if (data.guardianEmail)
+      z.string().trim().email().max(254).parse(data.guardianEmail);
   }
   if (kind === "VOLUNTEER")
     assert(

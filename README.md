@@ -11,6 +11,7 @@ Aplicação web em português, com React/TypeScript e API Node.js/Express organi
 - Ficha de intenção para servos baseada no PDF de referência, com experiência, sacramentos, formação, paróquia, camiseta, até três equipes e aceites de preparação e regras; disponível também na instalação gradual.
 - Vitrine com busca por evento/paróquia, cidade, paginação, página do evento e links próprios das campanhas.
 - Inscrição em cinco etapas, rascunho no servidor, foto com enquadramento, saúde condicional, emergência, responsável para menores, termos e protocolo idempotente.
+- Menores recebem um termo do responsável por link pessoal, com preenchimento, assinatura por toque/mouse, e-mail, compartilhamento pelo WhatsApp e comprovante. A confirmação exige assinatura; veja o [guia de autorização](docs/autorizacao-responsavel.md) e ative com o SQL 09.
 - Análise, histórico de decisões, confirmação com controle transacional de vagas, lista de espera, equipes e alocação de servos.
 - Avisos de aceite/recusa por e-mail, mensagem pronta para WhatsApp e link pessoal para confirmação de presença pelo candidato. Consulte o [guia de mensagens e confirmação](docs/avisos-e-presenca.md) para ativar o SQL 07.
 - Área de saúde separada e autorizada por evento, com auditoria das consultas.
@@ -59,6 +60,8 @@ Esse comando verifica as seis tabelas e executa consultas pelos seis modelos Pri
 O `.env` local usa a porta 3086 e a origem `http://localhost:5174`. Com `EVENTS_ENABLED=false`, organizações, membros, convites e perfil básico funcionam sem consultar tabelas futuras. O cadastro gradual de eventos é habilitado separadamente por `EVENT_MANAGEMENT_ENABLED=true` (padrão). Execute `database/manual/05_eventos_e_periodos.sql` no DBeaver para criar `eventos.tipos_evento`, `eventos.eventos` e `eventos.campanhas`, já mapeadas no Prisma. Siga o [roteiro de configuração e teste dos eventos](docs/eventos-etapa-inicial.md). A API reconhece a estrutura sem migrations ou reinício.
 
 Para ativar a ficha de servos após a etapa de eventos, execute `database/manual/06_fichas_servos_e_inscricoes.sql` no DBeaver e prepare as fotos com `npm run storage:setup`. Mantenha `EVENTS_ENABLED=false`; `VOLUNTEER_REGISTRATIONS_ENABLED=true` é o padrão e libera esta etapa quando suas tabelas existirem. Atualize a página para carregar a nova navegação. Siga o [roteiro da ficha e avaliação de servos](docs/ficha-servos.md).
+
+Com `TEMPORARY_SITE=true` e `APPLICATION_TEST_ACCESS=true`, o cartaz continua na raiz, e os fluxos públicos são acessíveis por `/eventos`, `/inscricao/:campaignId`, `/resposta/:noticeId` e `/autorizacao/:authorizationId`. A API pública é liberada com seus controles de período, credencial e token; os painéis preservam as permissões. Veja `deploy/hostinger/ACESSO_TESTES.txt` para pré-requisitos. Essas alterações permanecem locais até solicitação de sincronização com a Hostinger.
 
 O proxy da interface lê apenas a porta da API; credenciais não entram no bundle. Os 19 modelos de negócio já estão mapeados nos esquemas em português. As migrations de adaptação de esquemas servem para instalações completas legadas/testes; não devem ser aplicadas à base parcial criada no DBeaver. `db:check` confere também os modelos de eventos, inscrições e avisos quando essas etapas já foram criadas.
 
@@ -152,7 +155,7 @@ Consulte `docs/desenvolvimento.md` para o guia de continuidade e `docs/api.md` p
 
 - Rascunhos expiram em 14 dias; o navegador guarda somente ID, token e vencimento. Saúde fica no servidor.
 - `npm run drafts:cleanup` remove rascunhos expirados não enviados e seus arquivos. Inscrições enviadas são preservadas. Programe a execução na infraestrutura escolhida.
-- Fotos originais não são persistidas; as versões de identificação são WebP de 500 × 500.
+- Fotos originais não são persistidas; as versões de identificação são WebP de 500 × 500. Processamento, miniaturas e rotinas de limpeza: `docs/imagens-e-armazenamento.md`.
 - Alterações de estado e leituras de saúde têm auditoria. Logs de falhas não incluem corpos, consultas SQL, tokens ou dados pessoais.
 - `/health` verifica o processo; `/readiness` verifica a conexão do banco. Monitoramento externo pode consultar esses caminhos.
 - Em produção, configure `NODE_ENV=production`, `WEB_URL` HTTPS e `HOST=0.0.0.0` quando em container. `TRUST_PROXY=1` somente atrás do proxy único preparado.

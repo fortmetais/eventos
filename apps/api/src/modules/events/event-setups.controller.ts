@@ -40,4 +40,15 @@ export class EventSetupsController {
       ),
     );
   };
+  updateDetails = async (req: Request, res: Response) => {
+    res.json(
+      await this.service.updateDetails(
+        param(req, "organizationId"),
+        account(req).id,
+        param(req, "eventId"),
+        input(req),
+        req.file,
+      ),
+    );
+  };
 }
