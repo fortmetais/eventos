@@ -90,8 +90,8 @@ export class GuardianService {
             (payload.answers as Record<string, unknown>)?.cidade ?? "",
           team:
             kind === "VOLUNTEER" ? "A definir pela organização" : "Campista",
-          familyName: payload.emergencyName,
-          familyPhone: payload.emergencyPhone,
+          familyName: payload.emergencyName ?? "",
+          familyPhone: payload.emergencyPhone ?? "",
           guardianName: payload.guardianName,
           guardianPhone: payload.guardianPhone,
           guardianRelationship: payload.guardianRelationship,
@@ -108,10 +108,18 @@ export class GuardianService {
         health: {
           create: {
             data: json({
-              hasMedication: health.hasMedication ?? false,
-              medication: health.medication ?? "",
-              hasAllergies: health.hasAllergies ?? false,
-              allergies: health.allergies ?? "",
+              ...(health.hasMedication !== undefined
+                ? {
+                    hasMedication: health.hasMedication,
+                    medication: health.medication ?? "",
+                  }
+                : {}),
+              ...(health.hasAllergies !== undefined
+                ? {
+                    hasAllergies: health.hasAllergies,
+                    allergies: health.allergies ?? "",
+                  }
+                : {}),
             }),
           },
         },

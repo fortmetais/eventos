@@ -42,10 +42,10 @@ export interface GuardianRecord {
   signature: Signature | null;
   receiptHash: string | null;
   health: {
-    hasMedication: boolean;
-    medication: string;
-    hasAllergies: boolean;
-    allergies: string;
+    hasMedication?: boolean;
+    medication?: string;
+    hasAllergies?: boolean;
+    allergies?: string;
   };
 }
 export interface GuardianForm {
@@ -59,9 +59,9 @@ export interface GuardianForm {
   participantCpf: string;
   familyName: string;
   familyPhone: string;
-  hasMedication: boolean;
+  hasMedication?: boolean;
   medication: string;
-  hasAllergies: boolean;
+  hasAllergies?: boolean;
   allergies: string;
   participationAccepted: boolean;
   responsibilityAccepted: boolean;

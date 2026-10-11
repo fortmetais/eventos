@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { id } from "../../core/security.js";
+import { validateLayout, syncLegacyFlags } from "@fac/form-layout";
 export const dateOnly = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -107,9 +108,39 @@ export const formSchema = z
     askShirt: z.boolean(),
     questions: z.array(questionSchema).max(30),
     terms: z.string().trim().min(20).max(10000),
+    layout: z
+      .object({
+        version: z.literal(1),
+        kind: z.enum(["VOLUNTEER", "CAMPER"]),
+        steps: z
+          .array(
+            z
+              .object({
+                step: z.enum([
+                  "identification",
+                  "photo",
+                  "about",
+                  "care",
+                  "review",
+                ]),
+                fields: z
+                  .array(
+                    z
+                      .object({ key: z.string().max(80), hidden: z.boolean() })
+                      .strict(),
+                  )
+                  .max(80),
+              })
+              .strict(),
+          )
+          .length(5),
+      })
+      .strict()
+      .optional(),
     volunteer: z
       .object({
         template: z.literal("VOLUNTEER_INTENTION_V1"),
+        description: z.string().trim().max(5000).optional(),
         requirements: z.string().trim().min(10).max(5000),
         training: z.string().trim().min(10).max(5000),
       })
@@ -124,7 +155,12 @@ export const formSchema = z
       path: ["questions"],
       message: "As perguntas precisam de identificadores únicos.",
     },
-  );
+  )
+  .superRefine((value, ctx) => {
+    for (const message of validateLayout(value))
+      ctx.addIssue({ code: "custom", path: ["layout"], message });
+  })
+  .transform((value) => syncLegacyFlags(value));
 export type FormConfig = z.infer<typeof formSchema>;
 export const eventStatusSchema = z
   .object({ status: z.enum(["DRAFT", "PUBLISHED", "CANCELLED", "COMPLETED"]) })

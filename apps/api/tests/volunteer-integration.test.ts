@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import sharp from "sharp";
+import { defaultLayout, fieldCatalog } from "@fac/form-layout";
 import { createApp } from "../src/app.js";
 import { createPreviewApp } from "../src/core/preview-app.js";
 import {
@@ -223,17 +224,31 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
           ),
         )
         .expect(404);
+      const publishedConfig = volunteerTemplate(
+        "FAC",
+        volunteerTeams.map((name) => name.toLocaleUpperCase("pt-BR")),
+      );
+      publishedConfig.volunteer!.description =
+        "  Descrição inicial da ficha de intenção.\nServir à comunidade.  ";
       const result = await request(app)
         .post(path())
         .set(auth())
-        .send(
-          volunteerTemplate(
-            "FAC",
-            volunteerTeams.map((name) => name.toLocaleUpperCase("pt-BR")),
-          ),
-        )
+        .send(publishedConfig)
         .expect(201);
       expect(result.body.form.version).toBe(1);
+      expect(result.body.form.config.volunteer.description).toBe(
+        "Descrição inicial da ficha de intenção.\nServir à comunidade.",
+      );
+      const reopened = await request(app).get(path()).set(auth()).expect(200);
+      expect(reopened.body.form.config.volunteer.description).toBe(
+        result.body.form.config.volunteer.description,
+      );
+      const campaign = await request(app)
+        .get(`/api/v1/public/campaigns/${campaignId}`)
+        .expect(200);
+      expect(campaign.body.form.config.volunteer.description).toBe(
+        result.body.form.config.volunteer.description,
+      );
       expect(
         (await db.event.findUniqueOrThrow({ where: { id: eventId } })).status,
       ).toBe("PUBLISHED");
@@ -270,12 +285,20 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
       );
       config.volunteer!.training =
         "Nova preparação específica para novos candidatos.";
+      config.volunteer!.description = "Descrição atualizada na segunda versão.";
       await request(app).post(path()).set(auth()).send(config).expect(201);
+      const newest = await request(app).get(path()).set(auth()).expect(200);
+      expect(newest.body.form.config.volunteer.description).toBe(
+        config.volunteer!.description,
+      );
       const resumed = await request(app)
         .get(draftPath())
         .set("X-Draft-Token", draft.token)
         .expect(200);
       expect(resumed.body.form.version).toBe(1);
+      expect(resumed.body.form.config.volunteer.description).toBe(
+        "Descrição inicial da ficha de intenção.\nServir à comunidade.",
+      );
       expect(resumed.body.form.config.volunteer.training).not.toBe(
         config.volunteer!.training,
       );
@@ -611,6 +634,92 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
         listing.body.find((e: { id: string }) => e.id === event.id)
           .hasRegistrations,
       ).toBe(false);
+    });
+    it("publica layout novo sem alterar versões antigas e salva/envia sem foto ou campos ocultos", async () => {
+      const old = await db.registration.findUniqueOrThrow({
+        where: { id: registrationId },
+        include: { form: true },
+      });
+      const setup = await request(app).get(path()).set(auth()).expect(200);
+      const config = setup.body.form.config;
+      config.questions.find(
+        (question: { id: string }) => question.id === "equipes_preferencia",
+      ).options = setup.body.departments.map(
+        (team: { name: string }) => team.name,
+      );
+      const catalog = fieldCatalog(config, "VOLUNTEER");
+      config.layout = defaultLayout(config, "VOLUNTEER");
+      for (const group of config.layout.steps)
+        for (const field of group.fields)
+          field.hidden = !catalog.find((item) => item.key === field.key)
+            ?.protectedReason;
+      config.layout.steps[0].fields.reverse();
+      const invalid = structuredClone(config);
+      invalid.layout.steps[0].fields.find(
+        (field: { key: string }) => field.key === "base:name",
+      ).hidden = true;
+      await request(app).post(path()).set(auth()).send(invalid).expect(422);
+      const published = await request(app)
+        .post(path())
+        .set(auth())
+        .send(config);
+      expect(published.body.error ?? published.status).toBe(201);
+      expect(published.body.form.config.askShirt).toBe(false);
+      expect(published.body.form.config.layout.steps[0].fields).toEqual(
+        config.layout.steps[0].fields,
+      );
+      const next = (
+        await request(app)
+          .post(`/api/v1/public/campaigns/${campaignId}/drafts`)
+          .expect(201)
+      ).body;
+      const route = `/api/v1/public/drafts/${next.id}`;
+      await request(app)
+        .put(route)
+        .set("X-Draft-Token", next.token)
+        .send({
+          payload: {
+            ...payload(),
+            name: "Novo servo sem foto",
+            phone: "44977777777",
+            photoAssetId: photoId,
+          },
+          health,
+        })
+        .expect(200);
+      const resumed = await request(app)
+        .get(route)
+        .set("X-Draft-Token", next.token)
+        .expect(200);
+      expect(resumed.body.payload).not.toHaveProperty("photoAssetId");
+      expect(resumed.body.payload).not.toHaveProperty("emergencyName");
+      expect(resumed.body.payload.answers).toEqual({});
+      expect(resumed.body.health).toEqual({});
+      const image = await sharp({
+        create: { width: 100, height: 100, channels: 3, background: "#fff" },
+      })
+        .png()
+        .toBuffer();
+      await request(app)
+        .post(`${route}/photo`)
+        .set("X-Draft-Token", next.token)
+        .attach("photo", image, "foto.png")
+        .expect(422);
+      const sent = await request(app)
+        .post(`${route}/submit`)
+        .set("X-Draft-Token", next.token)
+        .expect(200);
+      const stored = await db.registration.findUniqueOrThrow({
+        where: { id: sent.body.id },
+      });
+      expect(stored.snapshot).not.toHaveProperty("photoAssetId");
+      const oldAfter = await db.registration.findUniqueOrThrow({
+        where: { id: registrationId },
+        include: { form: true },
+      });
+      expect(oldAfter.snapshot).toEqual(old.snapshot);
+      expect(oldAfter.form.config).toEqual(old.form.config);
+      expect(oldAfter.form.config).not.toHaveProperty("layout");
     });
     it("recusa candidatura e impede ações do membro suspenso", async () => {
       const original = await db.registration.findUniqueOrThrow({

@@ -25,13 +25,15 @@ Não execute `db:deploy`, `db:migrate`, `db:push` ou a carga demonstrativa no ba
 
 As tabelas e colunas seguem o padrão em português do banco existente. O Prisma preserva os nomes internos do código com mapeamentos. As respostas enviadas e versões publicadas têm proteção de imutabilidade no PostgreSQL; publicar alterações cria uma nova versão. Rascunhos existentes permanecem na versão em que foram iniciados.
 
+A configuração inclui **Descrição**, antes de **Regras e requisitos para servir**, tanto na primeira publicação quanto na preparação de nova versão. O campo é opcional, aceita até 5.000 caracteres e preserva quebras de linha na prévia, na abertura da ficha pública e na revisão do candidato. O texto fica em `config.volunteer.description` da versão da ficha; não exige coluna nova nem atualização SQL. Fichas antigas sem descrição continuam funcionando, e versões anteriores mantêm seu texto original.
+
 ## Informações aproveitadas do PDF
 
 | Informação do PDF                      | Aplicação                                                           |
 | -------------------------------------- | ------------------------------------------------------------------- |
 | Nome, sexo e celular                   | Obrigatórios                                                        |
 | Idade e nascimento                     | Nascimento obrigatório; idade calculada no início do evento         |
-| Cidade                                 | Obrigatória                                                         |
+| Cidade                                 | Obrigatória; busca de municípios com sugestões no formato Cidade - UF |
 | Já participou/serviu no tipo de evento | Sim/não obrigatório, adaptado ao tipo cadastrado                    |
 | Acampamento e edição já realizados     | Texto obrigatório; pode informar que ainda não participou           |
 | Formação/cursando na área da saúde     | Texto opcional sobre qualificação profissional                      |
@@ -45,12 +47,30 @@ As tabelas e colunas seguem o padrão em português do banco existente. O Prisma
 
 A base comum acrescenta disponibilidade, contato de emergência, informações de saúde, termos e autorização independente de imagem. E-mail é opcional para se candidatar. Para menores de 18 anos no início do evento, exige responsável e autorização.
 
+Na versão local, **Cidade onde mora** apresenta sugestões a partir de duas letras, sem exigir acentos. É possível refinar pelo nome e pela UF, clicar/tocar na opção ou usar as setas e Enter. A resposta selecionada é salva em `payload.answers.cidade`, por exemplo `Loanda - PR`. Rascunhos antigos conservam seu texto; não é necessária atualização SQL. Se a lista não carregar, o campo continua permitindo preenchimento manual e oferece uma nova tentativa.
+
+O catálogo foi obtido da [API de localidades do IBGE](https://servicodados.ibge.gov.br/api/docs/localidades) em 11/10/2026, com 5.571 municípios nas 27 unidades da federação. O arquivo compacto `apps/web/src/data/brazil-cities.json` é carregado somente ao focar o campo e reaproveitado durante a navegação. A pesquisa ocorre no navegador, sem enviar a digitação ao IBGE e sem ocupar tabelas do banco. Para atualizar a lista, execute `node scripts/update-brazil-cities.mjs`; o script valida os dados antes de substituir o arquivo. A publicação segue dependendo de solicitação explícita.
+
 O PDF é uma referência de campos. Suas datas de julho de 2026, prazo de inscrição, taxa de R$ 150, restrição regional, idade acima de 21 anos e programação de encontros não foram transformados em regras universais. Informe os critérios e a preparação do evento na configuração da ficha. Esses textos serão apresentados ao candidato e aceitos explicitamente; idade mínima/região específicas são avaliadas pelo organizador. Cobrança não faz parte desta etapa.
 
 ## Roteiro de teste
 
+### Organização e ocultação de campos
+
+Em **Organizar campos da ficha**, cada etapa apresenta campos básicos, perguntas adicionais e perguntas de saúde. Arraste pela alça, use Espaço/setas/Espaço no teclado ou os botões de mover. Escape cancela; no celular, mantenha a alça pressionada por 250 ms antes de arrastar. Fora da alça, a página continua permitindo rolagem. A movimentação fica limitada à etapa atual.
+
+**Ocultar/Mostrar** conserva a posição do item e remove sua exigência na inscrição. Nome, telefone, nascimento, termos gerais e o bloco do responsável não podem ser ocultados; a indicação explica o motivo. Cada pergunta médica inclui sua descrição condicional. A prévia alterna entre **Pessoa adulta** e **Menor de idade**, respeitando a configuração e o bloco exclusivo de menores. Na ficha pública, etapas sem campos aplicáveis são puladas e o progresso se ajusta.
+
+As alterações entram em vigor somente ao publicar uma nova versão. Rascunhos e inscrições anteriores mantêm a versão original. As regras/aceites ocultos não são apresentados nem registrados como aceitos; textos introdutórios e termos permanecem separados. A configuração também está disponível no editor de campistas, respeitando a liberação existente dessa funcionalidade. Não é necessário SQL adicional: o layout está no JSON da versão.
+
+A sincronização foi solicitada em 11/10/2026. A conferência do Supabase encontrou as 41 colunas previstas presentes; o layout usa o JSON existente e não exige SQL adicional.
+
+Verificação desta entrega: **247 testes da API** com PostgreSQL temporário, **123 testes da interface**, tipos e compilação aprovados. O percurso no navegador validou arraste por mouse, teclado, cancelamento, toque prolongado em tela móvel, rolagem fora da alça, isolamento entre etapas, publicação da segunda versão, envio sem campos ocultos, retomada e etapa obrigatória do responsável. Serviços externos foram simulados; aparelhos e armazenamento reais ficam para homologação.
+
+### Percurso básico
+
 1. **Organizador:** aceite o convite e entre na organização. Em **Preparar eventos**, crie ou escolha uma edição com período de servos, por exemplo da data atual até amanhã para este teste.
-2. No card do evento, abra **Ficha de servos**. Revise **Regras e requisitos**, **Preparação e formações**, **Departamentos para preferência** e **Termos**. As opções vêm do cadastro do evento. Use **Visualizar campos**.
+2. No card do evento, abra **Ficha de servos**. Preencha **Descrição** se desejar apresentar o evento e a proposta de servir. Revise **Regras e requisitos**, **Preparação e formações**, **Departamentos para preferência** e **Termos**. As opções vêm do cadastro do evento. Use **Visualizar campos**.
 3. Clique em **Publicar ficha de servos**. A edição passa de rascunho para publicada; o link aparece. O botão público só permite iniciar durante o período de servos e sem pausa. A campanha de campistas permanece indisponível nesta etapa gradual.
 4. **Candidato:** abra o link em uma janela privada ou no celular, sem login. Preencha as cinco etapas: identificação, foto, informações pessoais/experiência, saúde/emergência e revisão. Escolha até três departamentos, aceite preparação e regras e envie.
 5. Confira o protocolo e a mensagem de que a candidatura depende de análise. A autorização de imagem pode permanecer desmarcada. Uma segunda tentativa de envio do mesmo rascunho devolve a mesma inscrição.
@@ -67,6 +87,8 @@ Dados de saúde exigem autorização explícita por evento na gestão de membros
 - `npm run typecheck` e `npm run build` verificam a aplicação.
 - `npm run test:database` cria bancos PostgreSQL temporários e testa os scripts manuais e migrations completas, envio anônimo, validação, isolamento, decisões e imutabilidade. Não utiliza `eventos_beta`.
 - Com a aplicação local ligada e após `npm run build`, `npm run test:browser:volunteers` percorre publicação, preenchimento no celular, protocolo e aprovação. Auth/API/Storage são simulados apenas nesse navegador; não envia e-mails nem cria inscrições reais.
+
+A inclusão da busca de cidades passou pelos **113 testes da interface**, pelas verificações de tipos e pela compilação. O roteiro automatizado no navegador verificou a busca sem acentos, seleção com setas/Enter, toque em **Loanda - PR** no celular e envio dessa resposta na inscrição; as chamadas de serviços foram simuladas.
 
 Os testes simulam o serviço externo de fotos. O envio real depende do Supabase configurado e do bucket privado preparado.
 

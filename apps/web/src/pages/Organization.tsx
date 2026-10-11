@@ -181,13 +181,47 @@ export function OrganizationLayout() {
 }
 export function OrganizationDashboard() {
   const auth = useAuth();
-  const { organizationId, membership } = useOrganization();
+  const { organizationId, membership, organization } = useOrganization();
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
   return (
     <>
       {!auth.eventsEnabled && auth.eventManagementEnabled ? (
         <EventPreparationDashboard />
       ) : (
         <FullOrganizationDashboard />
+      )}
+      {membership.role === "ORGANIZER" && (
+        <>
+          {editing ? (
+            <OrganizationForm
+              key={organizationId}
+              organization={organization}
+              scope="organization"
+              onBusyChange={setBusy}
+              onClose={() => setEditing(false)}
+              onSaved={() => {
+                setEditing(false);
+                void auth.refresh();
+              }}
+            />
+          ) : (
+            <section className="panel">
+              <h2>Informações da organização</h2>
+              <p>
+                Atualize os dados de cadastro, o endereço e o logotipo da sua
+                comunidade.
+              </p>
+              <button
+                className="button outline"
+                disabled={busy}
+                onClick={() => setEditing(true)}
+              >
+                Editar informações
+              </button>
+            </section>
+          )}
+        </>
       )}
       {membership.role === "ORGANIZER" && (
         <section className="panel">

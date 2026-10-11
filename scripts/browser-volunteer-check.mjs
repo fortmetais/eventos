@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
+import { fieldCatalog } from "@fac/form-layout";
 import {
   volunteerTemplate,
   volunteerTeams,
@@ -264,12 +265,27 @@ async function fixtures(context) {
     if (path === `/api/v1/public/drafts/${draftId}/photo`)
       return json(route, { id: "photo-test", url: photoUrl }, 201);
     if (path === `/api/v1/public/drafts/${draftId}/submit`) {
+      if (form.version > 1) {
+        assert.equal(payload.photoAssetId, undefined);
+        assert.equal(payload.shirt, undefined);
+        assert.equal(payload.emergencyName, undefined);
+        assert.deepEqual(payload.answers ?? {}, {});
+        assert.deepEqual(health, {});
+        assert.equal(payload.termsAccepted, true);
+        submissions++;
+        return json(route, {
+          id: "registration-minimal",
+          protocol: "LAYOUT-TESTE",
+          status: "RECEIVED",
+        });
+      }
       assert.equal(payload.answers.aceite_formacao, true);
       assert.equal(payload.answers.aceite_regras, true);
       assert.equal(payload.termsAccepted, true);
       assert.equal(payload.imageAuthorized ?? false, false);
       assert.equal(payload.answers.equipes_preferencia.length, 3);
       assert.equal(payload.photoAssetId, "photo-test");
+      assert.equal(payload.answers.cidade, "Loanda - PR");
       assert.equal(health.hasAllergies, false);
       submissions++;
       registration = {
@@ -301,6 +317,12 @@ async function fixtures(context) {
     if (path === `${base}/registration-test`) return json(route, registration);
     if (path === `${base}/registration-test/photo`)
       return json(route, { url: photoUrl });
+    if (path === `${base}/registration-test/guardian`)
+      return json(route, {
+        ready: true,
+        needsAuthorization: false,
+        authorization: null,
+      });
     if (path === `${base}/registration-test/status`) {
       const data = request.postDataJSON();
       registration.status = data.status;
@@ -367,10 +389,104 @@ try {
     `${target}/organizacao/${id}/eventos/${eventId}/ficha-servos`,
   );
   await admin
+    .getByRole("heading", { name: "Organizar campos da ficha", exact: true })
+    .waitFor();
+  const identityRows = () =>
+    admin
+      .getByRole("region", { name: "Campos: Identificação", exact: true })
+      .locator("[data-field-key]");
+  const order = () =>
+    identityRows().evaluateAll((rows) =>
+      rows.map((row) => row.dataset.fieldKey),
+    );
+  const originalOrder = await order();
+  const emailHandle = admin.getByRole("button", {
+    name: "Arrastar E-mail (opcional)",
+    exact: true,
+  });
+  await emailHandle.scrollIntoViewIfNeeded();
+  const from = await emailHandle.boundingBox();
+  const destination = await identityRows().nth(1).boundingBox();
+  await admin.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await admin.mouse.down();
+  await admin.mouse.move(
+    destination.x + 20,
+    destination.y + destination.height / 2,
+    { steps: 20 },
+  );
+  await admin.mouse.up();
+  await admin.waitForTimeout(350);
+  const mouseOrder = await order();
+  assert.notDeepEqual(
+    mouseOrder,
+    originalOrder,
+    "Arraste por mouse precisa mudar a ordem.",
+  );
+  await emailHandle.focus();
+  await admin.keyboard.press("Space");
+  await admin.keyboard.press("ArrowDown");
+  await admin.keyboard.press("Space");
+  await admin.waitForTimeout(350);
+  assert.notDeepEqual(
+    await order(),
+    mouseOrder,
+    "Teclado precisa mover a pergunta.",
+  );
+  const beforeCancel = await order();
+  await emailHandle.focus();
+  await admin.keyboard.press("Space");
+  await admin.keyboard.press("ArrowUp");
+  await admin.keyboard.press("Escape");
+  await admin.waitForTimeout(350);
+  assert.deepEqual(
+    await order(),
+    beforeCancel,
+    "Escape deve cancelar a alteração.",
+  );
+  // O mesmo notebook recebe eventos de toque reais, com ativação prolongada.
+  await emailHandle.scrollIntoViewIfNeeded();
+  const touchFrom = await emailHandle.boundingBox();
+  const touchTo = await identityRows().first().boundingBox();
+  const cdp = await organizerContext.newCDPSession(admin);
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: touchFrom.x + 15, y: touchFrom.y + 15 }],
+  });
+  await admin.waitForTimeout(350);
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [{ x: touchTo.x + 15, y: touchTo.y + 25 }],
+  });
+  await admin.waitForTimeout(150);
+  await cdp.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+  await admin.waitForTimeout(350);
+  assert.notDeepEqual(
+    await order(),
+    beforeCancel,
+    "Toque prolongado precisa mover a pergunta.",
+  );
+  await cdp.detach();
+  // Cada etapa tem seu próprio contexto de arraste: um alvo de outra etapa não recebe o item.
+  await emailHandle.scrollIntoViewIfNeeded();
+  const crossing = await emailHandle.boundingBox();
+  const photoHandle = await admin
+    .getByRole("button", { name: "Arrastar Foto", exact: true })
+    .boundingBox();
+  await admin.mouse.move(crossing.x + 15, crossing.y + 15);
+  await admin.mouse.down();
+  await admin.mouse.move(photoHandle.x + 15, photoHandle.y + 15, { steps: 15 });
+  await admin.mouse.up();
+  assert.equal(await identityRows().filter({ has: emailHandle }).count(), 1);
+  await admin
     .getByLabel("Preparação e formações da equipe", { exact: false })
     .fill("Preparação na comunidade, no sábado anterior ao evento.");
   await admin.getByRole("button", { name: "Visualizar campos" }).click();
-  await admin.getByRole("heading", { name: "Campos da ficha" }).waitFor();
+  await admin
+    .getByRole("heading", { name: "Campos da ficha", exact: true })
+    .waitFor();
   await admin
     .getByRole("button", { name: "Publicar ficha de servos", exact: true })
     .click();
@@ -388,6 +504,8 @@ try {
 
   const visitorContext = await browser.newContext({
     viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
   });
   await fixtures(visitorContext);
   visitor = await visitorContext.newPage();
@@ -404,7 +522,34 @@ try {
     .getByLabel("Data de nascimento", { exact: false })
     .fill("1990-07-01");
   await visitor.getByLabel("Sexo", { exact: false }).selectOption("Feminino");
-  await visitor.getByLabel("Cidade onde mora", { exact: false }).fill("Toledo");
+  const cityInput = visitor.getByRole("combobox", { name: "Cidade onde mora" });
+  await cityInput.fill("sao paulo SP");
+  await visitor
+    .getByRole("option", { name: "São Paulo - SP", exact: true })
+    .waitFor();
+  await cityInput.press("ArrowDown");
+  await cityInput.press("Enter");
+  assert.equal(await cityInput.inputValue(), "São Paulo - SP");
+  assert.equal(
+    await visitor
+      .getByRole("heading", { name: "Vamos começar pelo básico", exact: true })
+      .count(),
+    1,
+  );
+  await cityInput.fill("loanda");
+  await visitor
+    .getByRole("option", { name: "Loanda - PR", exact: true })
+    .waitFor();
+  await visitor.screenshot({
+    path: ".local/screenshots/servos-cidade-busca.png",
+    fullPage: true,
+  });
+  await visitor.getByRole("option", { name: "Loanda - PR", exact: true }).tap();
+  assert.equal(await cityInput.inputValue(), "Loanda - PR");
+  await visitor.screenshot({
+    path: ".local/screenshots/servos-cidade-selecionada.png",
+    fullPage: true,
+  });
   assert.equal(
     await visitor.getByLabel("Idade no início do evento").inputValue(),
     "36 anos",
@@ -467,7 +612,7 @@ try {
     .getByLabel("Nome do contato", { exact: false })
     .fill("Contato de emergência");
   await visitor
-    .getByLabel("Telefone com DDD", { exact: false })
+    .getByLabel("Telefone do contato de emergência com DDD", { exact: false })
     .fill("44988888888");
   await visitor
     .getByLabel("Parentesco / relação", { exact: false })
@@ -620,9 +765,202 @@ try {
     path: ".local/screenshots/servos-recusa-celular.png",
     fullPage: true,
   });
+  const oldVersion = structuredClone(form);
+  await admin.goto(
+    `${target}/organizacao/${id}/eventos/${eventId}/ficha-servos`,
+  );
+  await admin
+    .getByRole("heading", { name: "Organizar campos da ficha", exact: true })
+    .waitFor();
+  for (const field of fieldCatalog(form.config, "VOLUNTEER")) {
+    if (field.protectedReason) continue;
+    const button = admin.getByRole("button", {
+      name: `Ocultar ${field.label}`,
+      exact: true,
+    });
+    if (await button.count()) await button.click();
+  }
+  await admin
+    .getByRole("button", { name: "Publicar nova versão", exact: true })
+    .click();
+  await admin
+    .getByText("Ficha publicada — versão 2.", { exact: false })
+    .waitFor();
+  const mobileAdminContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  await mobileAdminContext.addInitScript((value) => {
+    if (["localhost", "127.0.0.1"].includes(location.hostname))
+      localStorage.setItem("sb-auth-auth-token", JSON.stringify(value));
+  }, session);
+  await fixtures(mobileAdminContext);
+  const mobileAdmin = await mobileAdminContext.newPage();
+  await mobileAdmin.goto(
+    `${target}/organizacao/${id}/eventos/${eventId}/ficha-servos`,
+  );
+  const mobileRows = mobileAdmin
+    .getByRole("region", { name: "Campos: Identificação", exact: true })
+    .locator("[data-field-key]");
+  await mobileRows.first().waitFor();
+  assert(
+    await mobileAdmin.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+    "Editor deve caber na tela do celular.",
+  );
+  const mobileHandle = mobileAdmin.getByRole("button", {
+    name: "Arrastar Nome completo",
+    exact: true,
+  });
+  await mobileHandle.scrollIntoViewIfNeeded();
+  const beforeTouch = await mobileRows.evaluateAll((rows) =>
+    rows.map((row) => row.dataset.fieldKey),
+  );
+  const startTouch = await mobileHandle.boundingBox();
+  const destinationIndex = beforeTouch.indexOf("base:name") === 0 ? 1 : 0;
+  const finishTouch = await mobileRows.nth(destinationIndex).boundingBox();
+  const mobileCdp = await mobileAdminContext.newCDPSession(mobileAdmin);
+  await mobileCdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: startTouch.x + 15, y: startTouch.y + 15 }],
+  });
+  await mobileAdmin.waitForTimeout(350);
+  await mobileCdp.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [
+      { x: finishTouch.x + 15, y: finishTouch.y + finishTouch.height / 2 },
+    ],
+  });
+  await mobileAdmin.waitForTimeout(150);
+  await mobileCdp.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+  await mobileAdmin.waitForTimeout(350);
+  assert.notDeepEqual(
+    await mobileRows.evaluateAll((rows) =>
+      rows.map((row) => row.dataset.fieldKey),
+    ),
+    beforeTouch,
+  );
+  const scrollBefore = await mobileAdmin.evaluate(() => scrollY);
+  await mobileCdp.send("Input.dispatchTouchEvent", {
+    type: "touchStart",
+    touchPoints: [{ x: 350, y: 650 }],
+  });
+  await mobileCdp.send("Input.dispatchTouchEvent", {
+    type: "touchMove",
+    touchPoints: [{ x: 350, y: 350 }],
+  });
+  await mobileCdp.send("Input.dispatchTouchEvent", {
+    type: "touchEnd",
+    touchPoints: [],
+  });
+  await mobileAdmin.waitForTimeout(350);
+  assert(
+    (await mobileAdmin.evaluate(() => scrollY)) > scrollBefore,
+    "Fora da alça deve ser possível rolar a página.",
+  );
+  await mobileAdmin.screenshot({
+    path: ".local/screenshots/ficha-editor-celular.png",
+    fullPage: true,
+  });
+  await mobileCdp.detach();
+  await mobileAdminContext.close();
+  assert.equal(oldVersion.version, 1);
+  assert.equal(oldVersion.config.layout.steps[1].fields[0].hidden, false);
+  payload = {};
+  health = {};
+  const minimalContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    isMobile: true,
+    hasTouch: true,
+  });
+  await fixtures(minimalContext);
+  const minimalPage = await minimalContext.newPage();
+  await minimalPage.goto(`${target}/inscricao/${campaignId}`);
+  await minimalPage.getByRole("button", { name: "Começar inscrição" }).click();
+  await minimalPage
+    .getByLabel("Nome completo", { exact: false })
+    .fill("Inscrição sem foto");
+  await minimalPage
+    .getByLabel("Telefone / WhatsApp", { exact: false })
+    .fill("44999999999");
+  await minimalPage
+    .getByLabel("Data de nascimento", { exact: false })
+    .fill("1990-01-01");
+  assert.equal(await minimalPage.locator(".steps li").count(), 2);
+  await minimalPage
+    .getByRole("button", { name: "Continuar", exact: true })
+    .click();
+  await minimalPage
+    .getByRole("checkbox", { name: /Li e aceito os termos/ })
+    .check();
+  await minimalPage
+    .getByRole("button", { name: "Voltar", exact: true })
+    .click();
+  await minimalPage.reload();
+  await minimalPage.getByLabel("Nome completo", { exact: false }).waitFor();
+  assert.equal(
+    await minimalPage
+      .getByLabel("Nome completo", { exact: false })
+      .inputValue(),
+    "Inscrição sem foto",
+  );
+  await minimalPage
+    .getByRole("button", { name: "Continuar", exact: true })
+    .click();
+  await minimalPage
+    .getByRole("checkbox", { name: /Li e aceito os termos/ })
+    .check();
+  await minimalPage
+    .getByRole("button", { name: "Enviar inscrição", exact: true })
+    .click();
+  await minimalPage
+    .getByRole("heading", { name: "Recebemos sua inscrição!" })
+    .waitFor();
+  assert.equal(submissions, 2);
+  await minimalPage.screenshot({
+    path: ".local/screenshots/ficha-layout-sem-foto.png",
+    fullPage: true,
+  });
+  // A etapa do responsável reaparece exclusivamente para menores.
+  await minimalPage.evaluate(() => localStorage.clear());
+  payload = {};
+  health = {};
+  await minimalPage.reload();
+  await minimalPage.getByRole("button", { name: "Começar inscrição" }).click();
+  await minimalPage
+    .getByLabel("Nome completo", { exact: false })
+    .fill("Menor de teste");
+  await minimalPage
+    .getByLabel("Telefone / WhatsApp", { exact: false })
+    .fill("44999999999");
+  await minimalPage
+    .getByLabel("Data de nascimento", { exact: false })
+    .fill("2012-01-01");
+  assert.equal(await minimalPage.locator(".steps li").count(), 3);
+  await minimalPage
+    .getByRole("button", { name: "Continuar", exact: true })
+    .click();
+  await minimalPage
+    .getByRole("textbox", { name: /Nome do responsável/ })
+    .waitFor();
+  await minimalPage
+    .getByRole("button", { name: "Continuar", exact: true })
+    .click();
+  assert.equal(
+    await minimalPage
+      .getByRole("textbox", { name: /Nome do responsável/ })
+      .count(),
+    1,
+  );
+  await minimalContext.close();
   assert.deepEqual(errors, []);
   console.log(
-    "Publicação, ficha no celular, protocolo, WhatsApp pronto, confirmação do candidato e mensagem de recusa validados no navegador. Nenhum registro ou e-mail real criado.",
+    "Editor (mouse, teclado, cancelamento, toque e rolagem), publicação, nova versão, ficha no celular, envio sem campos ocultos, retomada, responsável, avaliação e presença validados com serviços simulados. Nenhum registro ou e-mail real criado.",
   );
 } catch (error) {
   if (visitor)

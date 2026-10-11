@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
+import { Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 import type { Team } from "../lib/types";
 import { Field, Notice } from "./ui";
@@ -18,22 +19,41 @@ export function DepartmentCapacity({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const pending = useRef(false);
+  const path = `/organizations/${organizationId}/events/${team.eventId}/teams/${team.id}`;
   async function save(event: FormEvent) {
     event.preventDefault();
+    if (pending.current) return;
+    pending.current = true;
     setBusy(true);
     setError("");
     try {
-      await api(
-        `/organizations/${organizationId}/events/${team.eventId}/teams/${team.id}`,
-        {
-          method: "PUT",
-          body: { capacity: Number(capacity) },
-        },
-      );
+      await api(path, {
+        method: "PUT",
+        body: { capacity: Number(capacity) },
+      });
       refresh();
     } catch (error) {
       setError((error as Error).message);
     } finally {
+      pending.current = false;
+      setBusy(false);
+    }
+  }
+  async function remove() {
+    if (pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      await api(path, { method: "DELETE" });
+      setConfirmingDelete(false);
+      refresh();
+    } catch (error) {
+      setError((error as Error).message);
+    } finally {
+      pending.current = false;
       setBusy(false);
     }
   }
@@ -58,6 +78,7 @@ export function DepartmentCapacity({
               max={100000}
               step={1}
               value={capacity}
+              disabled={busy}
               onChange={(event) => setCapacity(event.target.value)}
             />
           </Field>
@@ -69,6 +90,49 @@ export function DepartmentCapacity({
             Salvar vagas
           </button>
         </form>
+      )}
+      {editable && (
+        <div>
+          {confirmingDelete ? (
+            <>
+              <p>Excluir {team.name} e suas vagas?</p>
+              <div className="button-row">
+                <button
+                  type="button"
+                  className="text-button danger"
+                  disabled={busy}
+                  onClick={() => void remove()}
+                >
+                  Confirmar exclusão
+                </button>
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() => setConfirmingDelete(false)}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </>
+          ) : (
+            <button
+              type="button"
+              className="text-button danger"
+              disabled={busy || (team.occupied ?? 0) > 0}
+              aria-label={`Excluir departamento ${team.name}`}
+              onClick={() => {
+                setError("");
+                setConfirmingDelete(true);
+              }}
+            >
+              <Trash2 size={17} /> Excluir departamento
+            </button>
+          )}
+          {(team.occupied ?? 0) > 0 && (
+            <small>Há participantes vinculados a este departamento.</small>
+          )}
+        </div>
       )}
       {error && <Notice>{error}</Notice>}
     </div>

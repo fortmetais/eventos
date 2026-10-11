@@ -25,6 +25,7 @@ export function volunteerTemplate(
       "Declaro que as informações prestadas são verdadeiras e autorizo seu uso pela organização para avaliar minha candidatura, identificar participantes e preparar o evento. Estou ciente de que esta ficha expressa minha intenção de servir e não confirma automaticamente minha participação. A aprovação e a equipe de trabalho serão definidas pela organização. O uso de imagem é uma escolha independente.",
     volunteer: {
       template: "VOLUNTEER_INTENTION_V1",
+      description: "",
       requirements:
         "A candidatura será avaliada pela organização. A inscrição não garante vaga ou equipe de preferência.",
       training:

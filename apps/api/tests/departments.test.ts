@@ -197,6 +197,41 @@ const url = process.env.TEST_DEPARTMENT_DATABASE_URL;
         .expect(422);
       expect(await db.event.count()).toBe(count);
     });
+    it("exclui departamento lançado errado antes da publicação e registra auditoria", async () => {
+      const created = (
+        await request(app)
+          .post(setup())
+          .set(auth())
+          .send({
+            ...input(),
+            departments: [{ name: "ERRADO", capacity: 7 }],
+          })
+          .expect(201)
+      ).body;
+      const id = created.teams[0].id;
+      const endpoint = `/api/v1/organizations/${org}/events/${created.id}/teams/${id}`;
+      await request(app)
+        .delete(endpoint)
+        .set(auth())
+        .expect(200, { deleted: true });
+      expect(await db.team.findUnique({ where: { id } })).toBeNull();
+      expect(
+        await db.event.findUnique({ where: { id: created.id } }),
+      ).not.toBeNull();
+      expect(await db.campaign.count({ where: { eventId: created.id } })).toBe(
+        2,
+      );
+      expect(
+        await db.auditLog.findFirst({
+          where: {
+            action: "DEPARTMENT_DELETED",
+            entityId: id,
+            actorId: users.organizer.id,
+          },
+        }),
+      ).not.toBeNull();
+      await request(app).delete(endpoint).set(auth()).expect(404);
+    });
     it("ficha usa somente os departamentos reais; também publica evento com um único departamento", async () => {
       const path = `/api/v1/organizations/${org}/events/${eventId}/volunteer-form`;
       const data = (await request(app).get(path).set(auth()).expect(200)).body;
@@ -378,6 +413,104 @@ const url = process.env.TEST_DEPARTMENT_DATABASE_URL;
       expect(before).toMatchObject({
         answers: { equipes_preferencia: ["MANUTENÇÃO"] },
       });
+    });
+    async function wrongDepartment() {
+      return (
+        await request(app)
+          .post(`/api/v1/organizations/${org}/events/${eventId}/teams`)
+          .set(auth())
+          .send({ name: `ERRADO ${randomUUID()}`, capacity: 5 })
+          .expect(201)
+      ).body;
+    }
+    it("restringe exclusão por organização, perfil, vínculo ativo e evento", async () => {
+      const wrong = await wrongDepartment();
+      await request(app).delete(teamPath(wrong.id)).expect(401);
+      for (const actor of ["secretary", "other"])
+        await request(app)
+          .delete(teamPath(wrong.id))
+          .set(auth(actor))
+          .expect(403);
+      await request(app)
+        .delete(
+          `/api/v1/organizations/${org}/events/${randomUUID()}/teams/${wrong.id}`,
+        )
+        .set(auth())
+        .expect(404);
+      await db.membership.update({
+        where: {
+          organizationId_accountId: {
+            organizationId: org,
+            accountId: users.organizer2.id,
+          },
+        },
+        data: { active: false },
+      });
+      await request(app)
+        .delete(teamPath(wrong.id))
+        .set(auth("organizer2"))
+        .expect(403);
+      await db.membership.update({
+        where: {
+          organizationId_accountId: {
+            organizationId: org,
+            accountId: users.organizer2.id,
+          },
+        },
+        data: { active: true },
+      });
+      expect(
+        await db.team.findUnique({ where: { id: wrong.id } }),
+      ).not.toBeNull();
+      await request(app).delete(teamPath(wrong.id)).set(auth()).expect(200);
+    });
+    it("preserva participantes vinculados e preferências de fichas publicadas", async () => {
+      await request(app).delete(teamPath(teamId)).set(auth()).expect(409);
+      await request(app).delete(teamPath(angelId)).set(auth()).expect(409);
+      const leader = await db.team.findFirstOrThrow({
+        where: { eventId, name: "LÍDER" },
+      });
+      const before = await db.formVersion.findUniqueOrThrow({
+        where: { id: formId },
+      });
+      const result = await request(app)
+        .delete(teamPath(leader.id))
+        .set(auth())
+        .expect(409);
+      expect(result.body.error.code).toBe("DEPARTMENT_PUBLISHED");
+      expect(
+        await db.team.findUnique({ where: { id: leader.id } }),
+      ).not.toBeNull();
+      expect(
+        (await db.formVersion.findUniqueOrThrow({ where: { id: formId } }))
+          .config,
+      ).toEqual(before.config);
+    });
+    it("serializa exclusão e alocação concorrentes sem perder participantes", async () => {
+      const wrong = await wrongDepartment();
+      const id = await candidate();
+      const [deleted, assigned] = await Promise.all([
+        request(app).delete(teamPath(wrong.id)).set(auth()),
+        request(app)
+          .put(`${registrationPath(id)}/team`)
+          .set(auth())
+          .send({ teamId: wrong.id }),
+      ]);
+      const saved = await db.registration.findUniqueOrThrow({ where: { id } });
+      if (deleted.status === 200) {
+        expect(assigned.status).toBe(422);
+        expect(saved.teamId).toBeNull();
+        expect(
+          await db.team.findUnique({ where: { id: wrong.id } }),
+        ).toBeNull();
+      } else {
+        expect(deleted.status).toBe(409);
+        expect(assigned.status).toBe(200);
+        expect(saved.teamId).toBe(wrong.id);
+        expect(
+          await db.team.findUnique({ where: { id: wrong.id } }),
+        ).not.toBeNull();
+      }
     });
   },
 );

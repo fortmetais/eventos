@@ -53,6 +53,8 @@ O botão **INSCRIÇÃO** do cartaz abre o Google Forms informado. Para testar a 
 
 ## Preparação da rodada
 
+**Busca de cidades (somente local):** na identificação da inscrição, digite `loanda` e selecione **Loanda - PR**; teste `sao paulo` sem acento e refine com `SP`. Para municípios de mesmo nome, confira a UF. Teste toque no celular e setas/Enter no computador, sem enviar a ficha ao selecionar. Avance, retorne à identificação e reabra o rascunho para conferir a resposta preservada. Rascunhos antigos com texto livre devem continuar funcionando.
+
 Use endereços de e-mail e números de WhatsApp controlados pela equipe de teste. Identifique organizações, eventos e pessoas fictícias com o prefixo **TESTE**. Não use dados de saúde de pessoas reais na massa fictícia.
 
 Prepare estes acessos:
@@ -126,6 +128,8 @@ Funções por organização também estão disponíveis localmente, em **Minha O
 | O12 | P0 | Vincular membros e enviar convites de teste; mudar o perfil da função; aceitar um convite pendente | Todos os membros vinculados e convites válidos recebem o novo perfil. Suspensos continuam suspensos; autorizações de saúde são limpas e precisam ser concedidas explicitamente por evento |
 | O13 | P0 | Inativar função com membros e convite válido; tentar novo convite/atribuição; aceitar o convite anterior e reativar a função | Novas atribuições são impedidas; membros e convites existentes permanecem válidos. Reativação volta a disponibilizar a função |
 | O14 | P0 | Tentar rebaixar a função do último organizador; repetir com dois organizadores da mesma função e de funções distintas; testar outra organização e Secretaria | Sempre permanece ao menos um organizador ativo. Alterações recusadas não mudam vínculos parcialmente. Outra organização e Secretaria não gerenciam funções |
+| O15 | P0 | Como Organizador ativo, Minha Organização → Visão geral → Informações da organização → Editar informações; editar nome, endereço, CNPJ/CEP e substituir o logotipo; salvar e atualizar a página | Dados e imagem persistem; nome e logotipo na barra lateral são atualizados. CNPJ/CEP aparecem com máscara. Não há controle de ativação/desativação para o organizador |
+| O16 | P0 | Repetir a edição como Secretaria, Saúde, membro suspenso ou Organizador de outra organização; tentar alterar o estado ativo pela API do organizador | Botão indisponível nos demais perfis; API impede a alteração sem permissão. Estado ativo e campos internos de armazenamento não podem ser alterados pelo organizador |
 
 ### Evento, períodos e arte
 
@@ -145,9 +149,9 @@ A proporção recomendada da arte é **9:16 vertical**. A arte é opcional no ca
 
 | Caso | Prioridade | O que fazer | Resultado esperado |
 | --- | --- | --- | --- |
-| F01 | P0 | Ficha de servos; revisar requisitos, preparação e termos; Visualizar campos | Campos básicos da referência, regras e departamentos corretos. Revisar texto próprio do evento, sem assumir as datas e a taxa do PDF de referência |
+| F01 | P0 | Ficha de servos; preencher Descrição antes das regras; revisar requisitos, preparação e termos; Visualizar campos | Descrição aparece na prévia e na ficha pública, com quebras de linha. O campo é opcional. Campos básicos da referência, regras e departamentos corretos. Revisar texto próprio do evento, sem assumir as datas e a taxa do PDF de referência |
 | F02 | P0 | Publicar ficha de servos com departamentos de capacidade definida; repetir em cadastro antigo com capacidade pendente | Publicação válida apresenta versão e link. Capacidade ainda não definida impede publicação; um evento com somente um departamento também funciona |
-| F03 | P1 | Alterar regras e publicar nova versão; comparar inscrições/rascunhos iniciados antes e depois | Novos rascunhos usam a nova versão. Respostas, aceites e versão antigos permanecem preservados |
+| F03 | P1 | Preparar nova versão; conferir que a Descrição publicada veio preenchida; alterar descrição e regras; publicar e comparar inscrições/rascunhos iniciados antes e depois | Novos rascunhos usam a nova versão e a descrição atualizada. Respostas, aceites, descrição e versão antigos permanecem preservados. Fichas antigas sem descrição continuam editáveis |
 | F04 | P0 | Copiar o link; Pausar inscrições de servos; Retomar inscrições de servos; testar abertura e encerramento | No ambiente completo, somente o período aberto e não pausado aceita início/envio. No site atual, o link público permanece bloqueado pelo modo de publicação |
 
 ## Rodada com o percurso público liberado
@@ -225,6 +229,22 @@ Executar somente na versão que inclua o módulo de autorização e sua estrutur
 | --- | --- | --- | --- |
 | R01 | P1 | Interromper a conexão durante salvamento/envio, restaurar e tentar novamente; atualizar página com rascunho existente | Informar falha sem declarar sucesso indevido; retomada preserva o que já foi salvo; reenvio não gera uma segunda inscrição |
 | R02 | P2 | Na infraestrutura de homologação, restaurar uma cópia de backup e conferir evento, protocolo, versão de ficha e foto | Cópia restaurada utilizável, sem alterar a base principal. Limpeza de rascunhos expirados preserva inscrições enviadas |
+
+## Organizar e ocultar campos
+
+| Caso | Prioridade | O que fazer | Resultado esperado |
+| --- | --- | --- | --- |
+| L01 | P0 | Preparar nova versão de servos e campistas; ordenar campos básicos/adicionais com alça e setas | Ordem muda somente dentro da etapa. Identificadores, opções e obrigatoriedade ficam preservados |
+| L02 | P0 | Ocultar e reexibir foto, camiseta, disponibilidade, emergência, saúde e aceites | Item oculto permanece na mesma posição no editor e some da prévia/inscrição. Reexibir restaura posição e regras |
+| L03 | P0 | Tentar ocultar nome, telefone, nascimento, termos e responsável; enviar layout adulterado à API | Controle protegido explica o motivo. API rejeita ocultação, referências desconhecidas/repetidas/ausentes e mudança de etapa |
+| L04 | P0 | Ocultar todos os campos não protegidos; inscrever adulto sem foto/saúde; retomar rascunho | Apenas identificação e revisão. Envio funciona; dados ocultos não são persistidos nem revisados |
+| L05 | P0 | Repetir L04 com menor; preencher e assinar o termo independente | Etapa do responsável reaparece e é obrigatória. Responsável completa emergência/saúde; consulta preserva esses dados |
+| L06 | P0 | Deixar foto, saúde, camiseta, disponibilidade e perguntas obrigatórias visíveis e tentar enviar sem responder | Regras e validações existentes continuam exigidas. Saúde omitida por ocultação aparece como **Não perguntado**, nunca como “Não” |
+| L07 | P0 | Iniciar rascunho e enviar inscrição; publicar versão com ordem/visibilidade diferentes | Novos candidatos usam a nova versão. Rascunho e inscrição anteriores conservam ordem, regras e respostas |
+| L08 | P1 | Arrastar com mouse; teclado Espaço/setas/Espaço; Escape; toque prolongado Android/iPhone; rolar fora da alça | Arraste e cancelamento funcionam; não muda de etapa; rolagem permanece disponível fora da alça |
+| L09 | P1 | Ocultar preferência de equipes e aprovar/alocar candidato | Cadastro de departamentos, capacidades e alocação continuam necessários e seus limites são respeitados |
+
+Automação: `npm run test:database` usa PostgreSQL temporário e valida versões, ocultação, envio sem foto, autorização e concorrência. `npm run test:browser:volunteers` percorre a interface real com serviços simulados: mouse, teclado, cancelamento, toque, isolamento de etapas, nova versão, rascunho retomado, etapas vazias e menor. Também executar `npm run typecheck` e `npm run build`. A sincronização depende de solicitação explícita; testes em aparelhos e integrações reais permanecem necessários na homologação autorizada.
 
 ## Pendências priorizadas
 

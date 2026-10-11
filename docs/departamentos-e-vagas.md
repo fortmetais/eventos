@@ -16,12 +16,14 @@ O índice impede nomes repetidos por evento, ignorando maiúsculas e espaços re
 
 ## Utilização
 
-1. **Organização → Eventos → Novo evento:** informe os dados, períodos e os departamentos, com nome e vagas. Use **Adicionar departamento** para incluir mais linhas. É obrigatório pelo menos um departamento; máximo de 30. Zero vagas bloqueia novas alocações naquele departamento.
+1. **Organização → Eventos → Novo evento:** informe os dados, períodos e os departamentos, com nome e vagas. Use **Adicionar departamento** para incluir mais linhas e **Remover** para apagar uma linha e suas vagas, inclusive a última linha lançada por engano. É obrigatório pelo menos um departamento para salvar o evento; máximo de 30. Zero vagas bloqueia novas alocações naquele departamento.
 2. Salve o evento. Em preparação, a edição dos departamentos preserva seus identificadores. Não se permite excluir um departamento com inscrições nem renomear/remover departamentos de fichas publicadas.
 3. Abra **Ficha de servos**. As preferências são obtidas dos departamentos do evento. O candidato pode escolher até três; a escolha não reserva vaga.
 4. Depois de aprovar uma candidatura, escolha o departamento e clique em **Salvar departamento**. A alocação ocupa uma vaga imediatamente.
 5. Na avaliação, selecione o evento para ver as vagas totais, ocupadas e disponíveis e para ajustar os limites. Diminuir abaixo do número de servos alocados é bloqueado. Ao adicionar outro departamento após publicar a ficha, publique uma nova versão para oferecer a opção aos novos candidatos.
 6. Confirme a participação conforme o fluxo de presença já existente. Um servo aprovado e alocado, ao ser confirmado, continua ocupando a mesma vaga. Recusa, cancelamento ou entrada em lista de espera liberam a alocação. Trocar o departamento libera a vaga anterior somente se houver espaço no destino.
+
+Para excluir um departamento já salvo, abra **Candidaturas de servos → selecione o evento → Departamentos e vagas → Excluir departamento** e confirme. Somente um organizador ativo da própria organização pode excluir. O departamento e suas vagas são removidos juntos; o evento e seus períodos são preservados. A API bloqueia participantes vinculados e preferências de fichas publicadas, incluindo versões anteriores. Um departamento criado depois da publicação, ainda ausente de todas as fichas e sem vínculos, pode ser excluído. Eventos concluídos ou cancelados não aceitam essa exclusão. A operação é auditada como `DEPARTMENT_DELETED` e não exige atualização SQL.
 
 As capacidades dos departamentos são independentes da capacidade de campistas. Quando houver capacidade geral para a campanha de servos, a confirmação também respeita esse limite. Não são enviados avisos nem aceitas candidaturas automaticamente ao cadastrar um departamento.
 
@@ -35,6 +37,8 @@ As capacidades dos departamentos são independentes da capacidade de campistas. 
 6. Troque um servo para ANJO e confira a disponibilidade nos dois departamentos. Confirme e cancele essa participação: a vaga em ANJO deve ser liberada.
 7. Acesse por um organizador de outra paróquia e por uma conta de secretaria: não devem conseguir criar departamentos, modificar vagas nem alocar servos dessa organização.
 8. Confira que mudar a capacidade não altera a preferência registrada nem a versão de fichas anteriores.
+9. Antes de salvar o evento, remova inclusive a última linha incorreta; adicione um departamento correto e confira o total de vagas. Em um evento salvo em preparação, exclua um departamento sem vínculos e confira que desaparece após atualizar a página. Cancele a confirmação de outro departamento: nada deve ser removido.
+10. Tente excluir um departamento com participantes vinculados ou presente em uma ficha publicada: a exclusão deve ser bloqueada, preservando os dados. Repita a exclusão com Secretaria, membro suspenso e organizador de outra organização: não devem ter permissão.
 
 ## Verificação técnica
 

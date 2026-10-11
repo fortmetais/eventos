@@ -5,6 +5,7 @@ import { ClipboardList, Plus } from "lucide-react";
 import { useOrganization } from "./Organization";
 import { useAuth } from "../lib/auth";
 import { useRemote } from "../lib/hooks";
+import { orderedFields, stepIds } from "@fac/form-layout";
 import { api } from "../lib/api";
 import { DecisionNotice } from "../components/DecisionNotice";
 import { GuardianNotice } from "../components/GuardianNotice";
@@ -80,6 +81,8 @@ export function ReviewRegistrations() {
     setNextStatus(" ");
     setPhoto("");
     setTeamId("");
+    if (!list.data?.items.find((item) => item.id === id)?.snapshot.photoAssetId)
+      return;
     try {
       const result = await api<{ url: string }>(
         `/organizations/${organizationId}/registrations/${id}/photo`,
@@ -151,6 +154,15 @@ export function ReviewRegistrations() {
     }
   }
   const registration = detail.data;
+  const answerOrder = registration?.form?.config.layout
+    ? stepIds.flatMap((step) =>
+        orderedFields(
+          registration.form!.config,
+          registration.campaign.kind,
+          step,
+        ).map((field) => field.key),
+      )
+    : null;
   async function manualLink(e: FormEvent) {
     e.preventDefault();
     if (!selected) return;
@@ -443,11 +455,19 @@ export function ReviewRegistrations() {
                           </dd>
                         </>
                       )}
-                    <dt>Emergência</dt>
-                    <dd>
-                      {registration.snapshot.emergencyName} ·{" "}
-                      {registration.snapshot.emergencyPhone}
-                    </dd>
+                    {(registration.snapshot.emergencyName ||
+                      registration.snapshot.emergencyPhone ||
+                      registration.snapshot.emergencyRelationship) && (
+                      <>
+                        <dt>Emergência</dt>
+                        <dd>
+                          {registration.snapshot.emergencyName}{" "}
+                          {registration.snapshot.emergencyPhone &&
+                            `· ${registration.snapshot.emergencyPhone}`}{" "}
+                          {registration.snapshot.emergencyRelationship}
+                        </dd>
+                      </>
+                    )}
                     {registration.snapshot.cpf && (
                       <>
                         <dt>CPF</dt>
@@ -495,8 +515,19 @@ export function ReviewRegistrations() {
                           ? "Respostas da ficha de intenção"
                           : "Respostas adicionais"}
                       </summary>
-                      {Object.entries(registration.snapshot.answers ?? {}).map(
-                        ([key, value]) => (
+                      {Object.entries(registration.snapshot.answers ?? {})
+                        .filter(
+                          ([key]) =>
+                            !answerOrder ||
+                            answerOrder.includes(`question:${key}`),
+                        )
+                        .sort(([a], [b]) =>
+                          answerOrder
+                            ? answerOrder.indexOf(`question:${a}`) -
+                              answerOrder.indexOf(`question:${b}`)
+                            : 0,
+                        )
+                        .map(([key, value]) => (
                           <p key={key}>
                             <strong>
                               {registration.form?.config.questions.find(
@@ -512,8 +543,7 @@ export function ReviewRegistrations() {
                                   : "Não"
                                 : String(value)}
                           </p>
-                        ),
-                      )}
+                        ))}
                     </details>
                   )}
                   {membership.role === "ORGANIZER" &&

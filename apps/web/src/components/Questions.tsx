@@ -1,15 +1,18 @@
 import type { Answer, Question } from "../lib/types";
 import { Field } from "./ui";
+import { CityAutocomplete } from "./CityAutocomplete";
 export function Questions({
   questions,
   answers,
   onChange,
   errors = {},
+  cityAutocomplete = false,
 }: {
   questions: Question[];
   answers: Record<string, Answer>;
   onChange: (id: string, answer: Answer) => void;
   errors?: Record<string, string>;
+  cityAutocomplete?: boolean;
 }) {
   return (
     <>
@@ -20,9 +23,21 @@ export function Questions({
           required={q.required}
           hint={q.hint}
           error={errors[q.id]}
-          group={q.type === "multiple"}
+          group={
+            q.type === "multiple" ||
+            (cityAutocomplete && q.id === "cidade" && q.type === "text")
+          }
         >
-          {q.type === "text" ? (
+          {cityAutocomplete && q.id === "cidade" && q.type === "text" ? (
+            <CityAutocomplete
+              label={q.label}
+              name={`answers.${q.id}`}
+              required={q.required}
+              invalid={Boolean(errors[q.id])}
+              value={String(answers[q.id] ?? "")}
+              onChange={(value) => onChange(q.id, value)}
+            />
+          ) : q.type === "text" ? (
             <textarea
               maxLength={2000}
               required={q.required}

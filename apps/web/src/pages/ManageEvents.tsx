@@ -12,7 +12,9 @@ import type {
 } from "../lib/types";
 import { date, dateTime } from "../lib/types";
 import { Empty, Field, Loading, Notice, PageHeading } from "../components/ui";
-import { Questions } from "../components/Questions";
+import { FormLayoutEditor } from "../components/FormLayoutEditor";
+import { FormLayoutPreview } from "../components/RegistrationFields";
+import { editableLayout, syncLegacyFlags } from "@fac/form-layout";
 import { useAuth } from "../lib/auth";
 import { EventSetups } from "./EventSetups";
 import {
@@ -547,6 +549,10 @@ function FormBuilder({
   const [error, setError] = useState("");
   const [publish, setPublish] = useState(true);
   const latest = campaign.forms?.[0];
+  const configured = syncLegacyFlags({
+    ...values,
+    layout: editableLayout(values, campaign.kind),
+  });
   function begin() {
     setValues(
       latest
@@ -576,7 +582,7 @@ function FormBuilder({
     try {
       const created = await api<{ id: string }>(
         `/organizations/${organizationId}/campaigns/${campaign.id}/forms`,
-        { method: "POST", body: values },
+        { method: "POST", body: configured },
       );
       if (publish)
         await api(
@@ -634,29 +640,9 @@ function FormBuilder({
       {editor && (
         <form onSubmit={save}>
           <p className="muted">
-            Identificação, foto, emergência e responsável legal fazem parte da
-            base. Novas versões preservam as respostas antigas.
+            Organize os campos da inscrição por etapa. Novas versões preservam
+            as respostas antigas.
           </p>
-          <div className="check-options">
-            {(
-              [
-                ["askCpf", "Solicitar CPF (opcional)"],
-                ["askAddress", "Solicitar endereço (opcional)"],
-                ["askShirt", "Perguntar tamanho da camiseta"],
-              ] as const
-            ).map(([key, label]) => (
-              <label className="checkbox" key={key}>
-                <input
-                  type="checkbox"
-                  checked={values[key]}
-                  onChange={(e) =>
-                    setValues((v) => ({ ...v, [key]: e.target.checked }))
-                  }
-                />
-                {label}
-              </label>
-            ))}
-          </div>
           <h4>Perguntas adicionais</h4>
           <p className="muted">
             Use esta seção para perguntas do evento. Informações médicas devem
@@ -718,23 +704,6 @@ function FormBuilder({
               <div className="button-row">
                 <button
                   type="button"
-                  className="text-button"
-                  disabled={i === 0}
-                  onClick={() =>
-                    setValues((v) => {
-                      const questions = [...v.questions];
-                      [questions[i - 1], questions[i]] = [
-                        questions[i],
-                        questions[i - 1],
-                      ];
-                      return { ...v, questions };
-                    })
-                  }
-                >
-                  Mover para cima
-                </button>
-                <button
-                  type="button"
                   className="text-button danger"
                   onClick={() =>
                     setValues((v) => ({
@@ -786,6 +755,12 @@ function FormBuilder({
               }
             />
           </Field>
+          <FormLayoutEditor
+            form={configured}
+            kind={campaign.kind}
+            onChange={setValues}
+            disabled={busy}
+          />
           <label className="checkbox">
             <input
               type="checkbox"
@@ -815,14 +790,7 @@ function FormBuilder({
             </button>
           </div>
           {preview && (
-            <fieldset className="form-preview">
-              <legend>Prévia das perguntas adicionais</legend>
-              <Questions
-                questions={values.questions}
-                answers={{}}
-                onChange={() => {}}
-              />
-            </fieldset>
+            <FormLayoutPreview form={configured} kind={campaign.kind} />
           )}
         </form>
       )}

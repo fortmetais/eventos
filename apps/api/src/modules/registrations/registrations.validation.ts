@@ -4,6 +4,7 @@ import { dateOnly, type FormConfig } from "../events/events.validation.js";
 import { assert } from "../../core/errors.js";
 import { id } from "../../core/security.js";
 import { requiresGuardian } from "./guardian.validation.js";
+import { fieldVisible, sanitizeHidden, healthFields } from "@fac/form-layout";
 
 const optionalText = z.string().max(500).optional();
 export const draftPayloadSchema = z
@@ -80,10 +81,10 @@ export const fullPayloadSchema = draftPayloadSchema.extend({
       z.literal(""),
     ])
     .optional(),
-  photoAssetId: id,
-  emergencyName: requiredText,
-  emergencyPhone: phone,
-  emergencyRelationship: requiredText,
+  photoAssetId: id.optional(),
+  emergencyName: requiredText.optional(),
+  emergencyPhone: phone.optional(),
+  emergencyRelationship: requiredText.optional(),
   termsAccepted: z.literal(true, {
     errorMap: () => ({ message: "Aceite os termos para enviar." }),
   }),
@@ -122,7 +123,24 @@ export function validateSubmission(
   eventDate: Date,
   kind: string,
 ) {
-  const data = fullPayloadSchema.parse(payload);
+  const formKind = kind === "VOLUNTEER" ? "VOLUNTEER" : "CAMPER";
+  const clean = sanitizeHidden(
+    form,
+    formKind,
+    draftPayloadSchema.parse(payload),
+    healthDraftSchema.parse(healthInput),
+  );
+  const data = fullPayloadSchema.parse(clean.payload);
+  const visible = (key: string) => fieldVisible(form, formKind, key);
+  if (visible("base:photoAssetId"))
+    assert(data.photoAssetId, 422, "Adicione uma foto válida.");
+  for (const key of [
+    "emergencyName",
+    "emergencyPhone",
+    "emergencyRelationship",
+  ] as const)
+    if (visible(`base:${key}`))
+      assert(data[key], 422, "Informe o contato de emergência completo.");
   assert(
     ageAt(data.birthDate, eventDate) >= 0 &&
       ageAt(data.birthDate, eventDate) <= 120,
@@ -146,7 +164,8 @@ export function validateSubmission(
       422,
       "Esta ficha é exclusiva para candidaturas de servos.",
     );
-    assert(data.shirt, 422, "Informe o tamanho da camiseta.");
+    if (visible("base:shirt"))
+      assert(data.shirt, 422, "Informe o tamanho da camiseta.");
   }
   if (requiresGuardian(data.birthDate, eventDate)) {
     assert(
@@ -160,20 +179,15 @@ export function validateSubmission(
     if (data.guardianEmail)
       z.string().trim().email().max(254).parse(data.guardianEmail);
   }
-  if (kind === "VOLUNTEER")
+  if (kind === "VOLUNTEER" && visible("base:availability"))
     assert(
       data.availability && data.availability.trim().length >= 3,
       422,
       "Informe sua disponibilidade para servir.",
     );
-  const health = healthDraftSchema.parse(healthInput);
-  for (const [flag, detail] of [
-    ["hasAllergies", "allergies"],
-    ["hasMedication", "medication"],
-    ["hasDiet", "diet"],
-    ["hasCondition", "condition"],
-    ["hasNeeds", "needs"],
-  ] as const) {
+  const health = clean.health;
+  for (const [flag, detail] of healthFields) {
+    if (!visible(`health:${flag}`)) continue;
     assert(
       typeof health[flag] === "boolean",
       422,
@@ -193,6 +207,7 @@ export function validateSubmission(
     "Respostas incompatíveis com esta versão da ficha.",
   );
   for (const question of form.questions) {
+    if (!visible(`question:${question.id}`)) continue;
     const answer = data.answers[question.id];
     const missing =
       answer === undefined ||
@@ -247,7 +262,7 @@ export function validateSubmission(
         `A opção “${question.exclusiveOption}” não pode ser combinada com outras respostas.`,
       );
   }
-  return { payload: data, health };
+  return sanitizeHidden(form, formKind, data, health);
 }
 export const statusSchema = z
   .object({

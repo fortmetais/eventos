@@ -16,6 +16,13 @@ import { BackLink, Field, Loading, Notice } from "../components/ui";
 import { PhotoPicker } from "../components/PhotoPicker";
 import { Questions } from "../components/Questions";
 import type { GuardianSummary } from "../lib/guardian";
+import {
+  orderedFields,
+  fieldVisible,
+  sanitizeHidden,
+  stepIds,
+} from "@fac/form-layout";
+import { RegistrationFields } from "../components/RegistrationFields";
 const steps = [
   "Identificação",
   "Sua foto",
@@ -75,12 +82,18 @@ export function Registration() {
           setPayload({ email: draft.email });
           return;
         }
-        setPayload(draft.payload ?? {});
-        setHealth(draft.health ?? {});
+        const clean = sanitizeHidden(
+          draft.form.config,
+          campaign.data?.kind ?? draft.form.config.layout?.kind ?? "VOLUNTEER",
+          draft.payload ?? {},
+          draft.health ?? {},
+        );
+        setPayload(clean.payload);
+        setHealth(clean.health);
         setSaved("Rascunho retomado");
-        if (draft.payload?.photoAssetId) {
+        if (clean.payload.photoAssetId) {
           const photo = await api<{ url: string }>(
-            `/public/drafts/${stored.id}/photos/${draft.payload.photoAssetId}`,
+            `/public/drafts/${stored.id}/photos/${clean.payload.photoAssetId}`,
             { draftToken: stored.token },
           );
           if (active) setPhotoUrl(photo.url);
@@ -118,7 +131,14 @@ export function Registration() {
   }
   function persist() {
     if (!credential || result) return Promise.resolve();
-    const snapshot = current.current;
+    const snapshot = config
+      ? sanitizeHidden(
+          config,
+          data?.kind ?? "VOLUNTEER",
+          current.current.payload,
+          current.current.health,
+        )
+      : current.current;
     const pending = queue.current
       .catch(() => {})
       .then(async () => {
@@ -149,17 +169,48 @@ export function Registration() {
   }
   const data = campaign.data;
   const config = form?.config;
+  const visible = (key: string) =>
+    !config || fieldVisible(config, data?.kind ?? "VOLUNTEER", key);
+  const questionOrder = config?.layout
+    ? stepIds.flatMap((stage) =>
+        orderedFields(config, data?.kind ?? config.layout!.kind, stage).map(
+          (field) => field.key,
+        ),
+      )
+    : [];
+  const reviewQuestions =
+    config?.questions
+      .filter((q) => visible(`question:${q.id}`))
+      .sort((a, b) =>
+        config.layout
+          ? questionOrder.indexOf(`question:${a.id}`) -
+            questionOrder.indexOf(`question:${b.id}`)
+          : 0,
+      ) ?? [];
+  const reviewHealth = [...healthQuestions]
+    .filter(([flag]) => visible(`health:${flag}`))
+    .sort(([a], [b]) =>
+      config?.layout
+        ? questionOrder.indexOf(`health:${a}`) -
+          questionOrder.indexOf(`health:${b}`)
+        : 0,
+    );
   const identityQuestions = config?.volunteer
-    ? config.questions.filter((q) => ["sexo", "cidade"].includes(q.id))
+    ? config.questions.filter(
+        (q) => ["sexo", "cidade"].includes(q.id) && visible(`question:${q.id}`),
+      )
     : [];
   const agreementQuestions = config?.volunteer
-    ? config.questions.filter((q) =>
-        ["aceite_formacao", "aceite_regras"].includes(q.id),
+    ? config.questions.filter(
+        (q) =>
+          ["aceite_formacao", "aceite_regras"].includes(q.id) &&
+          visible(`question:${q.id}`),
       )
     : [];
   const otherQuestions =
     config?.questions.filter(
       (q) =>
+        visible(`question:${q.id}`) &&
         ![...identityQuestions, ...agreementQuestions].some(
           (item) => item.id === q.id,
         ),
@@ -200,6 +251,19 @@ export function Registration() {
           return age < 18;
         })()
       : false;
+  const activeSteps = config?.layout
+    ? stepIds
+        .map((_id, index) => index)
+        .filter(
+          (index) =>
+            orderedFields(
+              config,
+              data?.kind ?? "VOLUNTEER",
+              stepIds[index],
+              minor,
+            ).length > 0,
+        )
+    : [0, 1, 2, 3, 4];
   function validateStep() {
     const next: Record<string, string> = {};
     const need = (key: keyof Payload, label: string) => {
@@ -215,11 +279,16 @@ export function Registration() {
       if (payload.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.email))
         next.email = "Confira seu e-mail.";
     }
-    if (step === 1 && !payload.photoAssetId)
+    if (step === 1 && visible("base:photoAssetId") && !payload.photoAssetId)
       next.photoAssetId = "Adicione uma foto e clique em “Usar esta foto”.";
-    if (step === 2 && data?.kind === "VOLUNTEER")
+    if (
+      step === 2 &&
+      data?.kind === "VOLUNTEER" &&
+      visible("base:availability")
+    )
       need("availability", "sua disponibilidade");
-    if (step === 2 && config?.volunteer) need("shirt", "o tamanho da camiseta");
+    if (step === 2 && config?.volunteer && visible("base:shirt"))
+      need("shirt", "o tamanho da camiseta");
     if (config)
       for (const q of step === 0
         ? identityQuestions
@@ -251,11 +320,17 @@ export function Registration() {
             "A opção de nenhum sacramento não pode ser combinada com outras.";
       }
     if (step === 3) {
-      need("emergencyName", "o contato de emergência");
-      need("emergencyRelationship", "o parentesco");
-      if ((payload.emergencyPhone?.replace(/\D/g, "").length ?? 0) < 10)
+      if (visible("base:emergencyName"))
+        need("emergencyName", "o contato de emergência");
+      if (visible("base:emergencyRelationship"))
+        need("emergencyRelationship", "o parentesco");
+      if (
+        visible("base:emergencyPhone") &&
+        (payload.emergencyPhone?.replace(/\D/g, "").length ?? 0) < 10
+      )
         next.emergencyPhone = "Informe telefone com DDD.";
       for (const [flag, detail] of healthQuestions) {
+        if (!visible(`health:${flag}`)) continue;
         if (typeof health[flag] !== "boolean")
           next[flag] = "Selecione Sim ou Não.";
         if (health[flag] && !health[detail]?.trim())
@@ -284,7 +359,7 @@ export function Registration() {
     setBusy(true);
     try {
       await persist();
-      setStep((s) => Math.min(s + 1, 4));
+      setStep((s) => activeSteps.find((index) => index > s) ?? 4);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       setError((e as Error).message);
@@ -503,6 +578,14 @@ export function Registration() {
                 Esta é uma ficha de intenção. O envio não garante vaga nem
                 aprovação para servir.
               </Notice>
+              {data.form.config.volunteer.description?.trim() && (
+                <>
+                  <h3>Descrição</h3>
+                  <p className="description">
+                    {data.form.config.volunteer.description}
+                  </p>
+                </>
+              )}
               <h3>Regras para servir</h3>
               <p className="description">
                 {data.form.config.volunteer.requirements}
@@ -564,14 +647,14 @@ export function Registration() {
         <p>{data.event.organization.name}</p>
       </div>
       <ol className="steps">
-        {steps.map((label, i) => (
+        {activeSteps.map((i, position) => (
           <li
             className={i === step ? "current" : i < step ? "done" : ""}
-            key={label}
+            key={steps[i]}
             aria-current={i === step ? "step" : undefined}
           >
-            <span>{i < step ? <Check size={15} /> : i + 1}</span>
-            <small>{label}</small>
+            <span>{i < step ? <Check size={15} /> : position + 1}</span>
+            <small>{steps[i]}</small>
           </li>
         ))}
       </ol>
@@ -581,7 +664,9 @@ export function Registration() {
         noValidate
       >
         <div className="wizard-heading">
-          <span className="eyebrow">ETAPA {step + 1} DE 5</span>
+          <span className="eyebrow">
+            ETAPA {activeSteps.indexOf(step) + 1} DE {activeSteps.length}
+          </span>
           <h2>
             {
               [
@@ -595,7 +680,56 @@ export function Registration() {
           </h2>
         </div>
         {error && <Notice>{error}</Notice>}
-        {step === 0 && (
+        {config.layout && step !== 4 && (
+          <>
+            <RegistrationFields
+              form={config}
+              kind={data.kind}
+              step={stepIds[step]}
+              minor={minor}
+              payload={payload}
+              health={health}
+              errors={errors}
+              teams={data.event.teams}
+              onPayload={(patch) => {
+                setPayload((current) => ({ ...current, ...patch }));
+                setErrors((current) => ({
+                  ...current,
+                  ...Object.fromEntries(
+                    Object.keys(patch).map((key) => [key, ""]),
+                  ),
+                }));
+              }}
+              onHealth={(patch) =>
+                setHealth((current) => ({ ...current, ...patch }))
+              }
+              photo={{
+                endpoint: `/public/drafts/${credential.id}/photo`,
+                draftToken: credential.token,
+                currentUrl: photoUrl,
+                onUploaded: (id, url) => {
+                  update("photoAssetId", id);
+                  setPhotoUrl(url);
+                },
+              }}
+            />
+            {step === 0 && config.volunteer && (
+              <Field label="Idade no início do evento">
+                <input
+                  readOnly
+                  value={age !== null && age >= 0 ? `${age} anos` : ""}
+                />
+              </Field>
+            )}
+            {step === 3 && (
+              <p className="muted">
+                As informações de saúde são acessadas somente pela equipe
+                autorizada para cuidar de você.
+              </p>
+            )}
+          </>
+        )}
+        {step === 0 && !config.layout && (
           <>
             <div className="form-grid">
               {input("name", "Nome completo", "text", true)}
@@ -613,6 +747,7 @@ export function Registration() {
             </div>
             <Questions
               questions={identityQuestions}
+              cityAutocomplete
               answers={payload.answers ?? {}}
               errors={errors}
               onChange={(id, answer) =>
@@ -628,7 +763,7 @@ export function Registration() {
             </p>
           </>
         )}
-        {step === 1 && (
+        {step === 1 && !config.layout && (
           <>
             {errors.photoAssetId && <Notice>{errors.photoAssetId}</Notice>}
             <PhotoPicker
@@ -642,7 +777,7 @@ export function Registration() {
             />
           </>
         )}
-        {step === 2 && (
+        {step === 2 && !config.layout && (
           <>
             {config.askCpf && input("cpf", "CPF (opcional)")}
             {config.askAddress && input("address", "Endereço (opcional)")}
@@ -701,6 +836,7 @@ export function Registration() {
             )}
             <Questions
               questions={otherQuestions}
+              cityAutocomplete
               answers={payload.answers ?? {}}
               errors={errors}
               onChange={(id, answer) =>
@@ -727,7 +863,7 @@ export function Registration() {
               )}
           </>
         )}
-        {step === 3 && (
+        {step === 3 && !config.layout && (
           <>
             <h3>Contato de emergência</h3>
             <div className="form-grid">
@@ -821,7 +957,9 @@ export function Registration() {
                   {payload.phone} ·{" "}
                   {payload.birthDate && date(payload.birthDate)}
                 </p>
-                <p>{payload.email || "E-mail não informado"}</p>
+                {visible("base:email") && (
+                  <p>{payload.email || "E-mail não informado"}</p>
+                )}
               </div>
             </div>
             <dl className="review-list">
@@ -833,10 +971,16 @@ export function Registration() {
                   ? "Campista"
                   : "Candidatura para servir"}
               </dd>
-              <dt>Emergência</dt>
-              <dd>
-                {payload.emergencyName} · {payload.emergencyPhone}
-              </dd>
+              {(visible("base:emergencyName") ||
+                visible("base:emergencyPhone")) && (
+                <>
+                  <dt>Emergência</dt>
+                  <dd>
+                    {payload.emergencyName}{" "}
+                    {payload.emergencyPhone && `· ${payload.emergencyPhone}`}
+                  </dd>
+                </>
+              )}
               {payload.availability && (
                 <>
                   <dt>Disponibilidade</dt>
@@ -844,20 +988,26 @@ export function Registration() {
                 </>
               )}
             </dl>
-            <details>
-              <summary>Conferir respostas de saúde</summary>
-              {healthQuestions.map(([flag, detail, label]) => (
-                <p key={flag}>
-                  <strong>{label}</strong>
-                  <br />
-                  {health[flag] ? health[detail] : "Não"}
-                </p>
-              ))}
-            </details>
-            {config.questions.length > 0 && (
+            {reviewHealth.length > 0 && (
+              <details>
+                <summary>Conferir respostas de saúde</summary>
+                {reviewHealth.map(([flag, detail, label]) => (
+                  <p key={flag}>
+                    <strong>{label}</strong>
+                    <br />
+                    {health[flag] === undefined
+                      ? "Não perguntado"
+                      : health[flag]
+                        ? health[detail]
+                        : "Não"}
+                  </p>
+                ))}
+              </details>
+            )}
+            {reviewQuestions.length > 0 && (
               <details>
                 <summary>Conferir perguntas do evento</summary>
-                {config.questions.map((q) => (
+                {reviewQuestions.map((q) => (
                   <p key={q.id}>
                     <strong>{q.label}</strong>
                     <br />
@@ -874,21 +1024,31 @@ export function Registration() {
             )}
             {config.volunteer && (
               <>
+                {config.volunteer.description?.trim() && (
+                  <>
+                    <h3>Descrição</h3>
+                    <p className="description">
+                      {config.volunteer.description}
+                    </p>
+                  </>
+                )}
                 <h3>Regras para servir</h3>
                 <p className="description">{config.volunteer.requirements}</p>
                 <h3>Preparação da equipe</h3>
                 <p className="description">{config.volunteer.training}</p>
-                <Questions
-                  questions={agreementQuestions}
-                  answers={payload.answers ?? {}}
-                  errors={errors}
-                  onChange={(id, answer) =>
-                    setPayload((p) => ({
-                      ...p,
-                      answers: { ...p.answers, [id]: answer },
-                    }))
-                  }
-                />
+                {!config.layout && (
+                  <Questions
+                    questions={agreementQuestions}
+                    answers={payload.answers ?? {}}
+                    errors={errors}
+                    onChange={(id, answer) =>
+                      setPayload((p) => ({
+                        ...p,
+                        answers: { ...p.answers, [id]: answer },
+                      }))
+                    }
+                  />
+                )}
                 <p>
                   Preferência de equipe não representa alocação definitiva.
                   Aguarde a avaliação da organização.
@@ -896,25 +1056,51 @@ export function Registration() {
               </>
             )}
             <div className="terms-text">{config.terms}</div>
-            <label className="checkbox">
-              <input
-                type="checkbox"
-                checked={payload.termsAccepted ?? false}
-                onChange={(e) => update("termsAccepted", e.target.checked)}
+            {config.layout && (
+              <RegistrationFields
+                form={config}
+                kind={data.kind}
+                step="review"
+                minor={minor}
+                payload={payload}
+                health={health}
+                errors={errors}
+                onPayload={(patch) =>
+                  setPayload((current) => ({ ...current, ...patch }))
+                }
+                onHealth={(patch) =>
+                  setHealth((current) => ({ ...current, ...patch }))
+                }
               />
-              Li e aceito os termos desta inscrição e declaro que as informações
-              são verdadeiras.
-            </label>
-            {errors.termsAccepted && <Notice>{errors.termsAccepted}</Notice>}
-            {!minor && (
-              <label className="checkbox">
-                <input
-                  type="checkbox"
-                  checked={payload.imageAuthorized ?? false}
-                  onChange={(e) => update("imageAuthorized", e.target.checked)}
-                />
-                Autorizo o uso de minha imagem conforme os termos (opcional).
-              </label>
+            )}
+            {!config.layout && (
+              <>
+                <label className="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={payload.termsAccepted ?? false}
+                    onChange={(e) => update("termsAccepted", e.target.checked)}
+                  />
+                  Li e aceito os termos desta inscrição e declaro que as
+                  informações são verdadeiras.
+                </label>
+                {errors.termsAccepted && (
+                  <Notice>{errors.termsAccepted}</Notice>
+                )}
+                {!minor && (
+                  <label className="checkbox">
+                    <input
+                      type="checkbox"
+                      checked={payload.imageAuthorized ?? false}
+                      onChange={(e) =>
+                        update("imageAuthorized", e.target.checked)
+                      }
+                    />
+                    Autorizo o uso de minha imagem conforme os termos
+                    (opcional).
+                  </label>
+                )}
+              </>
             )}
             <p className="safe-note">
               <ShieldCheck size={16} /> Enviar esta ficha não garante uma vaga.
@@ -927,7 +1113,12 @@ export function Registration() {
             type="button"
             className="button outline"
             disabled={busy || step === 0}
-            onClick={() => setStep((s) => s - 1)}
+            onClick={() =>
+              setStep(
+                (s) =>
+                  [...activeSteps].reverse().find((index) => index < s) ?? 0,
+              )
+            }
           >
             Voltar
           </button>

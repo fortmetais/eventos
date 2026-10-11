@@ -62,6 +62,19 @@ const view = () =>
     </MemoryRouter>,
   );
 describe("Preenchimento do termo pelo responsável", () => {
+  it("não transforma saúde omitida na inscrição em uma resposta negativa", async () => {
+    mocks.api.mockResolvedValue({
+      ...record,
+      health: {},
+      snapshot: { ...record.snapshot, familyName: "", familyPhone: "" },
+    });
+    view();
+    await screen.findByText("Pessoa Menor");
+    expect(screen.getByLabelText(/Usa medicamento contínuo/)).toHaveValue("");
+    expect(screen.getByLabelText(/Possui alergia a medicamentos/)).toHaveValue(
+      "",
+    );
+  });
   it("abrir não assina e apresenta campos, termo e desenho com imagem opcional", async () => {
     view();
     expect(await screen.findByText("Pessoa Menor")).toBeVisible();

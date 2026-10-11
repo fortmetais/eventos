@@ -11,7 +11,9 @@ import {
   type Team,
 } from "../lib/types";
 import { Field, Loading, Notice, PageHeading } from "../components/ui";
-import { Questions } from "../components/Questions";
+import { FormLayoutEditor } from "../components/FormLayoutEditor";
+import { FormLayoutPreview } from "../components/RegistrationFields";
+import { editableLayout } from "@fac/form-layout";
 
 interface Setup {
   departmentsReady: boolean;
@@ -79,6 +81,13 @@ function Editor({
   const initial = data.form?.config.volunteer
     ? data.form.config
     : data.template;
+  const [fieldsConfig, setFieldsConfig] = useState<FormConfig>(() => ({
+    ...initial,
+    layout: editableLayout(initial, "VOLUNTEER"),
+  }));
+  const [description, setDescription] = useState(
+    initial.volunteer!.description ?? "",
+  );
   const [requirements, setRequirements] = useState(
     initial.volunteer!.requirements,
   );
@@ -88,10 +97,15 @@ function Editor({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const config: FormConfig = {
-    ...initial,
+    ...fieldsConfig,
     terms,
-    volunteer: { template: "VOLUNTEER_INTENTION_V1", requirements, training },
-    questions: initial.questions.map((q) =>
+    volunteer: {
+      template: "VOLUNTEER_INTENTION_V1",
+      description,
+      requirements,
+      training,
+    },
+    questions: fieldsConfig.questions.map((q) =>
       q.id === "equipes_preferencia"
         ? {
             ...q,
@@ -221,6 +235,18 @@ function Editor({
         </p>
         {error && <Notice>{error}</Notice>}
         <Field
+          label="Descrição"
+          hint="Apresente o evento e a proposta de servir à equipe."
+        >
+          <textarea
+            id="volunteer-description"
+            name="description"
+            maxLength={5000}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </Field>
+        <Field
           label="Regras e requisitos para servir"
           required
           hint="Informe os critérios deste evento, como idade mínima, região atendida e condições de participação."
@@ -294,6 +320,12 @@ function Editor({
           permitido dentro do período de servos. Fichas já preenchidas manterão
           sua versão original.
         </Notice>
+        <FormLayoutEditor
+          form={config}
+          kind="VOLUNTEER"
+          onChange={setFieldsConfig}
+          disabled={busy}
+        />
         <div className="button-row">
           <button
             className="button primary"
@@ -322,18 +354,17 @@ function Editor({
       {preview && (
         <section className="panel">
           <h2>Campos da ficha</h2>
-          <p>
-            Identificação, nascimento e idade calculada, celular, e-mail
-            opcional, foto, camiseta, disponibilidade, saúde, emergência e os
-            campos abaixo.
-          </p>
-          <fieldset disabled className="form-preview">
-            <Questions
-              questions={config.questions}
-              answers={{}}
-              onChange={() => {}}
-            />
-          </fieldset>
+          {description.trim() && (
+            <>
+              <h3>Descrição</h3>
+              <p className="description">{description}</p>
+            </>
+          )}
+          <h3>Regras para servir</h3>
+          <p className="description">{requirements}</p>
+          <h3>Preparação da equipe</h3>
+          <p className="description">{training}</p>
+          <FormLayoutPreview form={config} kind="VOLUNTEER" />
         </section>
       )}
     </>

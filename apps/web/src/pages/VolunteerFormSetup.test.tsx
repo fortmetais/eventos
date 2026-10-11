@@ -76,6 +76,13 @@ describe("Publicação da ficha de servos", () => {
   it("falha de publicação preserva regras e preparação informadas", async () => {
     view();
     const field = await screen.findByLabelText(/^Preparação e formações/);
+    const description = screen.getByLabelText(/^Descrição/);
+    expect(description).toHaveValue("");
+    fireEvent.change(description, {
+      target: {
+        value: "Servir com alegria na comunidade.\nUma experiência de fé.",
+      },
+    });
     fireEvent.change(field, {
       target: { value: "Encontro de preparação no sábado anterior." },
     });
@@ -86,6 +93,15 @@ describe("Publicação da ficha de servos", () => {
       "Falha ao publicar",
     );
     expect(field).toHaveValue("Encontro de preparação no sábado anterior.");
+    expect(description).toHaveValue(
+      "Servir com alegria na comunidade.\nUma experiência de fé.",
+    );
+    const published = mocks.api.mock.calls.find(
+      ([, options]) => options?.method === "POST",
+    )!;
+    expect(published[1].body.volunteer.description).toBe(
+      "Servir com alegria na comunidade.\nUma experiência de fé.",
+    );
     expect(
       screen.queryByLabelText("Link da ficha de servos"),
     ).not.toBeInTheDocument();
@@ -112,5 +128,57 @@ describe("Publicação da ficha de servos", () => {
     expect(screen.getByLabelText(/^Regras e requisitos/)).toHaveValue(
       template.volunteer.requirements,
     );
+  });
+  it("retoma a descrição publicada e envia a edição ao preparar nova versão", async () => {
+    const original = mocks.api.getMockImplementation()!;
+    mocks.api.mockImplementation(async (path, options) => {
+      if (options?.method === "POST")
+        return { form: { id: "form-b", version: 2 } };
+      const setup = await original(path, options);
+      return {
+        ...setup,
+        form: {
+          id: "form-a",
+          version: 1,
+          publishedAt: "2027-01-01T12:00:00Z",
+          config: {
+            ...template,
+            volunteer: {
+              ...template.volunteer,
+              description: "Descrição da primeira versão.",
+            },
+          },
+        },
+      };
+    });
+    view();
+    const description = await screen.findByLabelText(/^Descrição/);
+    expect(description).toHaveValue("Descrição da primeira versão.");
+    expect(
+      description.compareDocumentPosition(
+        screen.getByLabelText(/^Regras e requisitos/),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    fireEvent.change(description, {
+      target: { value: "Descrição atualizada para os novos candidatos." },
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Visualizar campos" }),
+    );
+    expect(
+      screen.getByText("Descrição atualizada para os novos candidatos.", {
+        selector: "p",
+      }),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Publicar nova versão" }),
+    );
+    const published = mocks.api.mock.calls.find(
+      ([, options]) => options?.method === "POST",
+    )!;
+    expect(published[1].body.volunteer.description).toBe(
+      "Descrição atualizada para os novos candidatos.",
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

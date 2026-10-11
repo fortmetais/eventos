@@ -3,6 +3,24 @@ import { api, ApiError } from "../lib/api";
 import type { Organization } from "../lib/types";
 import { Field, Notice } from "./ui";
 
+function formatCnpj(value: string) {
+  return value
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 14)
+    .replace(/^(.{2})(.)/, "$1.$2")
+    .replace(/^(.{2})\.(.{3})(.)/, "$1.$2.$3")
+    .replace(/^(.{2})\.(.{3})\.(.{3})(.)/, "$1.$2.$3/$4")
+    .replace(/^(.{2})\.(.{3})\.(.{3})\/(.{4})(.)/, "$1.$2.$3/$4-$5");
+}
+
+function formatPostalCode(value: string) {
+  return value
+    .replace(/\D/g, "")
+    .slice(0, 8)
+    .replace(/^(\d{5})(\d)/, "$1-$2");
+}
+
 const optionalFields = [
   "cnpj",
   "legalName",
@@ -18,11 +36,13 @@ export function OrganizationForm({
   onSaved,
   onClose,
   onBusyChange,
+  scope = "platform",
 }: {
   organization: Organization | null;
   onSaved: () => void;
   onClose: () => void;
   onBusyChange: (busy: boolean) => void;
+  scope?: "platform" | "organization";
 }) {
   const [values, setValues] = useState(() => ({
     name: organization?.name ?? "",
@@ -30,10 +50,10 @@ export function OrganizationForm({
     city: organization?.city ?? "",
     state: organization?.state ?? "PR",
     contact: organization?.contact ?? "",
-    cnpj: organization?.cnpj ?? "",
+    cnpj: formatCnpj(organization?.cnpj ?? ""),
     legalName: organization?.legalName ?? "",
     tradeName: organization?.tradeName ?? "",
-    postalCode: organization?.postalCode ?? "",
+    postalCode: formatPostalCode(organization?.postalCode ?? ""),
     street: organization?.street ?? "",
     number: organization?.number ?? "",
     complement: organization?.complement ?? "",
@@ -76,7 +96,7 @@ export function OrganizationForm({
       ...Object.fromEntries(
         optionalFields.map((key) => [key, values[key].trim() || null]),
       ),
-      ...(organization ? { active } : {}),
+      ...(organization && scope === "platform" ? { active } : {}),
     };
     try {
       let body: unknown = data;
@@ -87,7 +107,7 @@ export function OrganizationForm({
         body = form;
       }
       await api(
-        `/admin/organizations${organization ? `/${organization.id}` : ""}`,
+        `${scope === "platform" ? "/admin/organizations" : "/organizations"}${organization ? `/${organization.id}` : ""}`,
         {
           method: organization ? "PUT" : "POST",
           body,
@@ -158,9 +178,11 @@ export function OrganizationForm({
               id="organization-cnpj"
               name="cnpj"
               maxLength={18}
+              autoCapitalize="characters"
+              spellCheck={false}
               placeholder="00.000.000/0000-00"
               value={values.cnpj}
-              onChange={(e) => change("cnpj", e.target.value.toUpperCase())}
+              onChange={(e) => change("cnpj", formatCnpj(e.target.value))}
             />
           </Field>
           {textField("legalName", "Razão social", 200, false, "organization")}
@@ -177,7 +199,9 @@ export function OrganizationForm({
               maxLength={9}
               placeholder="00000-000"
               value={values.postalCode}
-              onChange={(e) => change("postalCode", e.target.value)}
+              onChange={(e) =>
+                change("postalCode", formatPostalCode(e.target.value))
+              }
             />
           </Field>
           {textField("street", "Rua / avenida", 200, false, "address-line1")}
@@ -254,7 +278,7 @@ export function OrganizationForm({
           )}
         </div>
         {logoError && <Notice>{logoError}</Notice>}
-        {organization && (
+        {organization && scope === "platform" && (
           <label className="checkbox">
             <input
               name="active"

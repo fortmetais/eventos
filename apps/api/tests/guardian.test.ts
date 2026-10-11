@@ -4,6 +4,7 @@ import { PrismaClient } from "@prisma/client";
 import request from "supertest";
 import { createApp } from "../src/app.js";
 import { hashToken, newToken } from "../src/core/security.js";
+import { defaultLayout, fieldCatalog } from "@fac/form-layout";
 import {
   guardianSignSchema,
   requiresGuardian,
@@ -205,12 +206,39 @@ const url = process.env.TEST_DATABASE_URL;
     async function candidate(
       birthDate = "2012-01-01",
       email = "responsavel@example.test",
+      hidden = false,
     ) {
       const token = newToken();
+      let candidateForm = formVersionId;
+      if (hidden) {
+        const config = {
+          askCpf: false,
+          askAddress: false,
+          askShirt: false,
+          questions: [],
+          terms: "Regras da ficha do termo",
+        };
+        const catalog = fieldCatalog(config, "CAMPER");
+        const layout = defaultLayout(config, "CAMPER");
+        for (const group of layout.steps)
+          for (const field of group.fields)
+            field.hidden = !catalog.find((item) => item.key === field.key)
+              ?.protectedReason;
+        candidateForm = (
+          await db.formVersion.create({
+            data: {
+              campaignId,
+              version: 2,
+              publishedAt: new Date(),
+              config: { ...config, layout },
+            },
+          })
+        ).id;
+      }
       const draft = await db.draft.create({
         data: {
           campaignId,
-          formVersionId,
+          formVersionId: candidateForm,
           tokenHash: hashToken(token),
           expiresAt: new Date(Date.now() + 86400000),
           health: { create: { data: health } },
@@ -272,6 +300,27 @@ const url = process.env.TEST_DATABASE_URL;
         .patch(`${base(c.id)}/status`)
         .set(auth)
         .send({ status, reason: "Avaliação do teste" });
+    it("mantém saúde não perguntada e permite ao responsável completar dados omitidos", async () => {
+      const c = await candidate("2012-01-01", "responsavel@example.test", true);
+      const before = await view(c).expect(200);
+      expect(before.body.health).not.toHaveProperty("hasAllergies");
+      expect(before.body.health).not.toHaveProperty("hasMedication");
+      expect(before.body.snapshot.familyName).toBe("");
+      expect(before.body.snapshot.familyPhone).toBe("");
+      await sign(c).expect(200);
+      const after = await db.healthSubmission.findUniqueOrThrow({
+        where: { registrationId: c.id },
+      });
+      expect(after.data).toMatchObject({
+        hasMedication: true,
+        medication: signed.medication,
+        hasAllergies: false,
+      });
+      const registration = await db.registration.findUniqueOrThrow({
+        where: { id: c.id },
+      });
+      expect(registration.snapshot).not.toHaveProperty("emergencyName");
+    });
     it("cria termo pendente, envia ao responsável, permite retomada e ignora autorização marcada pelo menor", async () => {
       const c = await candidate();
       expect(c.guardian.emailStatus).toBe("ENVIADA");

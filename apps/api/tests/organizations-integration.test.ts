@@ -26,6 +26,9 @@ const url = process.env.TEST_DATABASE_URL;
     const users = {
       admin: { id: randomUUID(), email: `${randomUUID()}@org.test` },
       other: { id: randomUUID(), email: `${randomUUID()}@org.test` },
+      organizer: { id: randomUUID(), email: `${randomUUID()}@org.test` },
+      secretary: { id: randomUUID(), email: `${randomUUID()}@org.test` },
+      health: { id: randomUUID(), email: `${randomUUID()}@org.test` },
     };
     const upload = vi.fn(async (key: string, _buffer: Buffer) => ({
       bucket: "artes-eventos",
@@ -116,9 +119,16 @@ const url = process.env.TEST_DATABASE_URL;
         postalCode: "87900000",
         logoBucket: "artes-eventos",
       });
-      expect(created.body.logoThumbnailUrl).toBe(`https://storage.test/${created.body.logoThumbnailKey}`);
+      expect(created.body.logoThumbnailUrl).toBe(
+        `https://storage.test/${created.body.logoThumbnailKey}`,
+      );
       const mini = await sharp(upload.mock.calls[1][1]).metadata();
-      expect(mini).toMatchObject({ width: 160, height: 53, hasAlpha: true, format: "webp" });
+      expect(mini).toMatchObject({
+        width: 160,
+        height: 53,
+        hasAlpha: true,
+        format: "webp",
+      });
       const metadata = await sharp(upload.mock.calls[0][1]).metadata();
       expect(metadata).toMatchObject({
         format: "webp",
@@ -171,11 +181,178 @@ const url = process.env.TEST_DATABASE_URL;
         .expect(200);
       expect(changed.body.logoKey).not.toBe(created.body.logoKey);
       expect(remove).toHaveBeenCalledTimes(2);
-      expect(remove).toHaveBeenCalledWith(created.body.logoBucket, created.body.logoThumbnailKey);
+      expect(remove).toHaveBeenCalledWith(
+        created.body.logoBucket,
+        created.body.logoThumbnailKey,
+      );
       expect(remove).toHaveBeenCalledWith(
         created.body.logoBucket,
         created.body.logoKey,
       );
+    });
+    async function managedOrganization() {
+      const payload = data();
+      const created = await request(app)
+        .post(path)
+        .set(auth())
+        .send(payload)
+        .expect(201);
+      for (const [user, role] of [
+        ["organizer", "ORGANIZER"],
+        ["secretary", "SECRETARY"],
+        ["health", "HEALTH"],
+      ] as const)
+        await db.membership.create({
+          data: {
+            organizationId: created.body.id,
+            accountId: users[user].id,
+            role,
+          },
+        });
+      return {
+        payload,
+        organization: created.body,
+        endpoint: `/api/v1/organizations/${created.body.id}`,
+      };
+    }
+    it("permite ao organizador editar a própria ficha e o logotipo com auditoria", async () => {
+      const { payload, organization, endpoint } = await managedOrganization();
+      const updated = await request(app)
+        .put(endpoint)
+        .set(auth("organizer"))
+        .field(
+          "data",
+          JSON.stringify({
+            ...payload,
+            name: "Comunidade atualizada",
+            street: "Novo endereço",
+          }),
+        )
+        .attach("logo", png, "logo.png")
+        .expect(200);
+      expect(updated.body).toMatchObject({
+        name: "Comunidade atualizada",
+        street: "Novo endereço",
+        active: true,
+        cnpj: "12345678000195",
+        postalCode: "87900000",
+        logoBucket: "artes-eventos",
+      });
+      expect(updated.body.logoThumbnailKey).toBeTruthy();
+      expect(
+        await db.auditLog.findFirst({
+          where: {
+            organizationId: organization.id,
+            actorId: users.organizer.id,
+            action: "ORGANIZATION_UPDATED",
+          },
+        }),
+      ).not.toBeNull();
+      const access = await request(app)
+        .get("/api/v1/me/access")
+        .set(auth("organizer"))
+        .expect(200);
+      expect(
+        access.body.organizations.find(
+          (m: { organizationId: string }) =>
+            m.organizationId === organization.id,
+        ).organization,
+      ).toMatchObject({
+        name: "Comunidade atualizada",
+        street: "Novo endereço",
+        logoKey: updated.body.logoKey,
+      });
+    });
+    it("restringe a edição à organização do vínculo ativo e protege campos administrativos", async () => {
+      const { payload, organization, endpoint } = await managedOrganization();
+      await request(app).put(endpoint).send(payload).expect(401);
+      for (const user of ["other", "secretary", "health"])
+        await request(app)
+          .put(endpoint)
+          .set(auth(user))
+          .field("data", JSON.stringify(payload))
+          .attach("logo", png, "logo.png")
+          .expect(403);
+      const unrelated = await db.organization.create({ data: data() });
+      await request(app)
+        .put(`/api/v1/organizations/${unrelated.id}`)
+        .set(auth("organizer"))
+        .send(payload)
+        .expect(403);
+      await request(app)
+        .put(path + "/" + organization.id)
+        .set(auth("organizer"))
+        .send({ ...payload, active: true })
+        .expect(403);
+      for (const administrative of [
+        { active: false },
+        { logoKey: "outra-imagem" },
+      ])
+        await request(app)
+          .put(endpoint)
+          .set(auth("organizer"))
+          .send({ ...payload, ...administrative })
+          .expect(422);
+      await db.membership.update({
+        where: {
+          organizationId_accountId: {
+            organizationId: organization.id,
+            accountId: users.organizer.id,
+          },
+        },
+        data: { active: false },
+      });
+      await request(app)
+        .put(endpoint)
+        .set(auth("organizer"))
+        .send(payload)
+        .expect(403);
+      await db.organization.update({
+        where: { id: organization.id },
+        data: { active: false },
+      });
+      await request(app)
+        .put(endpoint)
+        .set(auth("organizer"))
+        .send(payload)
+        .expect(404);
+      expect(upload).not.toHaveBeenCalled();
+      expect(
+        await db.organization.findUniqueOrThrow({
+          where: { id: organization.id },
+        }),
+      ).toMatchObject({ name: payload.name, street: payload.street });
+    });
+    it("revalida o vínculo após o upload e descarta imagens se o acesso foi revogado", async () => {
+      const { payload, organization, endpoint } = await managedOrganization();
+      upload.mockImplementationOnce(async (key: string) => {
+        await db.membership.update({
+          where: {
+            organizationId_accountId: {
+              organizationId: organization.id,
+              accountId: users.organizer.id,
+            },
+          },
+          data: { active: false },
+        });
+        return {
+          bucket: "artes-eventos",
+          key,
+          url: `https://storage.test/${key}`,
+        };
+      });
+      await request(app)
+        .put(endpoint)
+        .set(auth("organizer"))
+        .field("data", JSON.stringify({ ...payload, name: "Não deve salvar" }))
+        .attach("logo", png, "logo.png")
+        .expect(403);
+      expect(remove).toHaveBeenCalledTimes(2);
+      expect(
+        await db.organization.findUniqueOrThrow({
+          where: { id: organization.id },
+        }),
+      ).toMatchObject({ name: payload.name, logoKey: null });
     });
     it("não cria cadastro nem envia arquivo quando os dados ou imagem são inválidos", async () => {
       const payload = data();
@@ -272,11 +449,11 @@ const url = process.env.TEST_DATABASE_URL;
       }
       const uploaded = await upload.mock.results[0].value;
       expect(remove).toHaveBeenCalledTimes(2);
-      expect(remove).toHaveBeenCalledWith(uploaded.bucket, (await upload.mock.results[1].value).key);
       expect(remove).toHaveBeenCalledWith(
         uploaded.bucket,
-        uploaded.key,
+        (await upload.mock.results[1].value).key,
       );
+      expect(remove).toHaveBeenCalledWith(uploaded.bucket, uploaded.key);
       expect(
         await db.organization.count({ where: { name: payload.name } }),
       ).toBe(0);

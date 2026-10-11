@@ -58,6 +58,8 @@ function GuardianFormPage({ id }: { id: string }) {
             participantCpf: data.snapshot.participantCpf,
             familyName: data.snapshot.familyName,
             familyPhone: data.snapshot.familyPhone,
+            medication: "",
+            allergies: "",
             ...data.health,
             participationAccepted: false,
             responsibilityAccepted: false,
@@ -168,12 +170,18 @@ function GuardianFormPage({ id }: { id: string }) {
                     record.signedData?.participantCpf || "Não informado",
                   "Contato familiar": record.signedData?.familyName,
                   "Celular do contato": record.signedData?.familyPhone,
-                  Medicamentos: record.health.hasMedication
-                    ? record.health.medication
-                    : "Não",
-                  Alergias: record.health.hasAllergies
-                    ? record.health.allergies
-                    : "Não",
+                  Medicamentos:
+                    record.health.hasMedication === undefined
+                      ? "Não perguntado"
+                      : record.health.hasMedication
+                        ? record.health.medication
+                        : "Não",
+                  Alergias:
+                    record.health.hasAllergies === undefined
+                      ? "Não perguntado"
+                      : record.health.hasAllergies
+                        ? record.health.allergies
+                        : "Não",
                   "Imagem e voz": record.signedData?.imageAuthorized
                     ? "Autorizadas"
                     : "Não autorizadas",
@@ -225,9 +233,23 @@ function GuardianFormPage({ id }: { id: string }) {
                 <div key={flag}>
                   <Field label={label} required>
                     <select
-                      value={form[flag] ? "sim" : "nao"}
-                      onChange={(e) => update(flag, e.target.value === "sim")}
+                      value={
+                        form[flag] === undefined
+                          ? ""
+                          : form[flag]
+                            ? "sim"
+                            : "nao"
+                      }
+                      onChange={(e) =>
+                        update(
+                          flag,
+                          e.target.value === ""
+                            ? undefined
+                            : e.target.value === "sim",
+                        )
+                      }
                     >
+                      <option value="">Selecione</option>
                       <option value="nao">Não</option>
                       <option value="sim">Sim</option>
                     </select>

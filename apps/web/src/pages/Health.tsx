@@ -104,9 +104,9 @@ export function Health() {
                   <div className="health-item" key={flag}>
                     <h3>{label}</h3>
                     <p>
-                      {health.data![flag]
+                      {health.data![flag] === undefined ? "Não perguntado" : health.data![flag]
                         ? health.data![detail]
-                        : "Não informado como necessidade"}
+                        : "Não"}
                     </p>
                   </div>
                 ))}

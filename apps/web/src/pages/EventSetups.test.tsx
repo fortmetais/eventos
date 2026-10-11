@@ -286,6 +286,41 @@ describe("Preparação de eventos", () => {
     expect(screen.queryByLabelText(/^Departamento 2/)).not.toBeInTheDocument();
     expect(screen.getByText("Total de vagas de servos: 5")).toBeInTheDocument();
   });
+  it("remove inclusive a última linha errada e exige novo departamento antes de salvar", async () => {
+    await begin();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Remover departamento 1" }),
+    );
+    expect(screen.queryByLabelText(/^Departamento 1/)).not.toBeInTheDocument();
+    expect(screen.getByText("Total de vagas de servos: 0")).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Salvar evento" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "pelo menos um departamento",
+    );
+    expect(
+      mocks.api.mock.calls.some(([, options]) => options?.method === "POST"),
+    ).toBe(false);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Adicionar departamento" }),
+    );
+    fireEvent.change(screen.getByLabelText(/^Departamento 1/), {
+      target: { value: "ANJO" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Vagas — departamento 1/), {
+      target: { value: "2" },
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Salvar evento" }),
+    );
+    const saved = mocks.api.mock.calls.find(
+      ([, options]) => options?.method === "POST",
+    )!;
+    expect(JSON.parse(saved[1].body.get("data")).departments).toEqual([
+      { name: "ANJO", capacity: 2 },
+    ]);
+  });
   it("intervalo e arte são enviados; uma falha mantém os dados e a prévia", async () => {
     await begin();
     await userEvent.click(

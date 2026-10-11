@@ -73,14 +73,14 @@ function fileInput() {
 describe("Ficha da organização e envio de logotipo", () => {
   it("preenche os dados existentes e salva a edição sem apagar o logotipo", async () => {
     show();
-    expect(field("CNPJ")).toHaveValue(org.cnpj);
+    expect(field("CNPJ")).toHaveValue("12.345.678/0001-95");
     expect(field("Razão social")).toHaveValue(org.legalName);
     expect(field("Nome fantasia")).toHaveValue(org.tradeName);
     expect(field("Rua / avenida")).toHaveValue(org.street);
     expect(field("Número")).toHaveValue(org.number);
     expect(field("Complemento")).toHaveValue(org.complement);
     expect(field("Bairro")).toHaveValue(org.neighborhood);
-    expect(field("CEP")).toHaveValue(org.postalCode);
+    expect(field("CEP")).toHaveValue("87900-000");
     expect(screen.queryByLabelText(/URL HTTPS/)).not.toBeInTheDocument();
     fireEvent.change(field("Rua / avenida"), { target: { value: "Nova rua" } });
     await userEvent.click(
@@ -91,6 +91,8 @@ describe("Ficha da organização e envio de logotipo", () => {
       body: expect.objectContaining({
         street: "Nova rua",
         legalName: org.legalName,
+        cnpj: "12.345.678/0001-95",
+        postalCode: "87900-000",
         active: true,
       }),
     });
@@ -103,14 +105,14 @@ describe("Ficha da organização e envio de logotipo", () => {
       ["Nome", org.name],
       ["Cidade", org.city],
       ["Contato", org.contact!],
-      ["CNPJ", "12.345.678/0001-95"],
+      ["CNPJ", "12345678000195"],
       ["Razão social", org.legalName!],
       ["Nome fantasia", org.tradeName!],
       ["Rua / avenida", org.street!],
       ["Número", org.number!],
       ["Complemento", org.complement!],
       ["Bairro", org.neighborhood!],
-      ["CEP", "87900-000"],
+      ["CEP", "87900000"],
     ])
       fireEvent.change(field(label), { target: { value } });
     const logo = new File(["png"], "logo.png", { type: "image/png" });

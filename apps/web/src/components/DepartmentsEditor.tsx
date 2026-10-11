@@ -22,6 +22,8 @@ function emptyDepartment(): DepartmentRow {
   return { key: crypto.randomUUID(), name: "", capacity: "" };
 }
 export function departmentPayload(rows: DepartmentRow[]) {
+  if (!rows.length)
+    throw new Error("Cadastre pelo menos um departamento e suas vagas.");
   const departments = rows.map(({ id, name, capacity }) => ({
     ...(id ? { id } : {}),
     name: name
@@ -105,7 +107,6 @@ export function DepartmentsEditor({
           <button
             type="button"
             className="text-button department-remove"
-            disabled={rows.length === 1}
             aria-label={`Remover departamento ${index + 1}`}
             onClick={() =>
               onChange(rows.filter((value) => value.key !== row.key))
@@ -115,6 +116,12 @@ export function DepartmentsEditor({
           </button>
         </div>
       ))}
+      {!rows.length && (
+        <p>
+          Nenhum departamento cadastrado. Adicione um departamento para
+          continuar.
+        </p>
+      )}
       <div className="button-row">
         <button
           type="button"

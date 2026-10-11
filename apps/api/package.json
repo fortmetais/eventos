@@ -23,6 +23,7 @@
     "images:cleanup": "tsx scripts/cleanup-profile-photos.ts"
   },
   "dependencies": {
+    "@fac/form-layout": "*",
     "@prisma/client": "6.12.0",
     "@supabase/supabase-js": "^2.57.4",
     "cors": "^2.8.5",

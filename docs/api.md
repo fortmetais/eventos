@@ -14,13 +14,16 @@ Com `TEMPORARY_SITE=true` e `APPLICATION_TEST_ACCESS=true`, o cartaz permanece n
 | GET `/me/access`                                                  | Conta; suas organizações ativas              |
 | GET/POST `/admin/organizations`                                   | Administrador global                         |
 | PUT `/admin/organizations/:organizationId`                        | Administrador global; dados e estado ativo   |
+| PUT `/organizations/:organizationId`                              | Organizador ativo da própria organização; dados e logotipo |
 | GET `/organizations/:organizationId/members`                      | Organizador ou administrador global          |
 | POST `/organizations/:organizationId/invitations`                 | Organizador ou administrador global          |
 | DELETE `/organizations/:organizationId/invitations/:invitationId` | Revogação                                    |
 | PATCH `/organizations/:organizationId/members/:memberId`          | Função, suspensão e eventos de saúde         |
 | POST `/invitations/:token/accept`                                 | Conta com e-mail confirmado correspondente   |
 
-Organização: `name`, `kind` (PARISH/COMMUNITY/ORGANIZATION), `city`, `state` (UF), `contact`. Atualização também exige `active`. Dados complementares opcionais: `cnpj`, `legalName` (razão social), `tradeName` (nome fantasia), `postalCode` (CEP), `street` (logradouro), `number`, `complement` e `neighborhood` (bairro). CNPJ numérico ou alfanumérico é validado pelos dígitos verificadores e salvo sem pontuação; CEP é salvo com oito dígitos. Campos opcionais vazios são salvos como `null`; campos omitidos na edição são preservados.
+Organização: `name`, `kind` (PARISH/COMMUNITY/ORGANIZATION), `city`, `state` (UF), `contact`. A atualização administrativa em `/admin/organizations/:organizationId` também exige `active`. A atualização pelo organizador em `/organizations/:organizationId` rejeita esse campo e preserva o estado ativo. Dados complementares opcionais: `cnpj`, `legalName` (razão social), `tradeName` (nome fantasia), `postalCode` (CEP), `street` (logradouro), `number`, `complement` e `neighborhood` (bairro). CNPJ numérico ou alfanumérico é validado pelos dígitos verificadores e salvo sem pontuação; CEP é salvo com oito dígitos. Campos opcionais vazios são salvos como `null`; campos omitidos na edição são preservados.
+
+Em **Minha Organização → Visão geral → Informações da organização → Editar informações**, organizadores ativos editam a ficha e o logotipo. O vínculo é verificado antes do upload e novamente na transação que salva os dados. Secretaria, Saúde, membros suspensos e organizadores de outra organização não podem editar. Atualizações são registradas na auditoria com a ação `ORGANIZATION_UPDATED`. Após salvar, a interface atualiza os dados da organização no acesso e na barra lateral.
 
 Para cadastrar ou editar com logotipo, envie `multipart/form-data`: `data` contém o JSON acima e `logo` contém um arquivo JPEG, PNG ou WebP estático de até 10 MB. Sem arquivo, JSON continua aceito. A interface usa envio de arquivo; `logoUrl` permanece na resposta e no contrato legado HTTPS. As imagens são convertidas para WebP, com até 800 × 800 pixels, sem corte, mantendo proporção e transparência, no armazenamento público de artes separado das fotos privadas. Cadastro e logotipo são confirmados juntos: falha de envio não grava os novos dados; falha de gravação remove a nova imagem; a substituição só remove a imagem anterior após salvar. Edição sem arquivo mantém o logotipo existente. Bucket/chave internos não podem ser enviados pelo cliente.
 
@@ -82,7 +85,9 @@ O navegador guarda somente a credencial do rascunho. Token expira em 14 dias. De
 - GET `/organizations/:organizationId/registrations?eventId=&campaignId=&status=&page=&pageSize=`.
 - GET `/organizations/:organizationId/registrations/:registrationId` — ficha comum e histórico, sem saúde.
 - PATCH `.../:registrationId/status` — `status` e `reason` obrigatório.
-- POST `/organizations/:organizationId/events/:eventId/teams` — `name`.
+- POST `/organizations/:organizationId/events/:eventId/teams` — `name` e `capacity`; organizador.
+- PUT `/organizations/:organizationId/events/:eventId/teams/:teamId` — `capacity`; organizador, respeitando vagas ocupadas.
+- DELETE `/organizations/:organizationId/events/:eventId/teams/:teamId` — organizador ativo da própria organização; exclui departamento e vagas sem participantes vinculados e sem preferência em fichas publicadas. Bloqueia eventos concluídos/cancelados e registra `DEPARTMENT_DELETED`; retorna `{ deleted: true }`.
 - PUT `.../registrations/:registrationId/team` — `teamId`; somente servo aprovado/confirmado, equipe da mesma edição.
 - GET `.../registrations/:registrationId/photo` — foto com autorização da organização.
 - GET `/organizations/:organizationId/events/:eventId/health` — lista mínima para equipe autorizada.
@@ -92,6 +97,16 @@ O navegador guarda somente a credencial do rascunho. Token expira em 14 dias. De
 Fluxo: RECEIVED → REVIEW → APPROVED → CONFIRMED. REVIEW/APPROVED podem ir para WAITLIST quando habilitada. Recebida/em análise/aprovada/espera podem ser recusadas ou canceladas. Confirmada pode ser cancelada. Recusada e cancelada são finais.
 
 As listagens paginadas retornam `{ items, total, page, pageSize }`. Padrão: 20; máximo: 100. Listagens não exportam saúde. Não há exclusão definitiva de eventos com inscrições.
+
+## Ordem e visibilidade das fichas
+
+Os endpoints existentes de criação e publicação de ficha aceitam `FormConfig.layout` opcional no JSON da versão. Não há endpoint separado de ordenação nem nova tabela/coluna. Estrutura: `{ version: 1, kind: "VOLUNTEER" | "CAMPER", steps: [{ step, fields: [{ key, hidden }] }] }`.
+
+As cinco etapas são `identification`, `photo`, `about`, `care` e `review`. Cada campo consta exatamente uma vez na sua etapa original, inclusive quando oculto. Chaves básicas usam `base:` (por exemplo `base:name` e `base:photoAssetId`); perguntas adicionais usam `question:<id>`; saúde usa `health:<flag>`, incluindo a descrição condicional no mesmo item. O catálogo compartilhado fica em `apps/form-layout`.
+
+A API rejeita campos desconhecidos, repetidos, ausentes, transferências entre etapas, tipo de campanha incompatível e ocultação de nome, telefone, nascimento, termos ou responsável. CPF/endereço/camiseta derivam sua visibilidade do layout; `askCpf`, `askAddress` e `askShirt` são sincronizados ao salvar. A publicação de servos conserva departamentos, capacidades, identificadores e regras originais das perguntas, mesmo ocultas.
+
+Rascunhos e envios usam a versão vinculada originalmente. Nas versões com layout, dados de campos ocultos são descartados antes da persistência e não são exigidos; foto oculta também impede upload nesse rascunho. Saúde omitida permanece ausente (`Não perguntado` na consulta). O consentimento de imagem continua falso se não houve autorização explícita. O termo independente do responsável pode completar emergência, medicamentos e alergias e preserva esses dados na consulta de saúde. Fichas sem layout conservam o percurso anterior.
 
 ## Perfil pessoal
 

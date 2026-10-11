@@ -29,7 +29,9 @@ import {
 } from "../events/departments.repository.js";
 import { departmentCapacitySchema } from "../events/departments.validation.js";
 import type { GuardianService } from "./guardian.service.js";
+import { requireOrganizationManager } from "../organizations/organization-functions.service.js";
 import { requiresGuardian } from "./guardian.validation.js";
+import { sanitizeHidden } from "@fac/form-layout";
 
 export class RegistrationsService {
   constructor(
@@ -102,18 +104,24 @@ export class RegistrationsService {
             : null,
         email: (draft.payload as Record<string, unknown>).email ?? "",
       };
+    const clean = sanitizeHidden(
+      draft.form.config as unknown as FormConfig,
+      draft.campaign.kind,
+      draft.payload as Record<string, unknown>,
+      (draft.health?.data ?? {}) as Record<string, unknown>,
+    );
     return {
       id: draft.id,
       campaignId: draft.campaignId,
-      payload: draft.payload,
-      health: draft.health?.data ?? {},
+      payload: clean.payload,
+      health: clean.health,
       form: draft.form,
       submitted: false,
       expiresAt: draft.expiresAt,
     };
   }
   async saveDraft(draftId: string, token: string, input: unknown) {
-    const data = draftUpdateSchema.parse(input);
+    const parsed = draftUpdateSchema.parse(input);
     return this.repo.db.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT rascunho_id FROM inscricoes.rascunhos WHERE rascunho_id = ${draftId}::uuid FOR UPDATE`;
       const draft = await tx.draft.findFirst({
@@ -122,7 +130,11 @@ export class RegistrationsService {
           tokenHash: hashToken(token),
           expiresAt: { gt: new Date() },
         },
-        include: { registration: true, campaign: { select: { kind: true } } },
+        include: {
+          registration: true,
+          form: true,
+          campaign: { select: { kind: true } },
+        },
       });
       assert(draft, 401, "Credencial inválida ou expirada.");
       assert(
@@ -131,6 +143,12 @@ export class RegistrationsService {
         "Inscrição indisponível.",
       );
       assert(!draft.registration, 409, "Esta inscrição já foi enviada.");
+      const data = sanitizeHidden(
+        draft.form.config as unknown as FormConfig,
+        draft.campaign.kind,
+        parsed.payload,
+        parsed.health,
+      );
       if (data.payload.photoAssetId)
         assert(
           await tx.mediaAsset.findFirst({
@@ -211,15 +229,18 @@ export class RegistrationsService {
           payload.guardianAuthorization = false;
           payload.imageAuthorized = false;
         }
-        const photo = await tx.mediaAsset.findFirst({
-          where: {
-            id: payload.photoAssetId,
-            draftId,
-            organizationId: campaign.event.organizationId,
-            purpose: "REGISTRATION",
-          },
-        });
-        assert(photo, 422, "Adicione uma foto válida.");
+        const photo = payload.photoAssetId
+          ? await tx.mediaAsset.findFirst({
+              where: {
+                id: payload.photoAssetId,
+                draftId,
+                organizationId: campaign.event.organizationId,
+                purpose: "REGISTRATION",
+              },
+            })
+          : null;
+        if (payload.photoAssetId)
+          assert(photo, 422, "Adicione uma foto válida.");
         if (payload.preferredTeamId)
           assert(
             await tx.team.findFirst({
@@ -280,7 +301,7 @@ export class RegistrationsService {
                 version: draft.formVersionId,
                 termsText: (draft.form.config as unknown as FormConfig).terms,
                 accepted: true,
-                imageAuthorized: payload.imageAuthorized,
+                imageAuthorized: payload.imageAuthorized ?? false,
                 guardianAuthorized: false,
               },
             },
@@ -594,6 +615,67 @@ export class RegistrationsService {
       return team;
     });
   }
+  async deleteDepartment(
+    organizationId: string,
+    eventId: string,
+    teamId: string,
+    actorId: string,
+  ) {
+    await new DepartmentsRepository(this.repo.db).requireReady();
+    return this.repo.db.$transaction(async (tx) => {
+      await requireOrganizationManager(tx, organizationId, actorId);
+      await tx.$queryRaw`SELECT evento_id FROM eventos.eventos WHERE evento_id = ${eventId}::uuid AND organizacao_id = ${organizationId}::uuid FOR UPDATE`;
+      const event = await tx.event.findFirst({
+        where: { id: eventId, organizationId },
+      });
+      assert(event, 404, "Evento não encontrado.");
+      assert(
+        ["DRAFT", "PUBLISHED"].includes(event.status),
+        409,
+        "Este evento não aceita exclusão de departamentos.",
+      );
+      await tx.$queryRaw`SELECT equipe_id FROM eventos.equipes WHERE equipe_id = ${teamId}::uuid AND evento_id = ${eventId}::uuid FOR UPDATE`;
+      const team = await tx.team.findFirst({
+        where: { id: teamId, eventId, event: { organizationId } },
+      });
+      assert(team, 404, "Departamento não encontrado.");
+      assert(
+        (await tx.registration.count({ where: { teamId } })) === 0,
+        409,
+        "Um departamento com participantes vinculados não pode ser excluído.",
+        "DEPARTMENT_IN_USE",
+      );
+      const forms = await tx.formVersion.findMany({
+        where: { campaign: { eventId }, publishedAt: { not: null } },
+        select: { config: true },
+      });
+      assert(
+        !forms.some((form) =>
+          (form.config as unknown as FormConfig).questions.some(
+            (question) =>
+              question.id === "equipes_preferencia" &&
+              question.options.some(
+                (option) =>
+                  departmentName(option) === departmentName(team.name),
+              ),
+          ),
+        ),
+        409,
+        "Este departamento está nas preferências de uma ficha publicada e não pode ser excluído.",
+        "DEPARTMENT_PUBLISHED",
+      );
+      await tx.team.delete({ where: { id: teamId } });
+      await tx.auditLog.create({
+        data: {
+          organizationId,
+          actorId,
+          entityId: teamId,
+          action: "DEPARTMENT_DELETED",
+        },
+      });
+      return { deleted: true };
+    });
+  }
   async departmentCapacity(
     organizationId: string,
     eventId: string,
@@ -642,11 +724,15 @@ export class RegistrationsService {
     const departmentsRepo = new DepartmentsRepository(this.repo.db);
     await departmentsRepo.requireReady();
     return this.repo.db.$transaction(async (tx) => {
+      await requireOrganizationManager(tx, organizationId, actorId);
       const candidate = await tx.registration.findFirst({
         where: { id: registrationId, campaign: { event: { organizationId } } },
-        select: { campaignId: true },
+        select: { campaignId: true, campaign: { select: { eventId: true } } },
       });
       assert(candidate, 404, "Inscrição não encontrada.");
+      // A exclusão de departamentos também começa pelo evento. Compartilhar
+      // essa ordem evita disputa entre a chave estrangeira e a inscrição.
+      await tx.$queryRaw`SELECT evento_id FROM eventos.eventos WHERE evento_id = ${candidate.campaign.eventId}::uuid FOR UPDATE`;
       await tx.$queryRaw`SELECT campanha_id FROM eventos.campanhas WHERE campanha_id = ${candidate.campaignId}::uuid FOR UPDATE`;
       await tx.$queryRaw`SELECT inscricao_id FROM inscricoes.inscricoes WHERE inscricao_id = ${registrationId}::uuid FOR UPDATE`;
       const registration = await tx.registration.findFirst({

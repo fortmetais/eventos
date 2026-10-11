@@ -24,6 +24,18 @@ export class OrganizationsController {
     res.json(
       await this.service.updateOrganization(
         param(req, "organizationId"),
+        account(req),
+        input(req),
+        req.file,
+        true,
+      ),
+    );
+  };
+  updateManagedOrganization = async (req: Request, res: Response) => {
+    res.json(
+      await this.service.updateOrganization(
+        param(req, "organizationId"),
+        account(req),
         input(req),
         req.file,
       ),

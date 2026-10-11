@@ -94,6 +94,16 @@ export class RegistrationsController {
       ),
     );
   };
+  deleteDepartment = async (req: Request, res: Response) => {
+    res.json(
+      await this.service.deleteDepartment(
+        param(req, "organizationId"),
+        param(req, "eventId"),
+        param(req, "teamId"),
+        account(req).id,
+      ),
+    );
+  };
   assign = async (req: Request, res: Response) => {
     res.json(
       await this.service.assign(

@@ -127,9 +127,9 @@ export class EventsService {
     const departmentsRepo = new DepartmentsRepository(this.repo.db);
     await departmentsRepo.requireReady();
     assert(
-      config.volunteer && config.askShirt,
+      config.volunteer && (config.layout || config.askShirt),
       422,
-      "Utilize a ficha de intenção para servos com tamanho de camiseta.",
+      "Utilize a ficha de intenção para servos.",
     );
     const required = volunteerTemplate("evento").questions;
     for (const question of required) {
@@ -145,7 +145,7 @@ export class EventsService {
         assert(
           configured.mustBeTrue,
           422,
-          "Os aceites de preparação e regras são obrigatórios.",
+          "Preserve o tipo de aceite das perguntas de preparação e regras.",
         );
       if (question.maxSelections)
         assert(
@@ -378,6 +378,11 @@ export class EventsService {
         where: { id: campaignId, event: { organizationId } },
       });
       assert(campaign, 404, "Campanha não encontrada.");
+      assert(
+        !config.layout || config.layout.kind === campaign.kind,
+        422,
+        "O layout não corresponde ao tipo desta campanha.",
+      );
       const latest = await tx.formVersion.findFirst({
         where: { campaignId },
         orderBy: { version: "desc" },

@@ -220,12 +220,25 @@ export class OrganizationsService {
   }
   async updateOrganization(
     organizationId: string,
+    actor: Account,
     input: unknown,
     file?: Express.Multer.File,
+    allowStatusChange = false,
   ) {
-    const data = organizationSchema
-      .extend({ active: z.boolean() })
-      .parse(input);
+    assert(
+      !allowStatusChange || actor.platformAdmin,
+      403,
+      "Acesso restrito ao administrador da plataforma.",
+    );
+    const data = (
+      allowStatusChange
+        ? organizationSchema.extend({ active: z.boolean() })
+        : organizationSchema
+    ).parse(input);
+    if (!allowStatusChange)
+      await this.repo.db.$transaction((tx) =>
+        requireOrganizationManager(tx, organizationId, actor.id),
+      );
     assert(
       await this.repo.db.organization.findUnique({
         where: { id: organizationId },
@@ -244,16 +257,17 @@ export class OrganizationsService {
     let result;
     try {
       result = await this.repo.db.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT organizacao_id FROM organizacoes.organizacoes WHERE organizacao_id = ${organizationId}::uuid FOR UPDATE`;
-        const organization = await tx.organization.findUnique({
-          where: { id: organizationId },
-        });
+        if (allowStatusChange)
+          await tx.$queryRaw`SELECT organizacao_id FROM organizacoes.organizacoes WHERE organizacao_id = ${organizationId}::uuid FOR UPDATE`;
+        const organization = allowStatusChange
+          ? await tx.organization.findUnique({ where: { id: organizationId } })
+          : await requireOrganizationManager(tx, organizationId, actor.id);
         assert(organization, 404, "Organização não encontrada.");
         const replaced =
           logo ||
           (data.logoUrl !== undefined && data.logoUrl !== organization.logoUrl);
         if (replaced) previous = organization;
-        return tx.organization.update({
+        const updated = await tx.organization.update({
           where: { id: organizationId },
           data: {
             ...data,
@@ -269,6 +283,15 @@ export class OrganizationsService {
                 : {}),
           },
         });
+        await tx.auditLog.create({
+          data: {
+            organizationId,
+            actorId: actor.id,
+            action: "ORGANIZATION_UPDATED",
+            entityId: organizationId,
+          },
+        });
+        return updated;
       });
     } catch (error) {
       if (logo) await this.removeLogo(logo.bucket, logo.key, logo.thumbnailKey);

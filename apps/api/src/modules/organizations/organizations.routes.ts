@@ -50,6 +50,14 @@ export function organizationsRoutes(
     controller.updateOrganization,
   );
   const members = organizationAccess(db, ["ORGANIZER"], true);
+  router.put(
+    "/organizations/:organizationId",
+    auth,
+    members,
+    limit,
+    upload,
+    controller.updateManagedOrganization,
+  );
   router.get(
     "/organizations/:organizationId/members",
     auth,

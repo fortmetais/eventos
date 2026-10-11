@@ -45,6 +45,13 @@ export function registrationsRoutes(
     organizer,
     c.departmentCapacity,
   );
+  r.delete(
+    "/organizations/:organizationId/events/:eventId/teams/:teamId",
+    auth,
+    organizer,
+    limit,
+    c.deleteDepartment,
+  );
   r.put(
     "/organizations/:organizationId/registrations/:registrationId/team",
     auth,

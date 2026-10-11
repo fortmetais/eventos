@@ -77,6 +77,7 @@ export interface Question {
   mustBeTrue?: boolean;
 }
 export interface FormConfig {
+  layout?: import("@fac/form-layout").FormLayout;
   askCpf: boolean;
   askAddress: boolean;
   askShirt: boolean;
@@ -84,6 +85,7 @@ export interface FormConfig {
   terms: string;
   volunteer?: {
     template: "VOLUNTEER_INTENTION_V1";
+    description?: string;
     requirements: string;
     training: string;
   };

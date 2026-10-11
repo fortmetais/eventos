@@ -7,6 +7,8 @@ import type { PrivateStorage } from "../../core/supabase.js";
 import { hashToken } from "../../core/security.js";
 import { MediaRepository } from "./media.repository.js";
 import { tryCleanupProfilePhoto } from "./profile-photo-cleanup.js";
+import { fieldVisible } from "@fac/form-layout";
+import type { FormConfig } from "../events/events.validation.js";
 const cropSchema = z
   .object({
     left: z.number().min(0).max(1),
@@ -87,10 +89,23 @@ export class MediaService {
         tokenHash: hashToken(token),
         expiresAt: { gt: new Date() },
       },
-      include: { registration: true, campaign: { include: { event: true } } },
+      include: {
+        registration: true,
+        form: true,
+        campaign: { include: { event: true } },
+      },
     });
     assert(draft, 401, "Credencial inválida ou expirada.");
     assert(!draft.registration, 409, "Esta inscrição já foi enviada.");
+    assert(
+      fieldVisible(
+        draft.form.config as unknown as FormConfig,
+        draft.campaign.kind,
+        "base:photoAssetId",
+      ),
+      422,
+      "Esta versão da ficha não solicita foto.",
+    );
     const buffer = await this.optimize(file, crop);
     const assetId = randomUUID();
     const objectKey = `organizations/${draft.campaign.event.organizationId}/registrations/${draftId}/${assetId}.webp`;
