@@ -12,8 +12,14 @@ import type {
   PublicCampaign,
 } from "../lib/types";
 import { date } from "../lib/types";
+import { formatBrazilianPhone } from "../lib/phone";
 import { BackLink, Field, Loading, Notice } from "../components/ui";
 import { PhotoPicker } from "../components/PhotoPicker";
+import { SignedPhoto } from "../components/SignedPhoto";
+import { ShirtSizeGuide } from "../components/ShirtSizeGuide";
+import { RegistrationBanner } from "../components/RegistrationBanner";
+import { EmergencyRelationshipSelect } from "../components/EmergencyRelationshipSelect";
+import { GuardianRelationshipSelect } from "../components/GuardianRelationshipSelect";
 import { Questions } from "../components/Questions";
 import type { GuardianSummary } from "../lib/guardian";
 import {
@@ -54,9 +60,10 @@ export function Registration() {
   const [error, setError] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState("");
-  const [photoUrl, setPhotoUrl] = useState("");
   const [result, setResult] = useState<Draft["registration"]>();
   const [guardian, setGuardian] = useState<GuardianSummary | null>(null);
+  const [showIntroduction, setShowIntroduction] = useState(true);
+  const [resuming, setResuming] = useState(true);
   const current = useRef({ payload, health });
   current.current = { payload, health };
   const queue = useRef<Promise<unknown>>(Promise.resolve());
@@ -64,6 +71,18 @@ export function Registration() {
   const storageKey = `fac:draft:${campaignId}`;
   useEffect(() => {
     let active = true;
+    setResuming(true);
+    setShowIntroduction(true);
+    setCredential(null);
+    setForm(null);
+    setPayload({});
+    setHealth({});
+    setResult(undefined);
+    setGuardian(null);
+    setStep(0);
+    setError("");
+    setErrors({});
+    setSaved("");
     async function resume() {
       try {
         const raw = localStorage.getItem(storageKey);
@@ -91,13 +110,6 @@ export function Registration() {
         setPayload(clean.payload);
         setHealth(clean.health);
         setSaved("Rascunho retomado");
-        if (clean.payload.photoAssetId) {
-          const photo = await api<{ url: string }>(
-            `/public/drafts/${stored.id}/photos/${clean.payload.photoAssetId}`,
-            { draftToken: stored.token },
-          );
-          if (active) setPhotoUrl(photo.url);
-        }
       } catch {
         if (active) {
           localStorage.removeItem(storageKey);
@@ -105,6 +117,8 @@ export function Registration() {
             "O rascunho anterior não pôde ser retomado. Você pode iniciar uma nova inscrição.",
           );
         }
+      } finally {
+        if (active) setResuming(false);
       }
     }
     void resume();
@@ -121,8 +135,14 @@ export function Registration() {
         { method: "POST" },
       );
       localStorage.setItem(storageKey, JSON.stringify(created));
+      const draft = await api<Draft>(`/public/drafts/${created.id}`, {
+        draftToken: created.token,
+      });
       setCredential(created);
-      setForm(campaign.data!.form);
+      setForm(draft.form);
+      setPayload(draft.payload ?? {});
+      setHealth(draft.health ?? {});
+      setShowIntroduction(false);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -153,7 +173,7 @@ export function Registration() {
     return pending;
   }
   useEffect(() => {
-    if (!credential || result || sending.current) return;
+    if (!credential || result || showIntroduction || sending.current) return;
     setSaved("Salvando…");
     const timer = setTimeout(() => {
       if (!sending.current)
@@ -162,7 +182,7 @@ export function Registration() {
         );
     }, 800);
     return () => clearTimeout(timer);
-  }, [payload, health, credential, result]);
+  }, [payload, health, credential, result, showIntroduction]);
   function update<K extends keyof Payload>(key: K, value: Payload[K]) {
     setPayload((p) => ({ ...p, [key]: value }));
     setErrors((e) => ({ ...e, [key]: "" }));
@@ -422,7 +442,7 @@ export function Registration() {
       setBusy(false);
     }
   }
-  if (campaign.loading) return <Loading />;
+  if (campaign.loading || resuming) return <Loading />;
   if (campaign.error)
     return (
       <div className="narrow-shell">
@@ -550,10 +570,17 @@ export function Registration() {
         </section>
       </div>
     );
-  if (!credential)
+  if (!credential || showIntroduction) {
+    const introConfig = credential && form ? form.config : data.form.config;
     return (
-      <div className="auth-shell">
+      <div
+        className={`auth-shell registration-introduction ${introConfig.banner ? "has-banner" : ""}`}
+      >
         <BackLink to={`/eventos/${data.event.id}`}>Sobre o evento</BackLink>
+        <RegistrationBanner
+          banner={introConfig.banner}
+          eventName={data.event.name}
+        />
         <span className="eyebrow">
           {data.kind === "CAMPER"
             ? "INSCRIÇÃO DE CAMPISTA"
@@ -565,39 +592,59 @@ export function Registration() {
         </p>
         <section className="panel">
           <h2>Queremos conhecer você.</h2>
-          <p>
-            Preencha uma ficha simples em cinco etapas. Tenha uma foto e o
-            telefone de um contato de emergência por perto.
-          </p>
+          <p>Leia as orientações antes de preencher a ficha.</p>
           <p className="safe-note">
             <ShieldCheck size={17} /> Você não precisa criar uma conta.
           </p>
-          {data.form.config.volunteer && (
+          {credential && form && (
+            <Notice kind="info">
+              Você tem uma inscrição em andamento na versão {form.version}.
+              Continuar mantém seus dados e as regras dessa versão.
+              {form.version < data.form.version && (
+                <>
+                  {" "}
+                  A versão atual é a {data.form.version}; campos ocultados ou
+                  reorganizados nessa publicação valem para inscrições iniciadas
+                  nela.
+                </>
+              )}
+            </Notice>
+          )}
+          {introConfig.volunteer && (
             <>
               <Notice kind="info">
                 Esta é uma ficha de intenção. O envio não garante vaga nem
                 aprovação para servir.
               </Notice>
-              {data.form.config.volunteer.description?.trim() && (
+              {introConfig.volunteer.description?.trim() && (
                 <>
                   <h3>Descrição</h3>
                   <p className="description">
-                    {data.form.config.volunteer.description}
+                    {introConfig.volunteer.description}
                   </p>
                 </>
               )}
               <h3>Regras para servir</h3>
               <p className="description">
-                {data.form.config.volunteer.requirements}
+                {introConfig.volunteer.requirements}
               </p>
               <h3>Preparação da equipe</h3>
-              <p className="description">
-                {data.form.config.volunteer.training}
-              </p>
+              <p className="description">{introConfig.volunteer.training}</p>
             </>
           )}
           {error && <Notice>{error}</Notice>}
-          {data.open ? (
+          {credential ? (
+            <button
+              className="button primary full"
+              disabled={busy || !form}
+              onClick={() => {
+                setError("");
+                setShowIntroduction(false);
+              }}
+            >
+              Continuar inscrição <ArrowRight size={17} />
+            </button>
+          ) : data.open ? (
             <button
               className="button primary full"
               disabled={busy}
@@ -614,30 +661,62 @@ export function Registration() {
         </section>
       </div>
     );
+  }
   if (!config) return <Loading />;
   const input = (
     key: keyof Payload,
     label: string,
     type = "text",
     required = false,
-  ) => (
-    <Field label={label} required={required} error={errors[key]}>
-      <input
-        type={type}
-        required={required}
-        value={String(payload[key] ?? "")}
-        maxLength={type === "email" ? 254 : 500}
-        onChange={(e) => update(key, e.target.value)}
-        {...(type === "tel"
-          ? { inputMode: "tel" as const }
-          : type === "date"
-            ? { max: new Date().toISOString().slice(0, 10) }
-            : {})}
-      />
-    </Field>
-  );
+  ) => {
+    const maskedPhone =
+      key === "phone" || key === "emergencyPhone" || key === "guardianPhone";
+    return (
+      <Field label={label} required={required} error={errors[key]}>
+        <input
+          type={type}
+          required={required}
+          value={
+            maskedPhone
+              ? formatBrazilianPhone(String(payload[key] ?? ""))
+              : String(payload[key] ?? "")
+          }
+          maxLength={maskedPhone ? undefined : type === "email" ? 254 : 500}
+          placeholder={maskedPhone ? "(00) 00000-0000" : undefined}
+          autoComplete={maskedPhone ? "tel-national" : undefined}
+          onChange={(e) =>
+            update(
+              key,
+              maskedPhone
+                ? formatBrazilianPhone(e.target.value)
+                : e.target.value,
+            )
+          }
+          {...(type === "tel"
+            ? { inputMode: "tel" as const }
+            : type === "date"
+              ? { max: new Date().toISOString().slice(0, 10) }
+              : {})}
+        />
+      </Field>
+    );
+  };
   return (
     <div className="wizard-shell">
+      <RegistrationBanner banner={config.banner} eventName={data.event.name} />
+      <button
+        type="button"
+        className="text-button"
+        disabled={busy}
+        onClick={() => {
+          void persist()
+            .then(() => setShowIntroduction(true))
+            .catch((error) => setError((error as Error).message));
+        }}
+      >
+        Ver regras e preparação
+      </button>
+      <p className="muted">Ficha — versão {form?.version}</p>
       <BackLink to={`/eventos/${data.event.id}`}>Sobre o evento</BackLink>
       <div className="wizard-event">
         <span className="eyebrow">
@@ -706,10 +785,11 @@ export function Registration() {
               photo={{
                 endpoint: `/public/drafts/${credential.id}/photo`,
                 draftToken: credential.token,
-                currentUrl: photoUrl,
-                onUploaded: (id, url) => {
+                photoEndpoint: payload.photoAssetId
+                  ? `/public/drafts/${credential.id}/photos/${payload.photoAssetId}`
+                  : undefined,
+                onUploaded: (id) => {
                   update("photoAssetId", id);
-                  setPhotoUrl(url);
                 },
               }}
             />
@@ -769,10 +849,13 @@ export function Registration() {
             <PhotoPicker
               endpoint={`/public/drafts/${credential.id}/photo`}
               draftToken={credential.token}
-              currentUrl={photoUrl}
-              onUploaded={(id, url) => {
+              photoEndpoint={
+                payload.photoAssetId
+                  ? `/public/drafts/${credential.id}/photos/${payload.photoAssetId}`
+                  : undefined
+              }
+              onUploaded={(id) => {
                 update("photoAssetId", id);
-                setPhotoUrl(url);
               }}
             />
           </>
@@ -782,21 +865,26 @@ export function Registration() {
             {config.askCpf && input("cpf", "CPF (opcional)")}
             {config.askAddress && input("address", "Endereço (opcional)")}
             {config.askShirt && (
-              <Field
-                label="Tamanho da camiseta"
-                required={Boolean(config.volunteer)}
-                error={errors.shirt}
-              >
-                <select
-                  value={payload.shirt ?? ""}
-                  onChange={(e) => update("shirt", e.target.value)}
+              <>
+                <Field
+                  label="Tamanho da camiseta"
+                  required={Boolean(config.volunteer)}
+                  error={errors.shirt}
                 >
-                  <option value="">Selecione</option>
-                  {["PP", "P", "M", "G", "GG", "XG", "XGG", "ESP"].map((s) => (
-                    <option key={s}>{s}</option>
-                  ))}
-                </select>
-              </Field>
+                  <select
+                    value={payload.shirt ?? ""}
+                    onChange={(e) => update("shirt", e.target.value)}
+                  >
+                    <option value="">Selecione</option>
+                    {["PP", "P", "M", "G", "GG", "XG", "XGG", "ESP"].map(
+                      (s) => (
+                        <option key={s}>{s}</option>
+                      ),
+                    )}
+                  </select>
+                </Field>
+                <ShirtSizeGuide />
+              </>
             )}
             {data.kind === "VOLUNTEER" && (
               <>
@@ -869,12 +957,11 @@ export function Registration() {
             <div className="form-grid">
               {input("emergencyName", "Nome do contato", "text", true)}
               {input("emergencyPhone", "Telefone com DDD", "tel", true)}
-              {input(
-                "emergencyRelationship",
-                "Parentesco / relação",
-                "text",
-                true,
-              )}
+              <EmergencyRelationshipSelect
+                value={payload.emergencyRelationship}
+                error={errors.emergencyRelationship}
+                onChange={(value) => update("emergencyRelationship", value)}
+              />
             </div>
             <hr />
             <h3>Informações de saúde</h3>
@@ -933,12 +1020,11 @@ export function Registration() {
                   "E-mail do responsável (opcional)",
                   "email",
                 )}
-                {input(
-                  "guardianRelationship",
-                  "Parentesco do responsável",
-                  "text",
-                  true,
-                )}
+                <GuardianRelationshipSelect
+                  value={payload.guardianRelationship}
+                  error={errors.guardianRelationship}
+                  onChange={(value) => update("guardianRelationship", value)}
+                />
                 <p className="safe-note">
                   Informe o contato do responsável. A autorização será
                   registrada quando ele assinar pelo link.
@@ -950,7 +1036,13 @@ export function Registration() {
         {step === 4 && (
           <>
             <div className="review-summary">
-              {photoUrl && <img src={photoUrl} alt="Sua foto" />}
+              {visible("base:photoAssetId") && payload.photoAssetId && (
+                <SignedPhoto
+                  endpoint={`/public/drafts/${credential.id}/photos/${payload.photoAssetId}`}
+                  draftToken={credential.token}
+                  alt="Sua foto"
+                />
+              )}
               <div>
                 <h3>{payload.name}</h3>
                 <p>

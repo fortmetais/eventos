@@ -55,13 +55,31 @@ O PDF é uma referência de campos. Suas datas de julho de 2026, prazo de inscri
 
 ## Roteiro de teste
 
-### Organização e ocultação de campos
+### Contato de emergência
+
+Na etapa de saúde/emergência, **Telefone do contato de emergência com DDD** usa a máscara `(00) 00000-0000` (também aceita telefone fixo com oito dígitos locais). **Parentesco / relação** usa uma lista padronizada de familiares, cônjuge, responsável legal, amigos, vizinhos e Outro. Rascunhos antigos preservam uma resposta fora da lista enquanto ela não for substituída. A API rejeita valores novos fora da lista, permite manter a resposta anterior e descarta o campo se estiver oculto. Os valores continuam no JSON existente; sem SQL adicional. Incluído nesta atualização.
+
+No bloco **Responsável legal** da etapa 4, **Parentesco do responsável** é um menu obrigatório com **Pai, Mãe, Tutor(a) legal e Responsável com guarda judicial**. Respostas antigas fora da lista aparecem como **resposta anterior**, mantendo o rascunho até uma substituição. **Telefone do responsável** usa a mesma máscara com DDD dos demais telefones, incluindo número fixo e colagem com código `55`. A mudança está nos renderizadores com layout e nas fichas anteriores sem layout; os valores continuam no JSON existente, sem alteração de tabelas ou colunas. O formulário independente de autorização conserva suas regras próprias.
+
+Verificação dos campos do responsável: **162 testes da interface**, **19 testes de layout/validação da API**, tipos e compilação aprovados. O percurso no navegador em tela de celular verificou exigência do responsável, seleção do parentesco, máscara, avanço e retomada com os dados salvos. Incluído nesta atualização.
+
+### Banner da ficha
+
+No editor de servos e campistas, **Banner da ficha (opcional)** permite enviar um arquivo, conferir a prévia, substituir ou remover da versão que será publicada. Recomendação: **1600 × 400 pixels (4:1)**. Aceita JPEG, PNG ou WebP até **10 MB**, sem animação, com proporção horizontal entre 2:1 e 6:1. O servidor reduz imagens grandes para até 1600 pixels de largura e converte para WebP qualidade 84, preservando proporções e textos, sem cortar nem ampliar imagens pequenas. No celular, toque no banner para ampliar. O cabeçalho usa o banner da versão vinculada à inscrição; versões anteriores mantêm seus arquivos ao substituir/remover. A configuração fica em `config.banner` do JSON já existente, e o arquivo no bucket público de artes. Não requer tabela ou coluna adicional. Incluído nesta atualização.
+
+Verificação do banner: 252 testes da API com PostgreSQL temporário e 139 da interface aprovados; tipos e compilação aprovados. O percurso no navegador verifica upload multipart, prévia, cabeçalho móvel/computador, preservação da proporção e versões, com serviços externos simulados. A imagem enviada foi usada na conferência visual local; não foi aplicada ao Supabase de produção.
+
+### Organização e ocultação dos campos da ficha
+
+**Qual paróquia frequenta?** permite buscar paróquias ativas cadastradas, sem exigir acentos, e mostra nome e cidade/UF. Clique/toque ou use setas e Enter para selecionar. Também é possível escrever uma paróquia ausente da lista; respostas antigas são preservadas e uma falha nas sugestões não impede digitar. A resposta permanece texto em `payload.answers.paroquia`, sem criar cadastro ou vínculo automático. A prévia do editor conserva o campo de texto, sem consultar a API pública. Incluído nesta atualização. Conferência: 248 testes da API, 129 da interface e compilação aprovados; o percurso `npm run test:browser:volunteers` verifica seleção por toque e envio de paróquia não cadastrada, com serviços simulados.
 
 Em **Organizar campos da ficha**, cada etapa apresenta campos básicos, perguntas adicionais e perguntas de saúde. Arraste pela alça, use Espaço/setas/Espaço no teclado ou os botões de mover. Escape cancela; no celular, mantenha a alça pressionada por 250 ms antes de arrastar. Fora da alça, a página continua permitindo rolagem. A movimentação fica limitada à etapa atual.
 
 **Ocultar/Mostrar** conserva a posição do item e remove sua exigência na inscrição. Nome, telefone, nascimento, termos gerais e o bloco do responsável não podem ser ocultados; a indicação explica o motivo. Cada pergunta médica inclui sua descrição condicional. A prévia alterna entre **Pessoa adulta** e **Menor de idade**, respeitando a configuração e o bloco exclusivo de menores. Na ficha pública, etapas sem campos aplicáveis são puladas e o progresso se ajusta.
 
 As alterações entram em vigor somente ao publicar uma nova versão. Rascunhos e inscrições anteriores mantêm a versão original. As regras/aceites ocultos não são apresentados nem registrados como aceitos; textos introdutórios e termos permanecem separados. A configuração também está disponível no editor de campistas, respeitando a liberação existente dessa funcionalidade. Não é necessário SQL adicional: o layout está no JSON da versão.
+
+Ao abrir o link, a apresentação com regras e preparação vem antes das etapas, inclusive se houver rascunho neste navegador. **Continuar inscrição** retoma os dados e a versão original; a apresentação informa se há uma publicação mais recente. **Ver regras e preparação** permite reler as orientações sem apagar respostas. A nova inscrição consulta a versão efetivamente vinculada pelo servidor ao rascunho criado, evitando usar uma configuração antiga carregada antes da publicação. Para testar uma ficha recém-publicada sem retomar o rascunho anterior, use uma janela privada. Correção da entrada incluída nesta atualização. A interface passou pelos 134 testes; o percurso no navegador verifica a apresentação antes da retomada, a manutenção da disponibilidade na versão anterior e sua ausência na inscrição nova, com serviços simulados.
 
 A sincronização foi solicitada em 11/10/2026. A conferência do Supabase encontrou as 41 colunas previstas presentes; o layout usa o JSON existente e não exige SQL adicional.
 
@@ -91,6 +109,12 @@ Dados de saúde exigem autorização explícita por evento na gestão de membros
 A inclusão da busca de cidades passou pelos **113 testes da interface**, pelas verificações de tipos e pela compilação. O roteiro automatizado no navegador verificou a busca sem acentos, seleção com setas/Enter, toque em **Loanda - PR** no celular e envio dessa resposta na inscrição; as chamadas de serviços foram simuladas.
 
 Os testes simulam o serviço externo de fotos. O envio real depende do Supabase configurado e do bucket privado preparado.
+
+Na inscrição, o link privado da foto é renovado ao exibir a etapa da foto ou a revisão, a cada 90 segundos enquanto a aba está visível e ao retornar à aba ou recuperar a conexão. A validade do link continua sendo de 120 segundos. Uma imagem que falhar recebe uma tentativa automática de renovação; se a falha persistir, **Tentar carregar foto** permite repetir sem recarregar a ficha. Uma falha na prévia não apaga o rascunho nem o identificador da foto.
+
+Verifique a foto na revisão depois de permanecer mais de dois minutos nas etapas intermediárias, voltar à etapa da foto e retornar à aba após uma pausa. Simule também uma imagem expirada e uma falha de conexão: a foto deve reaparecer após renovação ou tentativa manual, mantendo as respostas e o rascunho. Campos de foto ocultos não devem consultar nem exibir a imagem.
+
+Verificação da renovação da foto: **156 testes da interface**, verificação de tipos e compilação aprovados. O percurso no navegador simulou uma pausa de 125 segundos, uma resposta `400 InvalidJWT`, renovação periódica, retorno à etapa da foto e falha temporária da prévia ao retomar uma versão anterior, preservando o arquivo, os dados e a credencial. Serviços externos foram simulados; não houve alteração de banco ou publicação desta correção.
 
 ## Avisos após a decisão
 

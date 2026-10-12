@@ -1188,6 +1188,20 @@ svg {
   height: 100%;
   object-fit: cover;
 }
+.signed-photo-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 11px;
+}
+.signed-photo-status button {
+  font-size: inherit;
+}
 .photo-options {
   display: flex;
   justify-content: center;
@@ -1232,6 +1246,11 @@ svg {
   height: 80px;
   border-radius: 14px;
   object-fit: cover;
+}
+.review-summary .signed-photo-status {
+  width: 112px;
+  min-height: 80px;
+  flex-shrink: 0;
 }
 .review-summary h3,
 .review-summary h2 {
@@ -2406,6 +2425,62 @@ td strong {
   .guardian-page .signature-image {
     break-inside: avoid;
   }
+}
+.field-hint {
+  white-space: pre-line;
+}
+.registration-banner {
+  margin: 20px 0 28px;
+}
+.registration-banner a {
+  display: block;
+}
+.registration-banner img,
+.form-banner-preview {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+.registration-introduction.has-banner {
+  max-width: 1040px;
+}
+.registration-introduction.has-banner > .panel {
+  max-width: 540px;
+  margin-inline: auto;
+}
+.form-banner-editor {
+  margin-bottom: 24px;
+}
+.form-banner-editor input[type="file"] {
+  max-width: 100%;
+}
+.form-banner-preview {
+  margin-bottom: 12px;
+}
+.registration-introduction > .back-link {
+  display: flex;
+  justify-content: center;
+}
+.shirt-size-guide {
+  margin: 12px 0 20px;
+}
+.shirt-size-guide a {
+  display: block;
+  max-width: 520px;
+  margin-inline: auto;
+}
+.shirt-size-guide img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+.shirt-size-guide figcaption {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
 }
 .organization-form fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .organization-form h3 { margin-top: 1.5rem; }

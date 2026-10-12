@@ -22,6 +22,8 @@ export interface FormField {
   detail?: string;
 }
 export const stepIds: StepId[];
+export const guardianRelationships: readonly string[];
+export const emergencyRelationships: readonly string[];
 export const stepLabels: string[];
 export const healthFields: readonly (readonly [
   "hasAllergies" | "hasMedication" | "hasDiet" | "hasCondition" | "hasNeeds",

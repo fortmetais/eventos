@@ -8,9 +8,14 @@ import {
   type StepId,
 } from "@fac/form-layout";
 import type { FormConfig, Payload, Health } from "../lib/types";
+import { formatBrazilianPhone } from "../lib/phone";
 import { Field, Notice } from "./ui";
 import { Questions } from "./Questions";
 import { PhotoPicker } from "./PhotoPicker";
+import { ShirtSizeGuide } from "./ShirtSizeGuide";
+import { RegistrationBanner } from "./RegistrationBanner";
+import { EmergencyRelationshipSelect } from "./EmergencyRelationshipSelect";
+import { GuardianRelationshipSelect } from "./GuardianRelationshipSelect";
 
 export function RegistrationFields({
   form,
@@ -40,7 +45,8 @@ export function RegistrationFields({
   photo?: {
     endpoint: string;
     draftToken: string;
-    currentUrl: string;
+    currentUrl?: string;
+    photoEndpoint?: string;
     onUploaded: (id: string, url: string) => void;
   };
 }) {
@@ -50,19 +56,33 @@ export function RegistrationFields({
     type = "text",
     required = false,
   ) {
+    const maskedPhone =
+      key === "phone" || key === "emergencyPhone" || key === "guardianPhone";
     return (
       <Field label={label} required={required} error={errors[key]}>
         <input
           name={key}
           type={type}
           required={required}
-          value={String(payload[key] ?? "")}
-          maxLength={type === "email" ? 254 : 500}
+          value={
+            maskedPhone
+              ? formatBrazilianPhone(String(payload[key] ?? ""))
+              : String(payload[key] ?? "")
+          }
+          maxLength={maskedPhone ? undefined : type === "email" ? 254 : 500}
+          placeholder={maskedPhone ? "(00) 00000-0000" : undefined}
+          autoComplete={maskedPhone ? "tel-national" : undefined}
           max={
             type === "date" ? new Date().toISOString().slice(0, 10) : undefined
           }
           inputMode={type === "tel" ? "tel" : undefined}
-          onChange={(event) => onPayload({ [key]: event.target.value })}
+          onChange={(event) =>
+            onPayload({
+              [key]: maskedPhone
+                ? formatBrazilianPhone(event.target.value)
+                : event.target.value,
+            })
+          }
         />
       </Field>
     );
@@ -153,12 +173,11 @@ export function RegistrationFields({
                 "E-mail do responsável (opcional)",
                 "email",
               )}
-              {input(
-                "guardianRelationship",
-                "Parentesco do responsável",
-                "text",
-                true,
-              )}
+              <GuardianRelationshipSelect
+                value={payload.guardianRelationship}
+                error={errors.guardianRelationship}
+                onChange={(value) => onPayload({ guardianRelationship: value })}
+              />
             </section>
           );
         } else if (key === "shirt" || key === "preferredTeamId") {
@@ -187,6 +206,16 @@ export function RegistrationFields({
                     ))}
               </select>
             </Field>
+          );
+        } else if (key === "emergencyRelationship") {
+          content = (
+            <EmergencyRelationshipSelect
+              label={field.label}
+              required={field.required}
+              value={payload.emergencyRelationship}
+              error={errors.emergencyRelationship}
+              onChange={(value) => onPayload({ emergencyRelationship: value })}
+            />
           );
         } else if (key === "availability" || key === "address") {
           content = (
@@ -239,6 +268,7 @@ export function RegistrationFields({
         return (
           <div key={field.key} data-registration-field={field.key}>
             {content}
+            {field.key === "base:shirt" && <ShirtSizeGuide />}
           </div>
         );
       })}
@@ -249,13 +279,20 @@ export function RegistrationFields({
 export function FormLayoutPreview({
   form,
   kind,
+  bannerPreview,
+  showBanner = true,
 }: {
   form: FormConfig;
   kind: FormKind;
+  bannerPreview?: string;
+  showBanner?: boolean;
 }) {
   const [minor, setMinor] = useState(false);
   return (
     <div className="layout-preview">
+      {showBanner && (
+        <RegistrationBanner banner={form.banner} previewUrl={bannerPreview} />
+      )}
       <div className="button-row" aria-label="Público da prévia">
         <button
           type="button"

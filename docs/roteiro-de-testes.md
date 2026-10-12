@@ -169,6 +169,7 @@ Os casos a seguir precisam do ambiente de homologação completo. Use sempre nov
 | S05 | P0 | Enviar inscrição; repetir o envio da mesma ficha e atualizar a confirmação | Um protocolo e uma inscrição Recebida. O envio não confirma a participação nem duplica a candidatura |
 | S06 | P1 | Criar um segundo rascunho com os mesmos dados ativos na campanha; depois testar uma pessoa sem e-mail | Duplicidade é tratada sem expor dados da inscrição anterior. E-mail ausente não impede candidatura; não cria conta nem vínculo automático |
 | S07 | P0 | Usar Pausar inscrições de servos enquanto um candidato preenche; tentar enviar. Em outro teste, preparar previamente um período que termine durante o preenchimento | Impedir envio fora do período; preservar o rascunho e mostrar orientação. Retomar somente quando as regras permitirem |
+| S08 | P0 | Inscrição de menor: na etapa 4, tentar continuar com responsável vazio; preencher nome, telefone com DDD e selecionar o parentesco; avançar e retomar o rascunho | Menu obrigatório oferece Pai, Mãe, Tutor(a) legal e Responsável com guarda judicial. Telefone mostra máscara; dados são salvos e retomados. Fichas anteriores sem layout também usam os controles; respostas antigas de parentesco são preservadas até substituição |
 
 ### Análise, comunicação e vagas
 
@@ -222,6 +223,8 @@ Executar somente na versão que inclua o módulo de autorização e sua estrutur
 | M02 | P0 | Abrir link do responsável no celular e computador; conferir dados, identificação, CPF e aceites; assinar com dedo/mouse; enviar | Valida campos e assinatura; registra o primeiro documento, mostra comprovante e permite impressão pelo navegador |
 | M03 | P0 | Antes da assinatura, tentar confirmar participação; assinar e repetir; enviar novamente a mesma autorização | Sem assinatura, confirmação bloqueada. Após assinatura, ainda respeita as demais condições de participação/vagas. Repetição não substitui o documento original |
 | M04 | P1 | Testar link expirado, renovado, de inscrição recusada/cancelada; abrir o painel comum e a saúde autorizada | Link antigo deixa de funcionar após renovação. Casos inválidos não permitem assinatura. Medicamentos/alergias permanecem fora da avaliação administrativa comum |
+| M05 | P1 | Na autorização, editar/colar os celulares e CPFs; buscar Cidade da assinatura e selecionar por teclado/toque; trocar Parentesco / vínculo legal; assinar e abrir novamente o comprovante | Celulares usam `(00) 00000-0000` e CPFs `000.000.000-00`. CPF do participante continua opcional. Cidade mostra sugestões Cidade - UF. Parentesco usa os padrões da etapa 4 e mantém resposta antiga até substituição. Envio é explícito e comprovante conserva os dados formatados |
+| M06 | P0 | Completar os dados da organização e emitir um termo novo; conferir CNPJ, razão social, nome fantasia, endereço, CEP e contato. Alterar o cadastro depois e renovar/assinar o termo anterior; emitir outro termo | Cabeçalho usa somente dados cadastrados na emissão, separa endereço da organização do local do evento e omite campos opcionais vazios. Documento anterior e seu comprovante mantêm texto/identificação originais; termo novo utiliza o cadastro atualizado. CNPJ alfanumérico conserva as letras |
 
 ### Operação
 

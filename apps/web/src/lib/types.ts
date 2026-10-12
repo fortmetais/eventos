@@ -77,6 +77,13 @@ export interface Question {
   mustBeTrue?: boolean;
 }
 export interface FormConfig {
+  banner?: {
+    url: string;
+    bucket: string;
+    key: string;
+    width: number;
+    height: number;
+  } | null;
   layout?: import("@fac/form-layout").FormLayout;
   askCpf: boolean;
   askAddress: boolean;

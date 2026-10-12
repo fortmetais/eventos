@@ -55,7 +55,7 @@ export function Field({
         {required && <b aria-label="obrigatório"> *</b>}
       </span>
       {children}
-      {hint && <small>{hint}</small>}
+      {hint && <small className="field-hint">{hint}</small>}
       {error && <small className="field-error">{error}</small>}
     </Container>
   );

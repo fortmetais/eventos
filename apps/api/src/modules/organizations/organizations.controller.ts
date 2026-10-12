@@ -13,6 +13,9 @@ function input(req: Request) {
 }
 export class OrganizationsController {
   constructor(private service: OrganizationsService) {}
+  publicParishes = async (_req: Request, res: Response) => {
+    res.json(await this.service.publicParishes());
+  };
   list = async (req: Request, res: Response) => {
     const { page, pageSize } = pageQuery.parse(req.query);
     res.json(await this.service.list(page, pageSize));

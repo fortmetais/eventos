@@ -91,6 +91,46 @@ const url = process.env.TEST_DATABASE_URL;
     afterAll(async () => {
       await db.$disconnect();
     });
+    it("sugere apenas paróquias ativas sem exigir conta e sem expor dados administrativos", async () => {
+      const activeId = randomUUID();
+      const inactiveId = randomUUID();
+      const communityId = randomUUID();
+      await db.organization.createMany({
+        data: [
+          {
+            ...data(),
+            id: activeId,
+            name: "Paróquia Nossa Senhora Teste",
+            kind: "PARISH",
+            active: true,
+          },
+          { ...data(), id: inactiveId, kind: "PARISH", active: false },
+          { ...data(), id: communityId, kind: "COMMUNITY", active: true },
+        ],
+      });
+      const result = await request(app)
+        .get("/api/v1/public/parishes")
+        .expect(200);
+      expect(result.headers["cache-control"]).toBe("no-store");
+      expect(result.body).toContainEqual({
+        id: activeId,
+        name: "Paróquia Nossa Senhora Teste",
+        city: "Loanda",
+        state: "PR",
+      });
+      expect(
+        result.body.some((item: { id: string }) =>
+          [inactiveId, communityId].includes(item.id),
+        ),
+      ).toBe(false);
+      for (const item of result.body)
+        expect(Object.keys(item).sort()).toEqual([
+          "city",
+          "id",
+          "name",
+          "state",
+        ]);
+    });
     it("bloqueia usuários sem permissão antes de enviar o arquivo", async () => {
       await request(app)
         .post(path)

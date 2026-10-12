@@ -11,6 +11,7 @@ export function organizationsRoutes(
   limit: RequestHandler,
 ) {
   const router = Router();
+  router.get("/public/parishes", limit, controller.publicParishes);
   const uploadLogo = multer({
     storage: multer.memoryStorage(),
     limits: {

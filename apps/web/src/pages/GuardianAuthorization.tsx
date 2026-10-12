@@ -4,6 +4,10 @@ import { api } from "../lib/api";
 import { date, dateTime } from "../lib/types";
 import type { GuardianForm, GuardianRecord } from "../lib/guardian";
 import { BackLink, Field, Loading, Notice } from "../components/ui";
+import { CityAutocomplete } from "../components/CityAutocomplete";
+import { GuardianRelationshipSelect } from "../components/GuardianRelationshipSelect";
+import { formatBrazilianPhone } from "../lib/phone";
+import { formatBrazilianCpf } from "../lib/cpf";
 import {
   SignaturePad,
   SignatureImage,
@@ -106,22 +110,37 @@ function GuardianFormPage({ id }: { id: string }) {
       setBusy(false);
     }
   }
-  const input = (
+  function input(
     key: keyof GuardianForm,
     label: string,
     type = "text",
     required = true,
-  ) => (
-    <Field label={label} required={required}>
-      <input
-        type={type}
-        required={required}
-        maxLength={key.includes("cpf") || key === "cpf" ? 20 : 254}
-        value={String(form?.[key] ?? "")}
-        onChange={(e) => update(key, e.target.value as never)}
-      />
-    </Field>
-  );
+  ) {
+    const phone = key === "phone" || key === "familyPhone";
+    const cpf = key === "cpf" || key === "participantCpf";
+    const format = phone
+      ? formatBrazilianPhone
+      : cpf
+        ? formatBrazilianCpf
+        : (value: string) => value;
+    return (
+      <Field label={label} required={required}>
+        <input
+          name={key}
+          type={type}
+          required={required}
+          maxLength={phone || cpf ? undefined : 254}
+          placeholder={
+            phone ? "(00) 00000-0000" : cpf ? "000.000.000-00" : undefined
+          }
+          inputMode={phone ? "tel" : cpf ? "numeric" : undefined}
+          autoComplete={phone ? "tel-national" : cpf ? "off" : undefined}
+          value={format(String(form?.[key] ?? ""))}
+          onChange={(e) => update(key, format(e.target.value) as never)}
+        />
+      </Field>
+    );
+  }
   if (loading) return <Loading />;
   return (
     <div className="narrow-shell guardian-page">
@@ -160,16 +179,21 @@ function GuardianFormPage({ id }: { id: string }) {
               <dl className="guardian-identity">
                 {Object.entries({
                   Responsável: record.signedData?.name,
-                  CPF: record.signedData?.cpf,
+                  CPF: formatBrazilianCpf(record.signedData?.cpf ?? ""),
                   Parentesco: record.signedData?.relationship,
-                  Telefone: record.signedData?.phone,
+                  Telefone: formatBrazilianPhone(
+                    record.signedData?.phone ?? "",
+                  ),
                   "E-mail": record.signedData?.email,
                   "Cidade da assinatura": record.signedData?.city,
                   "Cidade do participante": record.signedData?.participantCity,
-                  "CPF do participante":
-                    record.signedData?.participantCpf || "Não informado",
+                  "CPF do participante": record.signedData?.participantCpf
+                    ? formatBrazilianCpf(record.signedData.participantCpf)
+                    : "Não informado",
                   "Contato familiar": record.signedData?.familyName,
-                  "Celular do contato": record.signedData?.familyPhone,
+                  "Celular do contato": formatBrazilianPhone(
+                    record.signedData?.familyPhone ?? "",
+                  ),
                   Medicamentos:
                     record.health.hasMedication === undefined
                       ? "Não perguntado"
@@ -271,7 +295,12 @@ function GuardianFormPage({ id }: { id: string }) {
               <div className="form-grid">
                 {input("name", "Nome completo do responsável")}
                 {input("cpf", "CPF do responsável")}
-                {input("relationship", "Parentesco / vínculo legal")}
+                <GuardianRelationshipSelect
+                  label="Parentesco / vínculo legal"
+                  name="relationship"
+                  value={form.relationship}
+                  onChange={(value) => update("relationship", value)}
+                />
                 {input("phone", "Celular do responsável com DDD", "tel")}
                 {input(
                   "email",
@@ -279,7 +308,15 @@ function GuardianFormPage({ id }: { id: string }) {
                   "email",
                   false,
                 )}
-                {input("city", "Cidade da assinatura")}
+                <Field label="Cidade da assinatura" required group>
+                  <CityAutocomplete
+                    label="Cidade da assinatura"
+                    name="city"
+                    value={form.city}
+                    onChange={(value) => update("city", value)}
+                    required
+                  />
+                </Field>
               </div>
               <h3>Termo de responsabilidade e autorização</h3>
               <div className="terms-text">{record.termsText}</div>

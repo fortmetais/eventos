@@ -1,15 +1,30 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type Prisma } from "@prisma/client";
 import request from "supertest";
 import { createApp } from "../src/app.js";
 import { hashToken, newToken } from "../src/core/security.js";
 import { defaultLayout, fieldCatalog } from "@fac/form-layout";
+import { GuardianService } from "../src/modules/registrations/guardian.service.js";
 import {
   guardianSignSchema,
   requiresGuardian,
   signatureSchema,
 } from "../src/modules/registrations/guardian.validation.js";
+const organizationDetails = {
+  name: "Organização do termo",
+  city: "Cidade Termo Teste",
+  state: "PR",
+  contact: "Contato da organização",
+  cnpj: "12345678000195",
+  legalName: "Entidade Responsável Teste",
+  tradeName: "Comunidade do Termo",
+  postalCode: "87900000",
+  street: "Rua da Organização",
+  number: "120",
+  complement: "Sala 2",
+  neighborhood: "Centro",
+};
 const signed = {
   name: "Responsável Teste",
   cpf: "52998224725",
@@ -37,7 +52,185 @@ const signed = {
     ],
   ],
 };
+function expectedReceiptHash(
+  terms: string,
+  snapshot: unknown,
+  signedAt: string,
+) {
+  const {
+    signature,
+    hasMedication,
+    medication,
+    hasAllergies,
+    allergies,
+    ...signedData
+  } = guardianSignSchema.parse(signed);
+  return hashToken(
+    JSON.stringify({
+      terms,
+      snapshot,
+      signedData,
+      signature,
+      health: {
+        hasMedication,
+        medication,
+        hasAllergies,
+        allergies,
+      },
+      signedAt,
+    }),
+  );
+}
 describe("Regras do termo do responsável", () => {
+  async function prepareTerm(
+    organization: Parameters<GuardianService["prepare"]>[3]["organization"],
+  ) {
+    let created: Prisma.GuardianAuthorizationCreateArgs["data"] | undefined;
+    const tx = {
+      guardianAuthorization: {
+        async create({ data }: Prisma.GuardianAuthorizationCreateArgs) {
+          created = data;
+          return data;
+        },
+      },
+    } as unknown as Prisma.TransactionClient;
+    const service = new GuardianService(
+      {} as PrismaClient,
+      {
+        async send() {
+          return "ENVIADA";
+        },
+      },
+      "segredo-guardian-unitario-12345678901234567890",
+      "https://app.example.test",
+    );
+    await service.prepare(
+      tx,
+      randomUUID(),
+      {
+        name: "Participante Teste",
+        birthDate: "2012-01-01",
+        phone: "44999999999",
+        guardianName: signed.name,
+        guardianPhone: signed.phone,
+        guardianRelationship: signed.relationship,
+      },
+      {
+        name: "Evento do termo",
+        location: "Local do evento",
+        city: "Cidade do evento",
+        startsAt: new Date("2027-06-01"),
+        endsAt: new Date("2027-06-03"),
+        organization,
+      },
+      "CAMPER",
+      "Regras da ficha do termo",
+      {},
+    );
+    expect(created).toBeDefined();
+    return created!;
+  }
+
+  it("inclui a identificação legal e o endereço da organização sem confundir com o local do evento", async () => {
+    const created = await prepareTerm(organizationDetails);
+    const terms = created.termsText;
+    expect(terms).toContain("ORGANIZAÇÃO RESPONSÁVEL");
+    expect(terms).toContain("Nome: Organização do termo");
+    expect(terms).toContain("Razão social: Entidade Responsável Teste");
+    expect(terms).toContain("Nome fantasia: Comunidade do Termo");
+    expect(terms).toContain("CNPJ: 12.345.678/0001-95");
+    expect(terms).toContain("Rua da Organização");
+    expect(terms).toContain("120");
+    expect(terms).toContain("Sala 2");
+    expect(terms).toContain("Centro");
+    expect(terms).toContain("Cidade Termo Teste - PR");
+    expect(terms).toContain("CEP: 87900-000");
+    expect(terms).toContain("Contato: Contato da organização");
+    expect(terms).toContain("em Local do evento, Cidade do evento");
+    expect(created.snapshot).toMatchObject({
+      event: {
+        organization: organizationDetails.name,
+        organizationDetails,
+      },
+    });
+    expect(created.snapshot).not.toHaveProperty("event.organizationDetails.id");
+  });
+
+  it("omite informações legais ausentes no texto e registra sua ausência sem inventar dados", async () => {
+    const base = {
+      name: organizationDetails.name,
+      contact: organizationDetails.contact,
+      city: organizationDetails.city,
+      state: organizationDetails.state,
+    };
+    const created = await prepareTerm(base);
+    expect(created.termsText).toContain("ORGANIZAÇÃO RESPONSÁVEL");
+    expect(created.termsText).toContain("Nome: Organização do termo");
+    expect(created.termsText).toContain("Cidade Termo Teste - PR");
+    expect(created.termsText).not.toContain("CNPJ:");
+    expect(created.termsText).not.toContain("Razão social:");
+    expect(created.termsText).not.toContain("Nome fantasia:");
+    expect(created.termsText).not.toContain("CEP:");
+    expect(created.termsText).not.toMatch(/undefined|null|Não informado/);
+    expect(created.snapshot).toMatchObject({
+      event: {
+        organizationDetails: {
+          ...base,
+          cnpj: null,
+          legalName: null,
+          tradeName: null,
+          postalCode: null,
+          street: null,
+          number: null,
+          complement: null,
+          neighborhood: null,
+        },
+      },
+    });
+  });
+
+  it("formata CNPJ alfanumérico preservando seu valor no documento emitido", async () => {
+    const created = await prepareTerm({
+      ...organizationDetails,
+      cnpj: "12ABC34501DE35",
+    });
+    expect(created.termsText).toContain("CNPJ: 12.ABC.345/01DE-35");
+    expect(created.snapshot).toMatchObject({
+      event: { organizationDetails: { cnpj: "12ABC34501DE35" } },
+    });
+  });
+
+  it("aceita CPF e telefones com as máscaras da autorização, mantendo CPF do participante opcional", () => {
+    const formatted = {
+      ...signed,
+      cpf: "529.982.247-25",
+      participantCpf: "111.444.777-35",
+      phone: "(44) 99999-8888",
+      familyPhone: "(44) 99999-7777",
+      city: "Toledo - PR",
+      relationship: "Tutor(a) legal",
+    };
+    const result = guardianSignSchema.parse(formatted);
+    expect(result.cpf).toBe("52998224725");
+    expect(result.phone).toBe("44999998888");
+    expect(result.familyPhone).toBe("44999997777");
+    expect(result.city).toBe("Toledo - PR");
+    expect(
+      guardianSignSchema.safeParse({ ...formatted, participantCpf: "" })
+        .success,
+    ).toBe(true);
+    expect(
+      guardianSignSchema.safeParse({ ...formatted, cpf: "111.111.111-11" })
+        .success,
+    ).toBe(false);
+    expect(
+      guardianSignSchema.safeParse({
+        ...formatted,
+        participantCpf: "111.111.111-11",
+      }).success,
+    ).toBe(false);
+  });
+
   it("considera a idade atual mesmo que o participante faça 18 antes do evento", () => {
     expect(
       requiresGuardian(
@@ -142,12 +335,7 @@ const url = process.env.TEST_DATABASE_URL;
     beforeAll(async () => {
       await db.account.createMany({ data: Object.values(users) });
       const organization = await db.organization.create({
-        data: {
-          name: "Organização do termo",
-          city: "Cidade Termo Teste",
-          state: "PR",
-          contact: "Contato da organização",
-        },
+        data: organizationDetails,
       });
       organizationId = organization.id;
       await db.membership.create({
@@ -348,7 +536,20 @@ const url = process.env.TEST_DATABASE_URL;
         }),
       ).toBe(1);
       const response = await view(c).expect(200);
-      expect(response.body.termsText).toContain("Organização do termo");
+      expect(response.body.termsText).toContain("ORGANIZAÇÃO RESPONSÁVEL");
+      expect(response.body.termsText).toContain("Nome: Organização do termo");
+      expect(response.body.termsText).toContain(
+        "Razão social: Entidade Responsável Teste",
+      );
+      expect(response.body.termsText).toContain(
+        "Nome fantasia: Comunidade do Termo",
+      );
+      expect(response.body.termsText).toContain("CNPJ: 12.345.678/0001-95");
+      expect(response.body.termsText).toContain("Rua da Organização");
+      expect(response.body.termsText).toContain("CEP: 87900-000");
+      expect(response.body.snapshot.event.organizationDetails).toEqual(
+        organizationDetails,
+      );
       expect(response.body.termsText).toContain("01/06/2027");
       expect(response.body.termsText).toContain("Regras da ficha do termo");
     });
@@ -417,7 +618,7 @@ const url = process.env.TEST_DATABASE_URL;
       await change(c, "CANCELLED").expect(200);
       await sign(c).expect(409);
     });
-    it("link expirado exige renovação, que invalida o anterior e conserva o termo", async () => {
+    it("link expirado exige renovação, que conserva dados da organização e termo emitidos até a assinatura", async () => {
       const c = await candidate();
       const original = await db.guardianAuthorization.findUniqueOrThrow({
         where: { registrationId: c.id },
@@ -431,16 +632,102 @@ const url = process.env.TEST_DATABASE_URL;
         where: { id: eventId },
         data: { name: "Nome atualizado" },
       });
+      await db.organization.update({
+        where: { id: organizationId },
+        data: {
+          name: "Organização atualizada após emissão",
+          legalName: "Nova razão social",
+          tradeName: "Novo nome fantasia",
+          contact: "Novo contato",
+          cnpj: "11222333000181",
+          street: "Rua atualizada",
+          number: "990",
+          complement: null,
+          neighborhood: "Outro bairro",
+          city: "Outra cidade",
+          state: "SC",
+          postalCode: "89000000",
+        },
+      });
+      try {
+        const renewed = await request(app)
+          .post(`${base(c.id)}/guardian/renew`)
+          .set(auth)
+          .expect(200);
+        expect(renewed.body.authorization.termsText).toBe(original.termsText);
+        expect(renewed.body.authorization.snapshot).toEqual(original.snapshot);
+        expect(
+          renewed.body.authorization.snapshot.event.organizationDetails,
+        ).toEqual(organizationDetails);
+        await view(c).expect(401);
+        c.token = new URLSearchParams(
+          new URL(renewed.body.authorization.link).hash.slice(1),
+        ).get("token");
+        const document = (await view(c).expect(200)).body;
+        expect(document.termsText).toBe(original.termsText);
+        expect(document.snapshot).toEqual(original.snapshot);
+        const receipt = (await sign(c).expect(200)).body;
+        expect(receipt.termsText).toBe(original.termsText);
+        expect(receipt.snapshot).toEqual(original.snapshot);
+        expect(receipt.receiptHash).toBe(
+          expectedReceiptHash(
+            original.termsText,
+            original.snapshot,
+            receipt.signedAt,
+          ),
+        );
+        const stored = await db.guardianAuthorization.findUniqueOrThrow({
+          where: { id: c.guardian.id },
+        });
+        expect(stored.termsText).toBe(original.termsText);
+        expect(stored.snapshot).toEqual(original.snapshot);
+        expect(stored.receiptHash).toBe(receipt.receiptHash);
+      } finally {
+        await db.organization.update({
+          where: { id: organizationId },
+          data: organizationDetails,
+        });
+        await db.event.update({
+          where: { id: eventId },
+          data: { name: "Evento do termo" },
+        });
+      }
+    });
+    it("mantém documentos anteriores sem novos dados da organização ao renovar e assinar", async () => {
+      const c = await candidate();
+      const emitted = await db.guardianAuthorization.findUniqueOrThrow({
+        where: { registrationId: c.id },
+      });
+      const snapshot = JSON.parse(JSON.stringify(emitted.snapshot));
+      delete snapshot.event.organizationDetails;
+      const termsText =
+        "TERMO ANTERIOR\nOrganização do termo\nRegras originais da autorização.";
+      await db.guardianAuthorization.update({
+        where: { id: emitted.id },
+        data: {
+          snapshot,
+          termsText,
+          expiresAt: new Date(Date.now() - 1000),
+        },
+      });
       const renewed = await request(app)
         .post(`${base(c.id)}/guardian/renew`)
         .set(auth)
         .expect(200);
-      expect(renewed.body.authorization.termsText).toBe(original.termsText);
-      await view(c).expect(401);
+      expect(renewed.body.authorization.snapshot).toEqual(snapshot);
+      expect(renewed.body.authorization.termsText).toBe(termsText);
+      expect(renewed.body.authorization.snapshot.event).not.toHaveProperty(
+        "organizationDetails",
+      );
       c.token = new URLSearchParams(
         new URL(renewed.body.authorization.link).hash.slice(1),
       ).get("token");
-      await sign(c).expect(200);
+      const receipt = (await sign(c).expect(200)).body;
+      expect(receipt.snapshot).toEqual(snapshot);
+      expect(receipt.termsText).toBe(termsText);
+      expect(receipt.receiptHash).toBe(
+        expectedReceiptHash(termsText, snapshot, receipt.signedAt),
+      );
     });
     it("falha de e-mail preserva inscrição e link do WhatsApp, permitindo reenvio", async () => {
       delivery = "FALHA";

@@ -13,6 +13,12 @@ const operations: Operation[] = [
   { method: "get", path: "/config", summary: "Configuração pública do Auth" },
   {
     method: "get",
+    path: "/public/parishes",
+    summary:
+      "Listar nome e cidade/UF das paróquias ativas para sugestões na ficha",
+  },
+  {
+    method: "get",
     path: "/organizations/{organizationId}/registrations/{registrationId}/decision-notice",
     summary: "Aviso de aceite ou recusa e confirmação de presença",
     security: "account",
@@ -536,6 +542,21 @@ const schemas = {
       askAddress: boolean,
       askShirt: boolean,
       terms: string,
+      banner: {
+        ...object(
+          {
+            url: { type: "string", format: "uri" },
+            bucket: string,
+            key: string,
+            width: { type: "integer", maximum: 1600 },
+            height: { type: "integer", maximum: 800 },
+          },
+          ["url", "bucket", "key", "width", "height"],
+        ),
+        nullable: true,
+        description:
+          "Gerado pelo upload; para reaproveitar, use o objeto de uma versão do mesmo evento. null remove da nova versão.",
+      },
       volunteer: object(
         {
           template: { enum: ["VOLUNTEER_INTENTION_V1"] },
@@ -688,16 +709,20 @@ for (const operation of operations) {
             schema: { $ref: `#/components/schemas/${operation.body}` },
           },
           ...(operation.body === "Organization" ||
-          operation.body === "OrganizationUpdate"
+          operation.body === "OrganizationUpdate" ||
+          operation.body === "Form"
             ? {
                 "multipart/form-data": {
                   schema: object(
                     {
                       data: {
                         ...string,
-                        description: `JSON conforme ${operation.body}; não enviar URL do logotipo ao substituir por arquivo.`,
+                        description:
+                          operation.body === "Form"
+                            ? "JSON da configuração da ficha; o banner é opcional e enviado como arquivo separado."
+                            : `JSON conforme ${operation.body}; não enviar URL do logotipo ao substituir por arquivo.`,
                       },
-                      logo: {
+                      [operation.body === "Form" ? "banner" : "logo"]: {
                         type: "string",
                         format: "binary",
                         description:

@@ -264,11 +264,13 @@ export function createApp(
           new EventsService(
             new EventsRepository(db, !eventsEnabled),
             !eventsEnabled,
+            dependencies.artworkStorage ?? artworkStorage,
           ),
         ),
         db,
         auth,
         !eventsEnabled,
+        limit,
       ),
     );
     registrations.post(

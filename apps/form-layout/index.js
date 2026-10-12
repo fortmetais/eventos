@@ -1,4 +1,35 @@
 export const stepIds = ["identification", "photo", "about", "care", "review"];
+export const guardianRelationships = Object.freeze([
+  "Pai",
+  "Mãe",
+  "Tutor(a) legal",
+  "Responsável com guarda judicial",
+]);
+export const emergencyRelationships = Object.freeze([
+  "Pai",
+  "Mãe",
+  "Cônjuge",
+  "Filho",
+  "Filha",
+  "Irmão",
+  "Irmã",
+  "Avô",
+  "Avó",
+  "Neto",
+  "Neta",
+  "Tio",
+  "Tia",
+  "Sobrinho",
+  "Sobrinha",
+  "Primo",
+  "Prima",
+  "Responsável legal",
+  "Amigo",
+  "Amiga",
+  "Vizinho",
+  "Vizinha",
+  "Outro",
+]);
 export const stepLabels = [
   "Identificação",
   "Sua foto",

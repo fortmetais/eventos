@@ -4,7 +4,23 @@ import { dateOnly, type FormConfig } from "../events/events.validation.js";
 import { assert } from "../../core/errors.js";
 import { id } from "../../core/security.js";
 import { requiresGuardian } from "./guardian.validation.js";
-import { fieldVisible, sanitizeHidden, healthFields } from "@fac/form-layout";
+import {
+  fieldVisible,
+  sanitizeHidden,
+  healthFields,
+  emergencyRelationships,
+} from "@fac/form-layout";
+
+export function validateEmergencyRelationship(
+  value?: string,
+  previous?: unknown,
+) {
+  assert(
+    !value || emergencyRelationships.includes(value) || value === previous,
+    422,
+    "Selecione uma opção de parentesco/relação para o contato de emergência.",
+  );
+}
 
 const optionalText = z.string().max(500).optional();
 export const draftPayloadSchema = z

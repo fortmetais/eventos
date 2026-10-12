@@ -10,6 +10,7 @@ import {
 import { Camera, ImagePlus, Check, LoaderCircle } from "lucide-react";
 import { api } from "../lib/api";
 import { Notice } from "./ui";
+import { SignedPhoto } from "./SignedPhoto";
 export interface PhotoPickerHandle {
   uploadPendingPhoto: () => Promise<boolean>;
 }
@@ -19,6 +20,7 @@ export function PhotoPicker({
   draftToken,
   onUploaded,
   currentUrl,
+  photoEndpoint,
   onUploadingChange,
   onPendingChange,
   uploadedMessage = "Foto enviada.",
@@ -29,6 +31,7 @@ export function PhotoPicker({
   draftToken?: string;
   onUploaded: (id: string, url: string) => void;
   currentUrl?: string;
+  photoEndpoint?: string;
   onUploadingChange?: (uploading: boolean) => void;
   onPendingChange?: (pending: boolean) => void;
   uploadedMessage?: string;
@@ -282,7 +285,13 @@ export function PhotoPicker({
         </section>
       )}
       <div className="photo-preview">
-        {shown ? (
+        {!preview && photoEndpoint ? (
+          <SignedPhoto
+            endpoint={photoEndpoint}
+            draftToken={draftToken}
+            alt="Prévia da foto de identificação"
+          />
+        ) : shown ? (
           <img
             ref={previewImage}
             src={shown}
@@ -416,7 +425,7 @@ export function PhotoPicker({
           onClick={() => gallery.current?.click()}
         >
           <ImagePlus size={17} />
-          {currentUrl ? "Trocar foto" : "Escolher foto"}
+          {currentUrl || photoEndpoint ? "Trocar foto" : "Escolher foto"}
         </button>
       </div>
       <input

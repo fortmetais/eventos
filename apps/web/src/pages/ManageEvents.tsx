@@ -14,6 +14,11 @@ import { date, dateTime } from "../lib/types";
 import { Empty, Field, Loading, Notice, PageHeading } from "../components/ui";
 import { FormLayoutEditor } from "../components/FormLayoutEditor";
 import { FormLayoutPreview } from "../components/RegistrationFields";
+import {
+  FormBannerEditor,
+  formBannerBody,
+  useBannerPreview,
+} from "../components/FormBannerEditor";
 import { editableLayout, syncLegacyFlags } from "@fac/form-layout";
 import { useAuth } from "../lib/auth";
 import { EventSetups } from "./EventSetups";
@@ -548,12 +553,15 @@ function FormBuilder({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [publish, setPublish] = useState(true);
+  const [bannerFile, setBannerFile] = useState<File | null>(null);
+  const bannerPreview = useBannerPreview(bannerFile, values.banner?.url);
   const latest = campaign.forms?.[0];
   const configured = syncLegacyFlags({
     ...values,
     layout: editableLayout(values, campaign.kind),
   });
   function begin() {
+    setBannerFile(null);
     setValues(
       latest
         ? structuredClone(latest.config)
@@ -582,7 +590,7 @@ function FormBuilder({
     try {
       const created = await api<{ id: string }>(
         `/organizations/${organizationId}/campaigns/${campaign.id}/forms`,
-        { method: "POST", body: configured },
+        { method: "POST", body: formBannerBody(configured, bannerFile) },
       );
       if (publish)
         await api(
@@ -590,6 +598,7 @@ function FormBuilder({
           { method: "POST" },
         );
       setEditor(false);
+      setBannerFile(null);
       onSaved();
     } catch (e) {
       setError((e as Error).message);
@@ -639,6 +648,14 @@ function FormBuilder({
       )}
       {editor && (
         <form onSubmit={save}>
+          <FormBannerEditor
+            previewUrl={bannerPreview}
+            onFile={setBannerFile}
+            onRemove={() =>
+              setValues((current) => ({ ...current, banner: null }))
+            }
+            disabled={busy}
+          />
           <p className="muted">
             Organize os campos da inscrição por etapa. Novas versões preservam
             as respostas antigas.
@@ -790,7 +807,11 @@ function FormBuilder({
             </button>
           </div>
           {preview && (
-            <FormLayoutPreview form={configured} kind={campaign.kind} />
+            <FormLayoutPreview
+              form={configured}
+              kind={campaign.kind}
+              bannerPreview={bannerPreview}
+            />
           )}
         </form>
       )}

@@ -33,6 +33,9 @@ export class OrganizationsService {
     );
     return { items: items.map(organizationThumbnail), total, page, pageSize };
   }
+  publicParishes() {
+    return this.repo.publicParishes();
+  }
   async create(input: unknown, file?: Express.Multer.File) {
     const data = organizationSchema.parse(input);
     const id = randomUUID();

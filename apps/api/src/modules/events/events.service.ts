@@ -17,12 +17,61 @@ import {
 import { volunteerTemplate } from "./volunteer-template.js";
 import { DepartmentsRepository } from "./departments.repository.js";
 import { departmentsSchema } from "./departments.validation.js";
+import {
+  artworkStorage,
+  type ArtworkStorage,
+} from "../../core/artwork-storage.js";
+import { uploadFormBanner } from "./form-banner.js";
 
 export class EventsService {
   constructor(
     private repo: EventsRepository,
     private volunteersOnly = false,
+    private bannerStorage: ArtworkStorage = artworkStorage,
   ) {}
+  private async withFormBanner<T>(
+    organizationId: string,
+    eventId: string,
+    config: FormConfig,
+    file: Express.Multer.File | undefined,
+    save: (config: FormConfig) => Promise<T>,
+  ) {
+    if (!file && !config.banner) return save(config);
+    const event = await this.repo.db.event.findFirst({
+      where: { id: eventId, organizationId },
+      select: { id: true },
+    });
+    assert(event, 404, "Evento não encontrado.");
+    if (!file && config.banner) {
+      const existing = await this.repo.db.formVersion.findFirst({
+        where: {
+          campaign: { eventId, event: { organizationId } },
+          config: { path: ["banner"], equals: json(config.banner) },
+        },
+        select: { id: true },
+      });
+      assert(
+        existing,
+        422,
+        "O banner precisa ser enviado pelo arquivo ou reutilizado de uma ficha deste evento.",
+      );
+      return save(config);
+    }
+    const banner = await uploadFormBanner(
+      this.bannerStorage,
+      organizationId,
+      eventId,
+      file!,
+    );
+    try {
+      return await save({ ...config, banner });
+    } catch (error) {
+      await this.bannerStorage
+        .remove(banner.bucket, banner.key)
+        .catch(() => console.warn("form_banner_cleanup_failed"));
+      throw error;
+    }
+  }
   administrative(organizationId: string, authorizedEvents?: string[]) {
     return this.repo.administrative(organizationId, authorizedEvents);
   }
@@ -122,6 +171,7 @@ export class EventsService {
     eventId: string,
     actorId: string,
     input: unknown,
+    file?: Express.Multer.File,
   ) {
     const config = formSchema.parse(input);
     const departmentsRepo = new DepartmentsRepository(this.repo.db);
@@ -160,89 +210,98 @@ export class EventsService {
           "Preserve a opção exclusiva para quem não possui sacramentos.",
         );
     }
-    return this.repo.db.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT evento_id FROM eventos.eventos WHERE evento_id = ${eventId}::uuid AND organizacao_id = ${organizationId}::uuid FOR UPDATE`;
-      const event = await tx.event.findFirst({
-        where: { id: eventId, organizationId },
-      });
-      assert(event, 404, "Evento não encontrado.");
-      assert(
-        ["DRAFT", "PUBLISHED"].includes(event.status),
-        409,
-        "Este evento não aceita publicação de fichas.",
-      );
-      const campaign = await tx.campaign.findUnique({
-        where: { eventId_kind: { eventId, kind: "VOLUNTEER" } },
-      });
-      assert(
-        campaign,
-        422,
-        "Cadastre primeiro o período de inscrição dos servos.",
-      );
-      const departments = await tx.team.findMany({
-        where: { eventId },
-        orderBy: { name: "asc" },
-      });
-      assert(
-        departments.length > 0 &&
-          departments.every((team) => team.capacity !== null),
-        422,
-        "Cadastre os departamentos e defina as vagas de todos antes de publicar a ficha.",
-      );
-      const preferences = config.questions.find(
-        (question) => question.id === "equipes_preferencia",
-      )!;
-      assert(
-        preferences.options.length === departments.length &&
-          departments.every((team) => preferences.options.includes(team.name)),
-        409,
-        "Os departamentos da ficha precisam corresponder aos cadastros deste evento. Atualize a ficha.",
-      );
-      await tx.$queryRaw`SELECT campanha_id FROM eventos.campanhas WHERE campanha_id = ${campaign.id}::uuid FOR UPDATE`;
-      const invalidCampers = await tx.campaign.count({
-        where: {
-          eventId,
-          kind: "CAMPER",
-          capacity: null,
-          forms: { some: { publishedAt: { not: null } } },
-        },
-      });
-      assert(
-        !invalidCampers,
-        422,
-        "Defina a capacidade da campanha de campistas que já possui ficha publicada.",
-      );
-      const latest = await tx.formVersion.findFirst({
-        where: { campaignId: campaign.id },
-        orderBy: { version: "desc" },
-      });
-      const form = await tx.formVersion.create({
-        data: {
-          campaignId: campaign.id,
-          version: (latest?.version ?? 0) + 1,
-          config: json(config),
-          publishedAt: new Date(),
-        },
-      });
-      if (event.status === "DRAFT")
-        await tx.event.update({
-          where: { id: eventId },
-          data: { status: "PUBLISHED" },
-        });
-      await tx.auditLog.create({
-        data: {
-          organizationId,
-          actorId,
-          action: "VOLUNTEER_FORM_PUBLISHED",
-          entityId: form.id,
-        },
-      });
-      return {
-        form,
-        campaignId: campaign.id,
-        link: `/inscricao/${campaign.id}`,
-      };
-    });
+    return this.withFormBanner(
+      organizationId,
+      eventId,
+      config,
+      file,
+      (config) =>
+        this.repo.db.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT evento_id FROM eventos.eventos WHERE evento_id = ${eventId}::uuid AND organizacao_id = ${organizationId}::uuid FOR UPDATE`;
+          const event = await tx.event.findFirst({
+            where: { id: eventId, organizationId },
+          });
+          assert(event, 404, "Evento não encontrado.");
+          assert(
+            ["DRAFT", "PUBLISHED"].includes(event.status),
+            409,
+            "Este evento não aceita publicação de fichas.",
+          );
+          const campaign = await tx.campaign.findUnique({
+            where: { eventId_kind: { eventId, kind: "VOLUNTEER" } },
+          });
+          assert(
+            campaign,
+            422,
+            "Cadastre primeiro o período de inscrição dos servos.",
+          );
+          const departments = await tx.team.findMany({
+            where: { eventId },
+            orderBy: { name: "asc" },
+          });
+          assert(
+            departments.length > 0 &&
+              departments.every((team) => team.capacity !== null),
+            422,
+            "Cadastre os departamentos e defina as vagas de todos antes de publicar a ficha.",
+          );
+          const preferences = config.questions.find(
+            (question) => question.id === "equipes_preferencia",
+          )!;
+          assert(
+            preferences.options.length === departments.length &&
+              departments.every((team) =>
+                preferences.options.includes(team.name),
+              ),
+            409,
+            "Os departamentos da ficha precisam corresponder aos cadastros deste evento. Atualize a ficha.",
+          );
+          await tx.$queryRaw`SELECT campanha_id FROM eventos.campanhas WHERE campanha_id = ${campaign.id}::uuid FOR UPDATE`;
+          const invalidCampers = await tx.campaign.count({
+            where: {
+              eventId,
+              kind: "CAMPER",
+              capacity: null,
+              forms: { some: { publishedAt: { not: null } } },
+            },
+          });
+          assert(
+            !invalidCampers,
+            422,
+            "Defina a capacidade da campanha de campistas que já possui ficha publicada.",
+          );
+          const latest = await tx.formVersion.findFirst({
+            where: { campaignId: campaign.id },
+            orderBy: { version: "desc" },
+          });
+          const form = await tx.formVersion.create({
+            data: {
+              campaignId: campaign.id,
+              version: (latest?.version ?? 0) + 1,
+              config: json(config),
+              publishedAt: new Date(),
+            },
+          });
+          if (event.status === "DRAFT")
+            await tx.event.update({
+              where: { id: eventId },
+              data: { status: "PUBLISHED" },
+            });
+          await tx.auditLog.create({
+            data: {
+              organizationId,
+              actorId,
+              action: "VOLUNTEER_FORM_PUBLISHED",
+              entityId: form.id,
+            },
+          });
+          return {
+            form,
+            campaignId: campaign.id,
+            link: `/inscricao/${campaign.id}`,
+          };
+        }),
+    );
   }
   async update(organizationId: string, eventId: string, input: unknown) {
     const { typeName, ...data } = eventSchema.parse(input);
@@ -370,31 +429,48 @@ export class EventsService {
       });
     });
   }
-  async form(organizationId: string, campaignId: string, input: unknown) {
+  async form(
+    organizationId: string,
+    campaignId: string,
+    input: unknown,
+    file?: Express.Multer.File,
+  ) {
     const config = formSchema.parse(input);
-    return this.repo.db.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT campanha_id FROM eventos.campanhas WHERE campanha_id = ${campaignId}::uuid FOR UPDATE`;
-      const campaign = await tx.campaign.findFirst({
-        where: { id: campaignId, event: { organizationId } },
-      });
-      assert(campaign, 404, "Campanha não encontrada.");
-      assert(
-        !config.layout || config.layout.kind === campaign.kind,
-        422,
-        "O layout não corresponde ao tipo desta campanha.",
-      );
-      const latest = await tx.formVersion.findFirst({
-        where: { campaignId },
-        orderBy: { version: "desc" },
-      });
-      return tx.formVersion.create({
-        data: {
-          campaignId,
-          version: (latest?.version ?? 0) + 1,
-          config: json(config),
-        },
-      });
+    const target = await this.repo.db.campaign.findFirst({
+      where: { id: campaignId, event: { organizationId } },
+      select: { eventId: true },
     });
+    assert(target, 404, "Campanha não encontrada.");
+    return this.withFormBanner(
+      organizationId,
+      target.eventId,
+      config,
+      file,
+      (config) =>
+        this.repo.db.$transaction(async (tx) => {
+          await tx.$queryRaw`SELECT campanha_id FROM eventos.campanhas WHERE campanha_id = ${campaignId}::uuid FOR UPDATE`;
+          const campaign = await tx.campaign.findFirst({
+            where: { id: campaignId, event: { organizationId } },
+          });
+          assert(campaign, 404, "Campanha não encontrada.");
+          assert(
+            !config.layout || config.layout.kind === campaign.kind,
+            422,
+            "O layout não corresponde ao tipo desta campanha.",
+          );
+          const latest = await tx.formVersion.findFirst({
+            where: { campaignId },
+            orderBy: { version: "desc" },
+          });
+          return tx.formVersion.create({
+            data: {
+              campaignId,
+              version: (latest?.version ?? 0) + 1,
+              config: json(config),
+            },
+          });
+        }),
+    );
   }
   async publishForm(
     organizationId: string,

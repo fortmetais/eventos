@@ -108,6 +108,20 @@ export const formSchema = z
     askShirt: z.boolean(),
     questions: z.array(questionSchema).max(30),
     terms: z.string().trim().min(20).max(10000),
+    banner: z
+      .object({
+        url: z
+          .string()
+          .url()
+          .refine((value) => value.startsWith("https://")),
+        bucket: z.string().min(1).max(100),
+        key: z.string().min(1).max(500),
+        width: z.number().int().positive().max(1600),
+        height: z.number().int().positive().max(800),
+      })
+      .strict()
+      .nullable()
+      .optional(),
     layout: z
       .object({
         version: z.literal(1),

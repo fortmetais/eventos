@@ -3,6 +3,15 @@ import { account } from "../../core/auth.js";
 import { pageQuery, param } from "../../core/security.js";
 import { publicFilters } from "./events.validation.js";
 import type { EventsService } from "./events.service.js";
+import { AppError } from "../../core/errors.js";
+function formInput(req: Request) {
+  if (!req.is("multipart/form-data")) return req.body;
+  try {
+    return JSON.parse(req.body.data);
+  } catch {
+    throw new AppError(400, "Os dados da ficha não puderam ser lidos.");
+  }
+}
 export class EventsController {
   constructor(private service: EventsService) {}
   list = async (req: Request, res: Response) => {
@@ -61,7 +70,8 @@ export class EventsController {
         await this.service.form(
           param(req, "organizationId"),
           param(req, "campaignId"),
-          req.body,
+          formInput(req),
+          req.file,
         ),
       );
   };
@@ -106,7 +116,8 @@ export class EventsController {
           param(req, "organizationId"),
           param(req, "eventId"),
           account(req).id,
-          req.body,
+          formInput(req),
+          req.file,
         ),
       );
   };

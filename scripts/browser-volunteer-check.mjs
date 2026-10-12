@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { chromium } from "@playwright/test";
 import { mkdirSync } from "node:fs";
+import sharp from "sharp";
 import { fieldCatalog } from "@fac/form-layout";
 import {
   volunteerTemplate,
@@ -103,6 +104,30 @@ const png = Buffer.from(
   "base64",
 );
 const photoUrl = `data:image/png;base64,${png.toString("base64")}`;
+let photoUploads = 0,
+  photoSignature = 0,
+  expiredPhotoResponses = 0,
+  rejectNextPhoto = false;
+const photoLinks = [],
+  expiredPhotoSignatures = new Set();
+function signedPhotoUrl() {
+  return `${target}/storage-test/photos/photo-test.png?signature=${++photoSignature}`;
+}
+async function loadedPhoto(page, alt) {
+  const image = page.getByAltText(alt, { exact: true });
+  await image.waitFor();
+  await page.waitForFunction((label) => {
+    const image = [...document.images].find((item) => item.alt === label);
+    return image?.complete && image.naturalWidth > 0;
+  }, alt);
+  return image.getAttribute("src");
+}
+const bannerPng = await sharp({
+  create: { width: 1600, height: 400, channels: 3, background: "#152650" },
+})
+  .png()
+  .toBuffer();
+const bannerUrl = "https://storage.test/form-banner.png";
 const errors = [];
 let decisionNotice = null;
 const responseToken = "n".repeat(43);
@@ -158,6 +183,38 @@ async function fixtures(context) {
       url = new URL(request.url()),
       path = url.pathname,
       method = request.method();
+    if (path === "/storage-test/photos/photo-test.png") {
+      if (
+        rejectNextPhoto ||
+        expiredPhotoSignatures.has(url.searchParams.get("signature"))
+      ) {
+        rejectNextPhoto = false;
+        expiredPhotoResponses++;
+        // Falha HTTP controlada do Storage; não é um erro de execução do React.
+        return json(
+          route,
+          {
+            statusCode: "400",
+            error: "InvalidJWT",
+            message: '"exp" claim timestamp check failed',
+            code: "InvalidJWT",
+          },
+          400,
+        );
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "image/png",
+        headers: { "cache-control": "no-store" },
+        body: png,
+      });
+    }
+    if (request.url() === bannerUrl)
+      return route.fulfill({
+        status: 200,
+        contentType: "image/png",
+        body: bannerPng,
+      });
     if (url.hostname === authHost) {
       const headers = {
         "access-control-allow-origin": "*",
@@ -201,7 +258,26 @@ async function fixtures(context) {
       path === `/api/v1/organizations/${id}/events/${eventId}/volunteer-form`
     ) {
       if (method === "POST") {
-        const config = request.postDataJSON();
+        const multipart = request
+          .headers()
+          ["content-type"]?.startsWith("multipart/form-data");
+        const config = multipart
+          ? JSON.parse(
+              request
+                .postData()
+                .match(/name="data"\r\n\r\n([\s\S]*?)\r\n--/)[1],
+            )
+          : request.postDataJSON();
+        if (multipart) {
+          assert.ok(request.postData().includes('name="banner"'));
+          config.banner = {
+            url: bannerUrl,
+            bucket: "artes-eventos",
+            key: "banner-da-versao-1.webp",
+            width: 1600,
+            height: 400,
+          };
+        }
         assert.equal(
           config.volunteer.training,
           "Preparação na comunidade, no sábado anterior ao evento.",
@@ -234,6 +310,15 @@ async function fixtures(context) {
       path === `/api/v1/organizations/${id}/event-setups`
     )
       return json(route, [event]);
+    if (path === "/api/v1/public/parishes")
+      return json(route, [
+        {
+          id: "parish-one",
+          name: "Paróquia Nossa Senhora Aparecida",
+          city: "Loanda",
+          state: "PR",
+        },
+      ]);
     if (path === `/api/v1/public/campaigns/${campaignId}`)
       return json(route, { ...campaign, event, form });
     if (path === `/api/v1/public/campaigns/${campaignId}/drafts`) {
@@ -262,8 +347,26 @@ async function fixtures(context) {
         submitted: false,
       });
     }
-    if (path === `/api/v1/public/drafts/${draftId}/photo`)
-      return json(route, { id: "photo-test", url: photoUrl }, 201);
+    if (path === `/api/v1/public/drafts/${draftId}/photo`) {
+      assert.equal(method, "POST");
+      assert.equal(
+        request.headers()["x-draft-token"],
+        "credencial-temporaria-somente-teste",
+      );
+      photoUploads++;
+      return json(route, { id: "photo-test", url: signedPhotoUrl() }, 201);
+    }
+    if (path === `/api/v1/public/drafts/${draftId}/photos/photo-test`) {
+      assert.equal(method, "GET");
+      assert.equal(
+        request.headers()["x-draft-token"],
+        "credencial-temporaria-somente-teste",
+        "Renovar a foto deve conservar a autorização do rascunho.",
+      );
+      const url = signedPhotoUrl();
+      photoLinks.push(url);
+      return json(route, { url });
+    }
     if (path === `/api/v1/public/drafts/${draftId}/submit`) {
       if (form.version > 1) {
         assert.equal(payload.photoAssetId, undefined);
@@ -279,6 +382,10 @@ async function fixtures(context) {
           status: "RECEIVED",
         });
       }
+      assert.equal(
+        payload.answers.paroquia,
+        "Paróquia de São Francisco ainda não cadastrada",
+      );
       assert.equal(payload.answers.aceite_formacao, true);
       assert.equal(payload.answers.aceite_regras, true);
       assert.equal(payload.termsAccepted, true);
@@ -488,6 +595,14 @@ try {
     .getByRole("heading", { name: "Campos da ficha", exact: true })
     .waitFor();
   await admin
+    .getByLabel("Banner da ficha (opcional)", { exact: false })
+    .setInputFiles({
+      name: "banner.png",
+      mimeType: "image/png",
+      buffer: bannerPng,
+    });
+  await admin.getByAltText("Prévia do banner da ficha").waitFor();
+  await admin
     .getByRole("button", { name: "Publicar ficha de servos", exact: true })
     .click();
   await admin
@@ -510,7 +625,41 @@ try {
   await fixtures(visitorContext);
   visitor = await visitorContext.newPage();
   visitor.setDefaultTimeout(15000);
+  await visitor.clock.install();
   await visitor.goto(`${target}/inscricao/${campaignId}`);
+  await visitor
+    .getByAltText(`Banner do evento ${event.name}`, { exact: true })
+    .waitFor();
+  await visitor.waitForFunction(
+    () => document.querySelector(".registration-banner img")?.naturalWidth > 0,
+  );
+  const bannerRatio = await visitor
+    .locator(".registration-banner img")
+    .evaluate((img) => {
+      const box = img.getBoundingClientRect();
+      return {
+        rendered: box.width / box.height,
+        original: img.naturalWidth / img.naturalHeight,
+      };
+    });
+  assert.ok(
+    Math.abs(bannerRatio.rendered - bannerRatio.original) < 0.02,
+    "O banner deve manter a proporção e não cortar textos.",
+  );
+  await visitor.screenshot({
+    path: ".local/screenshots/banner-introducao-mobile.png",
+    fullPage: true,
+  });
+  assert.ok(
+    await visitor.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  );
+  await visitor.setViewportSize({ width: 1280, height: 900 });
+  await visitor.screenshot({
+    path: ".local/screenshots/banner-introducao-desktop.png",
+  });
+  await visitor.setViewportSize({ width: 390, height: 844 });
   await visitor.getByRole("button", { name: "Começar inscrição" }).click();
   await visitor
     .getByLabel("Nome completo", { exact: false })
@@ -563,13 +712,57 @@ try {
     .setInputFiles({ name: "foto.png", mimeType: "image/png", buffer: png });
   await visitor.getByRole("button", { name: "Usar esta foto" }).click();
   await visitor.getByRole("button", { name: "Trocar foto" }).waitFor();
+  const initialPhoto = await loadedPhoto(
+    visitor,
+    "Prévia da foto de identificação",
+  );
   await next();
+  await visitor.getByLabel("Tamanho da camiseta", { exact: false }).waitFor();
+  // O candidato pode levar mais que os 120 segundos de validade do link da foto.
+  const photoLinksOutsidePhotoStep = photoLinks.length;
+  await visitor.clock.fastForward(125_000);
+  assert.equal(
+    photoLinks.length,
+    photoLinksOutsidePhotoStep,
+    "Etapas sem a foto não devem renovar o link em segundo plano.",
+  );
+  for (let signature = 1; signature <= photoSignature; signature++)
+    expiredPhotoSignatures.add(String(signature));
   await visitor
     .getByLabel("Tamanho da camiseta", { exact: false })
     .selectOption("M");
   await visitor
     .getByLabel("Sua disponibilidade", { exact: false })
     .fill("Durante todo o evento e preparação.");
+  const parishInput = visitor.getByRole("combobox", {
+    name: "Qual paróquia frequenta?",
+  });
+  await parishInput.fill("aparecida");
+  const parishOption = visitor.getByRole("option", {
+    name: "Paróquia Nossa Senhora Aparecida — Loanda - PR",
+  });
+  await parishOption.waitFor();
+  await parishInput.scrollIntoViewIfNeeded();
+  await visitor.screenshot({
+    path: ".local/screenshots/parish-suggestions-mobile.png",
+  });
+  await parishOption.tap();
+  assert.equal(
+    await parishInput.inputValue(),
+    "Paróquia Nossa Senhora Aparecida — Loanda - PR",
+  );
+  await parishInput.fill("Paróquia de São Francisco ainda não cadastrada");
+  await visitor
+    .getByText("Nenhuma paróquia encontrada. Você pode manter o nome digitado.")
+    .waitFor();
+  assert.ok(
+    await visitor.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  );
+  console.log(
+    "Paróquia: seleção por toque, preenchimento livre e layout móvel aprovados.",
+  );
   await visitor
     .getByLabel("Já participou ou serviu", { exact: false })
     .selectOption("false");
@@ -614,9 +807,15 @@ try {
   await visitor
     .getByLabel("Telefone do contato de emergência com DDD", { exact: false })
     .fill("44988888888");
+  assert.equal(
+    await visitor
+      .getByLabel("Telefone do contato de emergência com DDD", { exact: false })
+      .inputValue(),
+    "(44) 98888-8888",
+  );
   await visitor
     .getByLabel("Parentesco / relação", { exact: false })
-    .fill("Irmão");
+    .selectOption("Irmão");
   for (const label of [
     "Possui alguma alergia?",
     "Usa medicamentos regularmente?",
@@ -625,7 +824,57 @@ try {
     "Precisa de algum apoio",
   ])
     await visitor.getByLabel(label, { exact: false }).selectOption("false");
+  const linksBeforeReview = photoLinks.length;
+  // Mesmo um link recém-obtido pode falhar; simula o erro informado pelo usuário.
+  rejectNextPhoto = true;
   await next();
+  const reviewPhoto = await loadedPhoto(visitor, "Sua foto");
+  assert.notEqual(reviewPhoto, initialPhoto);
+  assert.equal(expiredPhotoResponses, 1);
+  assert.equal(
+    photoLinks.length,
+    linksBeforeReview + 2,
+    "A revisão deve buscar um link atual e renovar uma vez após InvalidJWT.",
+  );
+  assert.equal(payload.photoAssetId, "photo-test");
+  assert.equal(payload.name, "Pessoa candidata a servir");
+  assert.equal(photoUploads, 1, "Renovar a URL não deve reenviar o arquivo.");
+  const linksBeforePeriodicRenewal = photoLinks.length;
+  await visitor.clock.fastForward(125_000);
+  await visitor.waitForFunction((previous) => {
+    const image = [...document.images].find((item) => item.alt === "Sua foto");
+    return image?.complete && image.naturalWidth > 0 && image.src !== previous;
+  }, reviewPhoto);
+  assert.equal(
+    photoLinks.length,
+    linksBeforePeriodicRenewal + 1,
+    "A foto exibida deve renovar antes de expirar enquanto a aba está visível.",
+  );
+  for (let index = 0; index < 3; index++)
+    await visitor.getByRole("button", { name: "Voltar", exact: true }).click();
+  const returnedPhoto = await loadedPhoto(
+    visitor,
+    "Prévia da foto de identificação",
+  );
+  assert.notEqual(returnedPhoto, initialPhoto);
+  assert.equal(payload.photoAssetId, "photo-test");
+  assert.deepEqual(
+    await visitor.evaluate(
+      (key) => JSON.parse(localStorage.getItem(key)),
+      `fac:draft:${campaignId}`,
+    ),
+    { id: draftId, token: "credencial-temporaria-somente-teste" },
+    "Renovar a foto deve preservar a credencial de retomada.",
+  );
+  for (let index = 0; index < 3; index++) await next();
+  await loadedPhoto(visitor, "Sua foto");
+  await visitor.screenshot({
+    path: ".local/screenshots/servos-foto-renovada-revisao.png",
+    fullPage: true,
+  });
+  console.log(
+    "Foto privada: revisão após 125s, recuperação de InvalidJWT, renovação periódica e retorno à etapa2 preservam arquivo, dados e credencial.",
+  );
   await visitor.getByRole("button", { name: "Enviar inscrição" }).click();
   await visitor
     .getByText("Confirme este aceite para enviar sua candidatura.", {
@@ -902,6 +1151,16 @@ try {
     .getByRole("button", { name: "Voltar", exact: true })
     .click();
   await minimalPage.reload();
+  await minimalPage
+    .getByRole("heading", { name: "Regras para servir" })
+    .waitFor();
+  assert.equal(
+    await minimalPage.getByLabel("Nome completo", { exact: false }).count(),
+    0,
+  );
+  await minimalPage
+    .getByRole("button", { name: "Continuar inscrição", exact: true })
+    .click();
   await minimalPage.getByLabel("Nome completo", { exact: false }).waitFor();
   assert.equal(
     await minimalPage
@@ -957,7 +1216,153 @@ try {
       .count(),
     1,
   );
+  const guardianRelationship = minimalPage.getByRole("combobox", {
+    name: /Parentesco do responsável/,
+  });
+  assert.equal(await guardianRelationship.inputValue(), "");
+  assert.deepEqual(
+    await guardianRelationship.locator("option").allTextContents(),
+    [
+      "Selecione",
+      "Pai",
+      "Mãe",
+      "Tutor(a) legal",
+      "Responsável com guarda judicial",
+    ],
+  );
+  await minimalPage
+    .getByRole("textbox", { name: /Nome do responsável/ })
+    .fill("Responsável do menor");
+  const guardianPhone = minimalPage.getByRole("textbox", {
+    name: /Telefone do responsável/,
+  });
+  await guardianPhone.fill("44988887777");
+  assert.equal(await guardianPhone.inputValue(), "(44) 98888-7777");
+  await guardianRelationship.selectOption("Mãe");
+  await minimalPage
+    .getByRole("button", { name: "Continuar", exact: true })
+    .click();
+  await minimalPage
+    .getByRole("heading", { name: "Está tudo certo?" })
+    .waitFor();
+  assert.equal(payload.guardianRelationship, "Mãe");
+  assert.equal(payload.guardianPhone, "(44) 98888-7777");
+  await minimalPage.reload();
+  await minimalPage
+    .getByRole("button", { name: "Continuar inscrição", exact: true })
+    .click();
+  await minimalPage
+    .getByRole("button", { name: "Continuar", exact: true })
+    .click();
+  assert.equal(await guardianRelationship.inputValue(), "Mãe");
+  assert.equal(await guardianPhone.inputValue(), "(44) 98888-7777");
   await minimalContext.close();
+  // Um rascunho anterior não recebe silenciosamente os campos da publicação nova.
+  const oldDraftContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+  });
+  await fixtures(oldDraftContext);
+  let oldPayload = {
+    name: "Pessoa com rascunho anterior",
+    phone: "44999999999",
+    birthDate: "1990-01-01",
+    availability: "Posso servir desde sexta-feira",
+    photoAssetId: "photo-test",
+    answers: { sexo: "Feminino", cidade: "Loanda - PR" },
+  };
+  await oldDraftContext.addInitScript(
+    ({ key, credential }) => {
+      if (["localhost", "127.0.0.1"].includes(location.hostname))
+        localStorage.setItem(key, JSON.stringify(credential));
+    },
+    {
+      key: `fac:draft:${campaignId}`,
+      credential: { id: draftId, token: "credencial-temporaria-somente-teste" },
+    },
+  );
+  await oldDraftContext.route(`**/api/v1/public/drafts/${draftId}`, (route) => {
+    if (route.request().method() === "PUT")
+      oldPayload = route.request().postDataJSON().payload;
+    return json(route, {
+      id: draftId,
+      campaignId,
+      payload: oldPayload,
+      health: {},
+      form: oldVersion,
+      submitted: false,
+    });
+  });
+  let oldPhotoUnavailable = true;
+  await oldDraftContext.route(
+    `**/api/v1/public/drafts/${draftId}/photos/photo-test`,
+    (route) => {
+      assert.equal(
+        route.request().headers()["x-draft-token"],
+        "credencial-temporaria-somente-teste",
+      );
+      if (oldPhotoUnavailable) {
+        oldPhotoUnavailable = false;
+        return json(
+          route,
+          { message: "Storage temporariamente indisponível" },
+          503,
+        );
+      }
+      return route.fallback();
+    },
+  );
+  const oldDraftPage = await oldDraftContext.newPage();
+  await oldDraftPage.goto(`${target}/inscricao/${campaignId}`);
+  await oldDraftPage
+    .getByRole("heading", { name: "Regras para servir" })
+    .waitFor();
+  await oldDraftPage
+    .getByText(/Você tem uma inscrição em andamento na versão 1/)
+    .waitFor();
+  assert.equal(
+    await oldDraftPage.getByLabel("Nome completo", { exact: false }).count(),
+    0,
+  );
+  await oldDraftPage.screenshot({
+    path: ".local/screenshots/ficha-introducao-rascunho-anterior.png",
+    fullPage: true,
+  });
+  await oldDraftPage
+    .getByRole("button", { name: "Continuar inscrição", exact: true })
+    .click();
+  assert.equal(
+    await oldDraftPage
+      .getByLabel("Nome completo", { exact: false })
+      .inputValue(),
+    "Pessoa com rascunho anterior",
+  );
+  await oldDraftPage
+    .getByRole("button", { name: "Continuar", exact: true })
+    .click();
+  await oldDraftPage.getByText("Não foi possível carregar a foto.").waitFor();
+  assert.equal(oldPayload.photoAssetId, "photo-test");
+  assert.deepEqual(
+    await oldDraftPage.evaluate(
+      (key) => JSON.parse(localStorage.getItem(key)),
+      `fac:draft:${campaignId}`,
+    ),
+    { id: draftId, token: "credencial-temporaria-somente-teste" },
+    "Uma falha de foto não deve apagar a inscrição anterior nem sua credencial.",
+  );
+  await oldDraftPage
+    .getByRole("button", { name: "Tentar carregar foto" })
+    .click();
+  await loadedPhoto(oldDraftPage, "Prévia da foto de identificação");
+  await oldDraftPage
+    .getByRole("button", { name: "Continuar", exact: true })
+    .click();
+  assert.equal(
+    await oldDraftPage
+      .getByLabel("Sua disponibilidade", { exact: false })
+      .inputValue(),
+    "Posso servir desde sexta-feira",
+  );
+  await oldDraftContext.close();
   assert.deepEqual(errors, []);
   console.log(
     "Editor (mouse, teclado, cancelamento, toque e rolagem), publicação, nova versão, ficha no celular, envio sem campos ocultos, retomada, responsável, avaliação e presença validados com serviços simulados. Nenhum registro ou e-mail real criado.",

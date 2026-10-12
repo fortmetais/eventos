@@ -18,6 +18,7 @@ import {
   teamSchema,
   transitions,
   validateSubmission,
+  validateEmergencyRelationship,
 } from "./registrations.validation.js";
 import { RegistrationsRepository } from "./registrations.repository.js";
 import type { DecisionNoticesService } from "./decision-notices.service.js";
@@ -148,6 +149,10 @@ export class RegistrationsService {
         draft.campaign.kind,
         parsed.payload,
         parsed.health,
+      );
+      validateEmergencyRelationship(
+        data.payload.emergencyRelationship,
+        (draft.payload as Record<string, unknown>).emergencyRelationship,
       );
       if (data.payload.photoAssetId)
         assert(

@@ -11,6 +11,13 @@ export class OrganizationsRepository {
       ? this.eventsEnabled()
       : this.eventsEnabled;
   }
+  publicParishes() {
+    return this.db.organization.findMany({
+      where: { active: true, kind: "PARISH" },
+      select: { id: true, name: true, city: true, state: true },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+    });
+  }
   async list(skip: number, take: number) {
     const eventsEnabled = await this.eventsAvailable();
     return this.db.$transaction([

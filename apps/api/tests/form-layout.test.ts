@@ -178,7 +178,7 @@ describe("Layout versionado das fichas", () => {
         {
           ...payload,
           guardianName: "Responsável",
-          guardianPhone: "44988888888",
+          guardianPhone: "(44) 98888-8888",
           guardianRelationship: "Mãe",
         },
         {},

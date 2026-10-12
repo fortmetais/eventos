@@ -33,6 +33,20 @@ export interface GuardianRecord {
       startsAt: string;
       endsAt: string;
       organization: string;
+      organizationDetails?: {
+        name: string;
+        contact: string;
+        city: string;
+        state: string;
+        cnpj: string | null;
+        legalName: string | null;
+        tradeName: string | null;
+        postalCode: string | null;
+        street: string | null;
+        number: string | null;
+        complement: string | null;
+        neighborhood: string | null;
+      };
     };
   };
   termsText: string;

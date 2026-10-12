@@ -5,6 +5,10 @@ import { hashToken, json } from "../../core/security.js";
 import type { DecisionEmailSender } from "../../core/decision-mail.js";
 import { guardianSignSchema, requiresGuardian } from "./guardian.validation.js";
 import { z } from "zod";
+import {
+  guardianOrganizationInfo,
+  type GuardianOrganization,
+} from "./guardian-organization.js";
 
 const include = {
   registration: {
@@ -58,12 +62,7 @@ export class GuardianService {
       city: string;
       startsAt: Date;
       endsAt: Date;
-      organization: {
-        name: string;
-        contact: string;
-        city: string;
-        state: string;
-      };
+      organization: GuardianOrganization;
     },
     kind: string,
     formTerms: string,
@@ -73,7 +72,8 @@ export class GuardianService {
       expiresAt = new Date(Date.now() + 14 * 86400000);
     const date = (value: Date) =>
       new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(value);
-    const termsText = `TERMO DE RESPONSABILIDADE E AUTORIZAÇÃO\n${event.organization.name}\nContato: ${event.organization.contact}\n\nAutorizo o(a) menor identificado(a) neste termo a ${kind === "VOLUNTEER" ? "servir voluntariamente" : "participar"} no evento ${event.name}, organizado por ${event.organization.name}, em ${event.location}, ${event.city}, de ${date(event.startsAt)} a ${date(event.endsAt)}, permanecendo no local nesse período.\n\nDeclaro que as informações de saúde do(a) menor são verdadeiras e que informei as condições que possam impedir sua participação. Isento os coordenadores e a entidade de responsabilidade por problemas de saúde omitidos à coordenação e estou ciente de que a instituição zelará pela integridade do(a) participante.\n\nConsciente dos benefícios do evento, declaro estar ciente dos riscos de acidentes imprevisíveis e do texto de responsabilidade apresentado pela organização: abdico de responsabilizar, em qualquer instância judicial, a liderança da comunidade e do evento, a igreja, padres e demais lideranças por danos decorrentes de acidentes imprevisíveis.\n\nUso de imagem e voz (opcional): autorizo, se marcar a opção correspondente, a cessão de direitos de veiculação de imagens e/ou voz do(a) menor em meios de comunicação, de livre e espontânea vontade, sem remuneração por direitos de imagem.\n\nConcordo com o tratamento dos dados pessoais fornecidos para inscrição, autorização e cuidados durante este evento, conforme a Lei nº 13.709/2018 (LGPD).\n\nTERMOS DA FICHA\n${formTerms}`;
+    const organization = guardianOrganizationInfo(event.organization);
+    const termsText = `TERMO DE RESPONSABILIDADE E AUTORIZAÇÃO\n${organization.text}\n\nAutorizo o(a) menor identificado(a) neste termo a ${kind === "VOLUNTEER" ? "servir voluntariamente" : "participar"} no evento ${event.name}, organizado por ${organization.snapshot.legalName || organization.snapshot.name}, em ${event.location}, ${event.city}, de ${date(event.startsAt)} a ${date(event.endsAt)}, permanecendo no local nesse período.\n\nDeclaro que as informações de saúde do(a) menor são verdadeiras e que informei as condições que possam impedir sua participação. Isento os coordenadores e a entidade de responsabilidade por problemas de saúde omitidos à coordenação e estou ciente de que a instituição zelará pela integridade do(a) participante.\n\nConsciente dos benefícios do evento, declaro estar ciente dos riscos de acidentes imprevisíveis e do texto de responsabilidade apresentado pela organização: abdico de responsabilizar, em qualquer instância judicial, a liderança da comunidade e do evento, a igreja, padres e demais lideranças por danos decorrentes de acidentes imprevisíveis.\n\nUso de imagem e voz (opcional): autorizo, se marcar a opção correspondente, a cessão de direitos de veiculação de imagens e/ou voz do(a) menor em meios de comunicação, de livre e espontânea vontade, sem remuneração por direitos de imagem.\n\nConcordo com o tratamento dos dados pessoais fornecidos para inscrição, autorização e cuidados durante este evento, conforme a Lei nº 13.709/2018 (LGPD).\n\nTERMOS DA FICHA\n${formTerms}`;
     await tx.guardianAuthorization.create({
       data: {
         id,
@@ -102,7 +102,8 @@ export class GuardianService {
             city: event.city,
             startsAt: event.startsAt,
             endsAt: event.endsAt,
-            organization: event.organization.name,
+            organization: organization.snapshot.name,
+            organizationDetails: organization.snapshot,
           },
         }),
         health: {

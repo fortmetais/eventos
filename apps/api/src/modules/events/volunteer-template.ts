@@ -55,11 +55,12 @@ export function volunteerTemplate(
       },
       {
         id: "acampamento_edicao",
-        label: "É campista? Qual edição do acampamento você fez?",
+        label:
+          "É campista? Qual edição do Acampamento que você fez? (Sênior, Juvenil, JOAM, Mergulhar…)",
         type: "text",
         required: true,
         options: [],
-        hint: "Informe o tipo, a edição e a organização. Se ainda não participou, informe isso.",
+        hint: "EXEMPLOS:\n1° Sênior da Paróquia Nossa Senhora Aparecida\n1° FAC da Aparecida\n\nSe ainda não participou de um acampamento, informe isso.",
       },
       {
         id: "formacao_saude",
@@ -75,7 +76,7 @@ export function volunteerTemplate(
         type: "text",
         required: false,
         options: [],
-        hint: "Neste campo, cônjuge se refere à pessoa com quem você é casado(a).",
+        hint: "Considera-se cônjuge SOMENTE CASAIS CASADOS, não se estendendo tal condição a namorados",
       },
       {
         id: "paroquia",

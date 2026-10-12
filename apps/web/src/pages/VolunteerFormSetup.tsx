@@ -14,6 +14,12 @@ import { Field, Loading, Notice, PageHeading } from "../components/ui";
 import { FormLayoutEditor } from "../components/FormLayoutEditor";
 import { FormLayoutPreview } from "../components/RegistrationFields";
 import { editableLayout } from "@fac/form-layout";
+import { RegistrationBanner } from "../components/RegistrationBanner";
+import {
+  FormBannerEditor,
+  formBannerBody,
+  useBannerPreview,
+} from "../components/FormBannerEditor";
 
 interface Setup {
   departmentsReady: boolean;
@@ -96,6 +102,8 @@ function Editor({
   const [preview, setPreview] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [bannerFile, setBannerFile] = useState<File | null>(null);
+  const bannerPreview = useBannerPreview(bannerFile, fieldsConfig.banner?.url);
   const config: FormConfig = {
     ...fieldsConfig,
     terms,
@@ -132,7 +140,10 @@ function Editor({
         throw new Error(
           "Cadastre de 1 a 30 departamentos diferentes e defina suas vagas no evento.",
         );
-      await api(path, { method: "POST", body: config });
+      await api(path, {
+        method: "POST",
+        body: formBannerBody(config, bannerFile),
+      });
       refresh();
     } catch (error) {
       const fields =
@@ -182,8 +193,9 @@ function Editor({
         {data.form?.publishedAt && (
           <>
             <Notice kind="success">
-              Ficha publicada — versão {data.form.version}. Novas candidaturas
-              usam essa versão.
+              Ficha publicada — versão {data.form.version}. Inscrições iniciadas
+              agora usam essa versão. Rascunhos anteriores e inscrições enviadas
+              mantêm a versão original.
             </Notice>
             <Field label="Link da ficha de servos">
               <input
@@ -234,6 +246,14 @@ function Editor({
           até três departamentos para servir.
         </p>
         {error && <Notice>{error}</Notice>}
+        <FormBannerEditor
+          previewUrl={bannerPreview}
+          onFile={setBannerFile}
+          onRemove={() =>
+            setFieldsConfig((current) => ({ ...current, banner: null }))
+          }
+          disabled={busy}
+        />
         <Field
           label="Descrição"
           hint="Apresente o evento e a proposta de servir à equipe."
@@ -354,6 +374,11 @@ function Editor({
       {preview && (
         <section className="panel">
           <h2>Campos da ficha</h2>
+          <RegistrationBanner
+            banner={config.banner}
+            previewUrl={bannerPreview}
+            eventName={data.event.name}
+          />
           {description.trim() && (
             <>
               <h3>Descrição</h3>
@@ -364,7 +389,12 @@ function Editor({
           <p className="description">{requirements}</p>
           <h3>Preparação da equipe</h3>
           <p className="description">{training}</p>
-          <FormLayoutPreview form={config} kind="VOLUNTEER" />
+          <FormLayoutPreview
+            form={config}
+            kind="VOLUNTEER"
+            bannerPreview={bannerPreview}
+            showBanner={false}
+          />
         </section>
       )}
     </>

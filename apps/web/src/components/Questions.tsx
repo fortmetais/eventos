@@ -1,6 +1,7 @@
 import type { Answer, Question } from "../lib/types";
 import { Field } from "./ui";
 import { CityAutocomplete } from "./CityAutocomplete";
+import { ParishAutocomplete } from "./ParishAutocomplete";
 export function Questions({
   questions,
   answers,
@@ -19,17 +20,47 @@ export function Questions({
       {questions.map((q) => (
         <Field
           key={q.id}
-          label={q.label}
+          label={
+            q.id === "acampamento_edicao" &&
+            q.label === "É campista? Qual edição do acampamento você fez?"
+              ? "É campista? Qual edição do Acampamento que você fez? (Sênior, Juvenil, JOAM, Mergulhar…)"
+              : q.label
+          }
           required={q.required}
-          hint={q.hint}
+          hint={
+            q.id === "acampamento_edicao" &&
+            !q.hint?.includes("1° FAC da Aparecida")
+              ? [
+                  "EXEMPLOS:\n1° Sênior da Paróquia Nossa Senhora Aparecida\n1° FAC da Aparecida",
+                  q.hint,
+                ]
+                  .filter(Boolean)
+                  .join("\n\n")
+              : q.id === "conjuge" &&
+                  q.hint ===
+                    "Neste campo, cônjuge se refere à pessoa com quem você é casado(a)."
+                ? "Considera-se cônjuge SOMENTE CASAIS CASADOS, não se estendendo tal condição a namorados"
+                : q.hint
+          }
           error={errors[q.id]}
           group={
             q.type === "multiple" ||
-            (cityAutocomplete && q.id === "cidade" && q.type === "text")
+            (cityAutocomplete &&
+              ["cidade", "paroquia"].includes(q.id) &&
+              q.type === "text")
           }
         >
           {cityAutocomplete && q.id === "cidade" && q.type === "text" ? (
             <CityAutocomplete
+              label={q.label}
+              name={`answers.${q.id}`}
+              required={q.required}
+              invalid={Boolean(errors[q.id])}
+              value={String(answers[q.id] ?? "")}
+              onChange={(value) => onChange(q.id, value)}
+            />
+          ) : cityAutocomplete && q.id === "paroquia" && q.type === "text" ? (
+            <ParishAutocomplete
               label={q.label}
               name={`answers.${q.id}`}
               required={q.required}
