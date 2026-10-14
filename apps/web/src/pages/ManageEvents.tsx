@@ -289,6 +289,15 @@ function FullManageEvents() {
             </div>
             {editable && (
               <div className="button-row">
+                {["DRAFT", "PUBLISHED"].includes(event.status) &&
+                  event.campaigns.some((c) => c.kind === "CAMPER") && (
+                    <Link
+                      className="button outline"
+                      to={`/organizacao/${organizationId}/eventos/${event.id}/ficha-campistas`}
+                    >
+                      Ficha de campistas
+                    </Link>
+                  )}
                 <button className="text-button" onClick={() => edit(event)}>
                   Editar informações
                 </button>

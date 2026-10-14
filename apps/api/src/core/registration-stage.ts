@@ -16,7 +16,7 @@ export class RegistrationStage {
     if (!(await this.ready()))
       throw new AppError(
         503,
-        "As fichas de servos aguardam a configuração inicial do banco. Após a configuração, atualize esta página.",
+        "As fichas de inscrição aguardam a configuração inicial do banco. Após a configuração, atualize esta página.",
         "REGISTRATION_SETUP_REQUIRED",
       );
   }

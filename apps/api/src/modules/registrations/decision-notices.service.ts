@@ -128,8 +128,12 @@ export class DecisionNoticesService {
       timeZone: "America/Sao_Paulo",
     }).format(notice.expiresAt);
     const name = registration.person.name;
-    const text =
-      notice.kind === "ACEITE"
+    const camper = registration.campaign.kind === "CAMPER";
+    const text = camper
+      ? notice.kind === "ACEITE"
+        ? `Olá, ${name}! Sua inscrição como campista no ${event.name} foi aprovada!\n\n${event.organization.name} · Evento a partir de ${eventDate}.\n\nConfirme sua presença pelo link: ${link}\n\nO link é pessoal e válido até ${expiry} (horário de Brasília). A organização finalizará a confirmação conforme as vagas e, para menores, após a autorização do responsável.\n\nEsperamos você!`
+        : `Olá, ${name}. Agradecemos seu interesse em participar do ${event.name}. Sua inscrição como campista não foi selecionada para esta edição. Esperamos receber você em uma próxima oportunidade!\n\nConfira o resultado: ${link}\n\n${event.organization.name}`
+      : notice.kind === "ACEITE"
         ? `Olá, ${name}! Sua candidatura para servir no ${event.name} foi aceita!\n\n${event.organization.name} · Evento a partir de ${eventDate}.\n\nConfirme sua presença pelo link: ${link}\n\nO link é pessoal e válido até ${expiry} (horário de Brasília). A organização finalizará sua equipe e a confirmação da participação.\n\nEsperamos você!`
         : `Olá, ${name}. Não foi dessa vez!\n\nAgradecemos sua disponibilidade para servir no ${event.name}. Sua candidatura não foi selecionada para esta edição. Esperamos poder contar com você em uma próxima oportunidade!\n\nConfira o resultado: ${link}\n\n${event.organization.name}`;
     const snapshot = registration.snapshot as {
@@ -149,14 +153,14 @@ export class DecisionNoticesService {
       subject:
         notice.kind === "ACEITE"
           ? `Confirme sua presença — ${event.name.replace(/[\r\n]/g, " ")}`
-          : `Resultado da candidatura — ${event.name.replace(/[\r\n]/g, " ")}`,
+          : `Resultado ${camper ? "da inscrição" : "da candidatura"} — ${event.name.replace(/[\r\n]/g, " ")}`,
     };
   }
   private async latest(organizationId: string, registrationId: string) {
     const registration = await this.db.registration.findFirst({
       where: {
         id: registrationId,
-        campaign: { kind: "VOLUNTEER", event: { organizationId } },
+        campaign: { event: { organizationId } },
       },
       select: { id: true },
     });
@@ -419,6 +423,7 @@ export class DecisionNoticesService {
     const event = notice.registration.campaign.event;
     return {
       kind: notice.kind,
+      participation: notice.registration.campaign.kind,
       candidateName: notice.registration.person.name.split(" ")[0],
       confirmedAt: notice.confirmedAt,
       expiresAt: notice.expiresAt,

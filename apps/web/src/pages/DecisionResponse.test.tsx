@@ -36,6 +36,29 @@ const view = () =>
     </MemoryRouter>,
   );
 describe("Resposta do candidato", () => {
+  it("campista recebe aprovação e confirmação sem orientações de trabalho", async () => {
+    mocks.api.mockResolvedValue({ ...summary, participation: "CAMPER" });
+    view();
+    expect(
+      await screen.findByRole("heading", {
+        name: "Sua inscrição foi aprovada!",
+      }),
+    ).toBeVisible();
+    expect(screen.getByText(/participar como campista/)).toBeVisible();
+    mocks.api.mockResolvedValue({
+      ...summary,
+      participation: "CAMPER",
+      confirmedAt: "2026-10-14T12:00:00Z",
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Confirmar minha presença" }),
+    );
+    expect(
+      await screen.findByText(
+        /conforme as vagas e a autorização do responsável/,
+      ),
+    ).toBeVisible();
+  });
   it("abrir link não confirma; botão envia resposta e conserva protocolo de confirmação", async () => {
     view();
     const button = await screen.findByRole("button", {

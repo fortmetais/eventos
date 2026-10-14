@@ -11,6 +11,7 @@ export interface LayoutForm {
   askShirt: boolean;
   questions: { id: string; label: string; required: boolean }[];
   volunteer?: unknown;
+  camper?: unknown;
   layout?: FormLayout;
 }
 export interface FormField {

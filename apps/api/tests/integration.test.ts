@@ -509,6 +509,7 @@ integration(
         db,
         storage,
         eventsEnabled: false,
+        camperRegistrationsEnabled: false,
         volunteerRegistrationsEnabled: true,
         rateLimits: false,
         resolveIdentity: async (token) =>

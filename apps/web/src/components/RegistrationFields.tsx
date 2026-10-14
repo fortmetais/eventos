@@ -57,7 +57,10 @@ export function RegistrationFields({
     required = false,
   ) {
     const maskedPhone =
-      key === "phone" || key === "emergencyPhone" || key === "guardianPhone";
+      key === "phone" ||
+      key === "emergencyPhone" ||
+      key === "guardianPhone" ||
+      key === "emergencyAlternativePhone";
     return (
       <Field label={label} required={required} error={errors[key]}>
         <input
@@ -132,7 +135,15 @@ export function RegistrationFields({
                 </select>
               </Field>
               {health[flag] && (
-                <Field label="Descreva" required error={errors[detail]}>
+                <Field
+                  label={
+                    form.camper && flag === "hasMedication"
+                      ? "Medicamentos e horários de uso"
+                      : "Descreva"
+                  }
+                  required
+                  error={errors[detail]}
+                >
                   <textarea
                     name={detail}
                     maxLength={2000}
@@ -259,7 +270,11 @@ export function RegistrationFields({
               ? "date"
               : key === "email"
                 ? "email"
-                : ["phone", "emergencyPhone"].includes(key)
+                : [
+                      "phone",
+                      "emergencyPhone",
+                      "emergencyAlternativePhone",
+                    ].includes(key)
                   ? "tel"
                   : "text",
             field.required,

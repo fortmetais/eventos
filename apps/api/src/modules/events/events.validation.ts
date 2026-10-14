@@ -160,6 +160,15 @@ export const formSchema = z
       })
       .strict()
       .optional(),
+    camper: z
+      .object({
+        template: z.literal("CAMPER_REGISTRATION_V1"),
+        description: z.string().trim().max(5000).optional(),
+        requirements: z.string().trim().min(10).max(5000),
+        arrivalInstructions: z.string().trim().min(10).max(5000),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine(
@@ -171,6 +180,12 @@ export const formSchema = z
     },
   )
   .superRefine((value, ctx) => {
+    if (value.camper && value.volunteer)
+      ctx.addIssue({
+        code: "custom",
+        path: ["camper"],
+        message: "Uma ficha deve atender somente um público.",
+      });
     for (const message of validateLayout(value))
       ctx.addIssue({ code: "custom", path: ["layout"], message });
   })

@@ -30,6 +30,7 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
     const app = createApp({
       db,
       eventsEnabled: false,
+      camperRegistrationsEnabled: false,
       volunteerRegistrationsEnabled: true,
       rateLimits: false,
       decisionNotificationsEnabled: true,

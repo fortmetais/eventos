@@ -79,7 +79,12 @@ export function fieldCatalog(form, kind) {
     base("photoAssetId", "Foto", "photo", true),
     base("cpf", "CPF (opcional)", "about"),
     base("address", "Endereço (opcional)", "about"),
-    base("shirt", "Tamanho da camiseta", "about", Boolean(form.volunteer)),
+    base(
+      "shirt",
+      "Tamanho da camiseta",
+      "about",
+      Boolean(form.volunteer || form.camper),
+    ),
     ...(kind === "VOLUNTEER"
       ? [
           base("availability", "Sua disponibilidade", "about", true),
@@ -107,6 +112,15 @@ export function fieldCatalog(form, kind) {
       "care",
       true,
     ),
+    ...(form.camper
+      ? [
+          base(
+            "emergencyAlternativePhone",
+            "Telefone alternativo de emergência (opcional)",
+            "care",
+          ),
+        ]
+      : []),
     ...healthFields.map(([flag, detail, label]) => ({
       key: `health:${flag}`,
       label,
@@ -139,10 +153,12 @@ export function fieldCatalog(form, kind) {
     label: question.label,
     required: question.required,
     step:
-      form.volunteer && ["sexo", "cidade"].includes(question.id)
+      (form.volunteer && ["sexo", "cidade"].includes(question.id)) ||
+      (form.camper && ["apelido", "cidade", "estado"].includes(question.id))
         ? "identification"
-        : form.volunteer &&
-            ["aceite_formacao", "aceite_regras"].includes(question.id)
+        : (form.volunteer &&
+              ["aceite_formacao", "aceite_regras"].includes(question.id)) ||
+            (form.camper && question.id === "aceite_orientacoes")
           ? "review"
           : "about",
   }));
@@ -215,6 +231,10 @@ export function validateLayout(form) {
     errors.push("Todos os campos devem constar no layout, mesmo os ocultos.");
   if (form.volunteer && layout.kind !== "VOLUNTEER")
     errors.push("A ficha de intenção é exclusiva para servos.");
+  if (form.camper && layout.kind !== "CAMPER")
+    errors.push("A ficha de campistas exige uma campanha de campistas.");
+  if (form.camper && form.volunteer)
+    errors.push("Uma ficha deve atender somente um público.");
   return errors;
 }
 

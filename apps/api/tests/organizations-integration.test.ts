@@ -39,6 +39,7 @@ const url = process.env.TEST_DATABASE_URL;
     const app = createApp({
       db,
       eventsEnabled: false,
+      camperRegistrationsEnabled: false,
       eventManagementEnabled: false,
       rateLimits: false,
       resolveIdentity: async (token) =>

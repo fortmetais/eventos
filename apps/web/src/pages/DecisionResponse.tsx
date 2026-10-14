@@ -6,6 +6,7 @@ import { BackLink, Loading, Notice } from "../components/ui";
 
 interface ResponseSummary {
   kind: "ACEITE" | "RECUSA";
+  participation?: "CAMPER" | "VOLUNTEER";
   candidateName: string;
   confirmedAt: string | null;
   expiresAt: string;
@@ -89,7 +90,9 @@ function ResponseForm({ noticeId }: { noticeId: string }) {
                   ? "Não foi dessa vez!"
                   : data.confirmedAt
                     ? "Sua presença está confirmada!"
-                    : "Sua candidatura foi aceita!"}
+                    : data.participation === "CAMPER"
+                      ? "Sua inscrição foi aprovada!"
+                      : "Sua candidatura foi aceita!"}
               </h1>
               <h2>{data.event.name}</h2>
               <p>
@@ -99,8 +102,10 @@ function ResponseForm({ noticeId }: { noticeId: string }) {
               </p>
               {data.kind === "RECUSA" ? (
                 <p>
-                  {data.candidateName}, agradecemos sua disponibilidade para
-                  servir. Sua candidatura não foi selecionada para esta edição.
+                  {data.candidateName},{" "}
+                  {data.participation === "CAMPER"
+                    ? "agradecemos seu interesse em participar. Sua inscrição não foi selecionada para esta edição."
+                    : "agradecemos sua disponibilidade para servir. Sua candidatura não foi selecionada para esta edição."}
                   Esperamos contar com você em uma próxima oportunidade!
                 </p>
               ) : data.confirmedAt ? (
@@ -109,15 +114,18 @@ function ResponseForm({ noticeId }: { noticeId: string }) {
                     Confirmamos sua resposta em {dateTime(data.confirmedAt)}.
                   </Notice>
                   <p>
-                    A organização finalizará sua equipe e a confirmação da
-                    participação. Aguarde as orientações para servir.
+                    {data.participation === "CAMPER"
+                      ? "A organização finalizará a confirmação da participação conforme as vagas e a autorização do responsável, quando necessária. Aguarde as orientações para o encontro."
+                      : "A organização finalizará sua equipe e a confirmação da participação. Aguarde as orientações para servir."}
                   </p>
                 </>
               ) : (
                 <>
                   <p>
                     {data.candidateName}, ficamos felizes em contar com você!
-                    Confirme que pretende participar como servo neste evento.
+                    Confirme que pretende participar como{" "}
+                    {data.participation === "CAMPER" ? "campista" : "servo"}{" "}
+                    neste evento.
                   </p>
                   <p>
                     Responda até {dateTime(data.expiresAt)} (horário de
@@ -131,8 +139,10 @@ function ResponseForm({ noticeId }: { noticeId: string }) {
                     {busy ? "Confirmando…" : "Confirmar minha presença"}
                   </button>
                   <p className="muted">
-                    Você pode confirmar sem criar conta. A organização definirá
-                    sua equipe.
+                    Você pode confirmar sem criar conta.{" "}
+                    {data.participation === "CAMPER"
+                      ? "A organização finalizará sua participação."
+                      : "A organização definirá sua equipe."}
                   </p>
                 </>
               )}

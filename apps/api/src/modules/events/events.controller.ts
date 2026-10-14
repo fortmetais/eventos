@@ -14,6 +14,25 @@ function formInput(req: Request) {
 }
 export class EventsController {
   constructor(private service: EventsService) {}
+  camperForm = async (req: Request, res: Response) => {
+    res.json(
+      await this.service.camperForm(
+        param(req, "organizationId"),
+        param(req, "eventId"),
+      ),
+    );
+  };
+  publishCamperForm = async (req: Request, res: Response) => {
+    res.json(
+      await this.service.publishCamperForm(
+        param(req, "organizationId"),
+        param(req, "eventId"),
+        account(req).id,
+        formInput(req),
+        req.file,
+      ),
+    );
+  };
   list = async (req: Request, res: Response) => {
     res.json(
       await this.service.administrative(

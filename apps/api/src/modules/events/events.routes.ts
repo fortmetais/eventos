@@ -10,6 +10,7 @@ export function eventsRoutes(
   auth: RequestHandler,
   volunteersOnly = false,
   limit: RequestHandler = (_req, _res, next) => next(),
+  campersEnabled = !volunteersOnly,
 ) {
   const r = Router();
   r.get("/public/events", c.publicList);
@@ -49,6 +50,22 @@ export function eventsRoutes(
     upload,
     c.publishVolunteerForm,
   );
+  if (campersEnabled) {
+    r.get(
+      "/organizations/:organizationId/events/:eventId/camper-form",
+      auth,
+      write,
+      c.camperForm,
+    );
+    r.post(
+      "/organizations/:organizationId/events/:eventId/camper-form",
+      auth,
+      write,
+      limit,
+      upload,
+      c.publishCamperForm,
+    );
+  }
   if (volunteersOnly) {
     r.put(
       "/organizations/:organizationId/events/:eventId/campaigns",

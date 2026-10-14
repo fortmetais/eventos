@@ -28,6 +28,10 @@ const environment = z
       .enum(["true", "false"])
       .default("true")
       .transform((value) => value === "true"),
+    CAMPER_REGISTRATIONS_ENABLED: z
+      .enum(["true", "false"])
+      .default("true")
+      .transform((value) => value === "true"),
     REGISTRATION_LINK_SECRET: z.preprocess(
       (value) => (value === "" ? undefined : value),
       z.string().min(32).optional(),

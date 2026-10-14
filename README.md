@@ -9,6 +9,7 @@ Aplicação web em português, com React/TypeScript e API Node.js/Express organi
 - Departamentos e vagas definidos ao criar o evento, preferências vinculadas à ficha e alocação com limite transacional. Ative com o SQL 08; veja o [guia de departamentos](docs/departamentos-e-vagas.md).
 - Fichas com base comum, perguntas adicionais, prévia, versões e publicação imutável.
 - Ficha de intenção para servos baseada no PDF de referência, com experiência, sacramentos, formação, paróquia, camiseta, até três equipes e aceites de preparação e regras; disponível também na instalação gradual.
+- Ficha completa de campistas com identificação, apelido, cidade/UF, comunidade, experiência, expectativas, chegada/transporte, saúde, emergência e responsável. Usa o mesmo editor, banner, prévia, ordem/ocultação de campos e versões dos servos; veja o [guia da ficha de campistas](docs/ficha-campistas.md).
 - Vitrine com busca por evento/paróquia, cidade, paginação, página do evento e links próprios das campanhas.
 - Inscrição em cinco etapas, rascunho no servidor, foto com enquadramento, saúde condicional, emergência, responsável para menores, termos e protocolo idempotente.
 - Menores recebem um termo do responsável por link pessoal, com preenchimento, assinatura por toque/mouse, e-mail, compartilhamento pelo WhatsApp e comprovante. A confirmação exige assinatura; veja o [guia de autorização](docs/autorizacao-responsavel.md) e ative com o SQL 09.

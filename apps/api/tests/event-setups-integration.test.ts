@@ -29,6 +29,7 @@ integration("Eventos do fluxo gradual com catálogo de funções", () => {
   const app = createApp({
     db,
     eventsEnabled: false,
+    camperRegistrationsEnabled: false,
     eventManagementEnabled: true,
     rateLimits: false,
     resolveIdentity: async (token) =>

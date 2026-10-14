@@ -33,9 +33,15 @@ interface Setup {
   template: FormConfig;
 }
 export function VolunteerFormSetup() {
+  return <EventRegistrationSetup kind="VOLUNTEER" />;
+}
+export function CamperFormSetup() {
+  return <EventRegistrationSetup kind="CAMPER" />;
+}
+function EventRegistrationSetup({ kind }: { kind: "VOLUNTEER" | "CAMPER" }) {
   const { eventId } = useParams();
   const { organizationId, membership } = useOrganization();
-  const path = `/organizations/${organizationId}/events/${eventId}/volunteer-form`;
+  const path = `/organizations/${organizationId}/events/${eventId}/${kind === "CAMPER" ? "camper" : "volunteer"}-form`;
   const state = useRemote<Setup>(membership.role === "ORGANIZER" ? path : null);
   if (membership.role !== "ORGANIZER")
     return (
@@ -43,9 +49,16 @@ export function VolunteerFormSetup() {
     );
   return (
     <>
-      <PageHeading title="Ficha de intenção para servos">
-        Prepare as informações que ajudarão a organização a avaliar cada
-        candidatura.
+      <PageHeading
+        title={
+          kind === "CAMPER"
+            ? "Ficha de inscrição para campistas"
+            : "Ficha de intenção para servos"
+        }
+      >
+        {kind === "CAMPER"
+          ? "Prepare as informações, os cuidados e as orientações para quem deseja participar do evento."
+          : "Prepare as informações que ajudarão a organização a avaliar cada candidatura."}
       </PageHeading>
       <Link className="back-link" to={`/organizacao/${organizationId}/eventos`}>
         ← Voltar aos eventos
@@ -62,7 +75,8 @@ export function VolunteerFormSetup() {
       ) : (
         state.data && (
           <Editor
-            key={state.data.form?.id ?? eventId}
+            key={`${kind}:${state.data.form?.id ?? eventId}`}
+            kind={kind}
             data={state.data}
             path={path}
             organizationId={organizationId}
@@ -78,26 +92,41 @@ function Editor({
   path,
   organizationId,
   refresh,
+  kind,
 }: {
   data: Setup;
   path: string;
   organizationId: string;
   refresh: () => void;
+  kind: "VOLUNTEER" | "CAMPER";
 }) {
-  const initial = data.form?.config.volunteer
-    ? data.form.config
+  const camper = kind === "CAMPER";
+  const audience = camper ? "campistas" : "servos";
+  const initial = (
+    camper ? data.form?.config.camper : data.form?.config.volunteer
+  )
+    ? data.form!.config
     : data.template;
   const [fieldsConfig, setFieldsConfig] = useState<FormConfig>(() => ({
     ...initial,
-    layout: editableLayout(initial, "VOLUNTEER"),
+    layout: editableLayout(initial, kind),
   }));
   const [description, setDescription] = useState(
-    initial.volunteer!.description ?? "",
+    (camper ? initial.camper!.description : initial.volunteer!.description) ??
+      "",
   );
   const [requirements, setRequirements] = useState(
-    initial.volunteer!.requirements,
+    camper ? initial.camper!.requirements : initial.volunteer!.requirements,
   );
-  const [training, setTraining] = useState(initial.volunteer!.training);
+  const [training, setTraining] = useState(
+    camper ? initial.camper!.arrivalInstructions : initial.volunteer!.training,
+  );
+  const [capacity, setCapacity] = useState(
+    String(data.campaign.capacity ?? ""),
+  );
+  const [allowWaitlist, setAllowWaitlist] = useState(
+    data.campaign.allowWaitlist,
+  );
   const [terms, setTerms] = useState(initial.terms);
   const [preview, setPreview] = useState(false);
   const [error, setError] = useState("");
@@ -107,12 +136,23 @@ function Editor({
   const config: FormConfig = {
     ...fieldsConfig,
     terms,
-    volunteer: {
-      template: "VOLUNTEER_INTENTION_V1",
-      description,
-      requirements,
-      training,
-    },
+    ...(camper
+      ? {
+          camper: {
+            template: "CAMPER_REGISTRATION_V1" as const,
+            description,
+            requirements,
+            arrivalInstructions: training,
+          },
+        }
+      : {
+          volunteer: {
+            template: "VOLUNTEER_INTENTION_V1",
+            description,
+            requirements,
+            training,
+          },
+        }),
     questions: fieldsConfig.questions.map((q) =>
       q.id === "equipes_preferencia"
         ? {
@@ -129,17 +169,34 @@ function Editor({
     setError("");
     setBusy(true);
     try {
-      const options = config.questions.find(
-        (q) => q.id === "equipes_preferencia",
-      )!.options;
-      if (
-        options.length < 1 ||
-        options.length > 30 ||
-        new Set(options).size !== options.length
-      )
-        throw new Error(
-          "Cadastre de 1 a 30 departamentos diferentes e defina suas vagas no evento.",
+      if (camper)
+        await api(
+          `/organizations/${organizationId}/events/${data.event.id}/campaigns`,
+          {
+            method: "PUT",
+            body: {
+              kind,
+              opensAt: data.campaign.opensAt,
+              closesAt: data.campaign.closesAt,
+              paused: data.campaign.paused,
+              capacity: Number(capacity),
+              allowWaitlist,
+            },
+          },
         );
+      if (!camper) {
+        const options = config.questions.find(
+          (q) => q.id === "equipes_preferencia",
+        )!.options;
+        if (
+          options.length < 1 ||
+          options.length > 30 ||
+          new Set(options).size !== options.length
+        )
+          throw new Error(
+            "Cadastre de 1 a 30 departamentos diferentes e defina suas vagas no evento.",
+          );
+      }
       await api(path, {
         method: "POST",
         body: formBannerBody(config, bannerFile),
@@ -166,7 +223,7 @@ function Editor({
         {
           method: "PUT",
           body: {
-            kind: "VOLUNTEER",
+            kind,
             opensAt: data.campaign.opensAt,
             closesAt: data.campaign.closesAt,
             paused: !data.campaign.paused,
@@ -187,7 +244,7 @@ function Editor({
       <section className="panel">
         <h2>{data.event.name}</h2>
         <p>
-          Inscrições de servos: {dateTime(data.campaign.opensAt)} até{" "}
+          Inscrições de {audience}: {dateTime(data.campaign.opensAt)} até{" "}
           {dateTime(data.campaign.closesAt)} (Brasília).
         </p>
         {data.form?.publishedAt && (
@@ -197,7 +254,7 @@ function Editor({
               agora usam essa versão. Rascunhos anteriores e inscrições enviadas
               mantêm a versão original.
             </Notice>
-            <Field label="Link da ficha de servos">
+            <Field label={`Link da ficha de ${audience}`}>
               <input
                 readOnly
                 value={`${window.location.origin}/inscricao/${data.campaign.id}`}
@@ -215,7 +272,7 @@ function Editor({
                 className="button outline"
                 to={`/organizacao/${organizationId}/inscricoes`}
               >
-                Avaliar candidaturas
+                {camper ? "Avaliar inscrições" : "Avaliar candidaturas"}
               </Link>
               <button
                 className="button outline"
@@ -223,8 +280,8 @@ function Editor({
                 onClick={() => void pause()}
               >
                 {data.campaign.paused
-                  ? "Retomar inscrições de servos"
-                  : "Pausar inscrições de servos"}
+                  ? `Retomar inscrições de ${audience}`
+                  : `Pausar inscrições de ${audience}`}
               </button>
             </div>
           </>
@@ -242,8 +299,9 @@ function Editor({
             : "Preparar e publicar a ficha"}
         </h2>
         <p>
-          A idade é calculada pela data de nascimento. O candidato pode sugerir
-          até três departamentos para servir.
+          {camper
+            ? "A ficha completa reúne identificação, comunidade, chegada, saúde, emergência e autorização para menores. Você pode organizar e ocultar os campos permitidos."
+            : "A idade é calculada pela data de nascimento. O candidato pode sugerir até três departamentos para servir."}
         </p>
         {error && <Notice>{error}</Notice>}
         <FormBannerEditor
@@ -256,7 +314,11 @@ function Editor({
         />
         <Field
           label="Descrição"
-          hint="Apresente o evento e a proposta de servir à equipe."
+          hint={
+            camper
+              ? "Apresente o encontro e a experiência proposta aos campistas."
+              : "Apresente o evento e a proposta de servir à equipe."
+          }
         >
           <textarea
             id="volunteer-description"
@@ -267,7 +329,11 @@ function Editor({
           />
         </Field>
         <Field
-          label="Regras e requisitos para servir"
+          label={
+            camper
+              ? "Regras e requisitos para participar"
+              : "Regras e requisitos para servir"
+          }
           required
           hint="Informe os critérios deste evento, como idade mínima, região atendida e condições de participação."
         >
@@ -280,9 +346,17 @@ function Editor({
           />
         </Field>
         <Field
-          label="Preparação e formações da equipe"
+          label={
+            camper
+              ? "Orientações de chegada e participação"
+              : "Preparação e formações da equipe"
+          }
           required
-          hint="Informe encontros, datas, horários e condições de participação deste evento."
+          hint={
+            camper
+              ? "Informe horários de chegada, transporte, o que levar e orientações para o encontro."
+              : "Informe encontros, datas, horários e condições de participação deste evento."
+          }
         >
           <textarea
             required
@@ -292,41 +366,69 @@ function Editor({
             onChange={(e) => setTraining(e.target.value)}
           />
         </Field>
-        <section aria-label="Departamentos da ficha">
-          <h3>Departamentos para preferência</h3>
-          <p>
-            As opções vêm dos departamentos cadastrados neste evento. A escolha
-            do candidato não reserva vaga.
-          </p>
-          {data.departments?.length ? (
-            <ul>
-              {data.departments.map((team) => (
-                <li key={team.id}>
-                  <strong>{team.name}</strong> —{" "}
-                  {team.capacity == null
-                    ? "vagas a definir"
-                    : `${team.capacity} vagas`}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Notice kind="info">
-              Cadastre os departamentos e suas vagas antes de publicar a ficha.
-            </Notice>
-          )}
-          {!data.departmentsReady && (
-            <Notice kind="info">
-              Os departamentos aguardam a atualização do banco pelo SQL 08.
-            </Notice>
-          )}
-          <Link
-            className="text-button"
-            to={`/organizacao/${organizationId}/${data.event.status === "DRAFT" ? "eventos" : `inscricoes?evento=${data.event.id}`}`}
-          >
-            Gerenciar departamentos e vagas
-          </Link>
-        </section>
-        <Field label="Termos da candidatura" required>
+        {!camper && (
+          <section aria-label="Departamentos da ficha">
+            <h3>Departamentos para preferência</h3>
+            <p>
+              As opções vêm dos departamentos cadastrados neste evento. A
+              escolha do candidato não reserva vaga.
+            </p>
+            {data.departments?.length ? (
+              <ul>
+                {data.departments.map((team) => (
+                  <li key={team.id}>
+                    <strong>{team.name}</strong> —{" "}
+                    {team.capacity == null
+                      ? "vagas a definir"
+                      : `${team.capacity} vagas`}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Notice kind="info">
+                Cadastre os departamentos e suas vagas antes de publicar a
+                ficha.
+              </Notice>
+            )}
+            {!data.departmentsReady && (
+              <Notice kind="info">
+                Os departamentos aguardam a atualização do banco pelo SQL 08.
+              </Notice>
+            )}
+            <Link
+              className="text-button"
+              to={`/organizacao/${organizationId}/${data.event.status === "DRAFT" ? "eventos" : `inscricoes?evento=${data.event.id}`}`}
+            >
+              Gerenciar departamentos e vagas
+            </Link>
+          </section>
+        )}
+        {camper && (
+          <section aria-label="Vagas de campistas">
+            <Field label="Quantidade de vagas de campistas" required>
+              <input
+                type="number"
+                required
+                min={1}
+                max={100000}
+                value={capacity}
+                onChange={(e) => setCapacity(e.target.value)}
+              />
+            </Field>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={allowWaitlist}
+                onChange={(e) => setAllowWaitlist(e.target.checked)}
+              />
+              Permitir lista de espera quando as vagas forem preenchidas.
+            </label>
+          </section>
+        )}
+        <Field
+          label={camper ? "Termos da inscrição" : "Termos da candidatura"}
+          required
+        >
           <textarea
             required
             minLength={20}
@@ -337,12 +439,12 @@ function Editor({
         </Field>
         <Notice kind="info">
           Publicar disponibiliza a página do evento. O envio da ficha só será
-          permitido dentro do período de servos. Fichas já preenchidas manterão
-          sua versão original.
+          permitido dentro do período de {audience}. Fichas já preenchidas
+          manterão sua versão original.
         </Notice>
         <FormLayoutEditor
           form={config}
-          kind="VOLUNTEER"
+          kind={kind}
           onChange={setFieldsConfig}
           disabled={busy}
         />
@@ -351,16 +453,17 @@ function Editor({
             className="button primary"
             disabled={
               busy ||
-              !data.departmentsReady ||
-              !data.departments?.length ||
-              data.departments.some((team) => team.capacity == null)
+              (!camper &&
+                (!data.departmentsReady ||
+                  !data.departments?.length ||
+                  data.departments.some((team) => team.capacity == null)))
             }
           >
             {busy
               ? "Publicando…"
               : data.form?.publishedAt
                 ? "Publicar nova versão"
-                : "Publicar ficha de servos"}
+                : `Publicar ficha de ${audience}`}
           </button>
           <button
             type="button"
@@ -385,13 +488,17 @@ function Editor({
               <p className="description">{description}</p>
             </>
           )}
-          <h3>Regras para servir</h3>
+          <h3>{camper ? "Regras para participar" : "Regras para servir"}</h3>
           <p className="description">{requirements}</p>
-          <h3>Preparação da equipe</h3>
+          <h3>
+            {camper
+              ? "Orientações de chegada e participação"
+              : "Preparação da equipe"}
+          </h3>
           <p className="description">{training}</p>
           <FormLayoutPreview
             form={config}
-            kind="VOLUNTEER"
+            kind={kind}
             bannerPreview={bannerPreview}
             showBanner={false}
           />

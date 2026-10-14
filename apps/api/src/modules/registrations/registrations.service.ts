@@ -454,7 +454,7 @@ export class RegistrationsService {
             await this.guardians.requireReady();
             await this.guardians.requireSigned(tx, registrationId);
           }
-          if (registration.campaign.kind === "VOLUNTEER" && noticesReady)
+          if (noticesReady)
             await this.notices!.requirePresence(tx, registrationId);
           if (registration.campaign.kind === "VOLUNTEER")
             assert(
@@ -526,10 +526,7 @@ export class RegistrationsService {
             entityId: registrationId,
           },
         });
-        if (
-          registration.campaign.kind === "VOLUNTEER" &&
-          ["APPROVED", "REJECTED"].includes(status)
-        ) {
+        if (["APPROVED", "REJECTED"].includes(status)) {
           if (noticesReady) {
             noticeId = await this.notices!.prepare(
               tx,
@@ -541,7 +538,6 @@ export class RegistrationsService {
             );
           } else decisionNoticeMissing = Boolean(this.notices);
         } else if (
-          registration.campaign.kind === "VOLUNTEER" &&
           noticesReady &&
           !["APPROVED", "CONFIRMED"].includes(status)
         ) {

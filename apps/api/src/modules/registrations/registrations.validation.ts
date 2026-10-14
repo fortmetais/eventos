@@ -35,6 +35,7 @@ export const draftPayloadSchema = z
     photoAssetId: id.optional(),
     emergencyName: optionalText,
     emergencyPhone: optionalText,
+    emergencyAlternativePhone: optionalText,
     emergencyRelationship: optionalText,
     guardianName: optionalText,
     guardianPhone: optionalText,
@@ -183,6 +184,15 @@ export function validateSubmission(
     if (visible("base:shirt"))
       assert(data.shirt, 422, "Informe o tamanho da camiseta.");
   }
+  if (form.camper) {
+    assert(kind === "CAMPER", 422, "Esta ficha é exclusiva para campistas.");
+    if (visible("base:shirt"))
+      assert(data.shirt, 422, "Informe o tamanho da camiseta.");
+  }
+  if (data.emergencyAlternativePhone)
+    data.emergencyAlternativePhone = phone.parse(
+      data.emergencyAlternativePhone,
+    );
   if (requiresGuardian(data.birthDate, eventDate)) {
     assert(
       data.guardianName &&

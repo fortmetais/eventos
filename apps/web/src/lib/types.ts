@@ -96,6 +96,12 @@ export interface FormConfig {
     requirements: string;
     training: string;
   };
+  camper?: {
+    template: "CAMPER_REGISTRATION_V1";
+    description?: string;
+    requirements: string;
+    arrivalInstructions: string;
+  };
 }
 export interface FormVersion {
   id: string;
@@ -159,6 +165,7 @@ export interface Payload {
   photoAssetId?: string;
   emergencyName?: string;
   emergencyPhone?: string;
+  emergencyAlternativePhone?: string;
   emergencyRelationship?: string;
   guardianName?: string;
   guardianPhone?: string;

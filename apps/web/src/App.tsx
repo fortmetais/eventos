@@ -75,6 +75,11 @@ const VolunteerFormSetup = lazy(() =>
     default: m.VolunteerFormSetup,
   })),
 );
+const CamperFormSetup = lazy(() =>
+  import("./pages/VolunteerFormSetup").then((m) => ({
+    default: m.CamperFormSetup,
+  })),
+);
 const ReviewRegistrations = lazy(() =>
   import("./pages/ReviewRegistrations").then((m) => ({
     default: m.ReviewRegistrations,
@@ -190,6 +195,10 @@ export function App() {
               <Route
                 path="eventos/:eventId/ficha-servos"
                 element={<VolunteerFormSetup />}
+              />
+              <Route
+                path="eventos/:eventId/ficha-campistas"
+                element={<CamperFormSetup />}
               />
               <Route path="inscricoes" element={<ReviewRegistrations />} />
               <Route path="membros" element={<Members />} />

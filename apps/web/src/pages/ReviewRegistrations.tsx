@@ -188,7 +188,7 @@ export function ReviewRegistrations() {
     <>
       <PageHeading
         title={
-          auth.eventsEnabled
+          auth.eventsEnabled || auth.camperRegistrationsEnabled
             ? "Inscrições e departamentos"
             : "Candidaturas de servos"
         }
@@ -429,7 +429,8 @@ export function ReviewRegistrations() {
                       {registration.snapshot.birthDate &&
                         date(registration.snapshot.birthDate)}
                     </dd>
-                    {registration.form?.config.volunteer &&
+                    {(registration.form?.config.volunteer ||
+                      registration.form?.config.camper) &&
                       registration.snapshot.birthDate && (
                         <>
                           <dt>Idade no início do evento</dt>
@@ -472,6 +473,14 @@ export function ReviewRegistrations() {
                       <>
                         <dt>CPF</dt>
                         <dd>{registration.snapshot.cpf}</dd>
+                      </>
+                    )}
+                    {registration.snapshot.emergencyAlternativePhone && (
+                      <>
+                        <dt>Telefone alternativo de emergência</dt>
+                        <dd>
+                          {registration.snapshot.emergencyAlternativePhone}
+                        </dd>
                       </>
                     )}
                     {registration.snapshot.address && (
@@ -584,7 +593,6 @@ export function ReviewRegistrations() {
                       </div>
                     )}
                   {membership.role === "ORGANIZER" &&
-                    registration.campaign.kind === "VOLUNTEER" &&
                     ["APPROVED", "REJECTED", "CONFIRMED"].includes(
                       registration.status,
                     ) && (
@@ -598,7 +606,13 @@ export function ReviewRegistrations() {
                     statusOptions[registration.status].length > 0 && (
                       <form onSubmit={change}>
                         <hr />
-                        <Field label="Decisão sobre a candidatura">
+                        <Field
+                          label={
+                            registration.campaign.kind === "CAMPER"
+                              ? "Decisão sobre a inscrição"
+                              : "Decisão sobre a candidatura"
+                          }
+                        >
                           <select
                             required
                             value={nextStatus}
@@ -618,9 +632,13 @@ export function ReviewRegistrations() {
                               .map((s) => (
                                 <option key={s} value={s}>
                                   {s === "APPROVED"
-                                    ? "Aceitar candidatura"
+                                    ? registration.campaign.kind === "CAMPER"
+                                      ? "Aprovar inscrição"
+                                      : "Aceitar candidatura"
                                     : s === "REJECTED"
-                                      ? "Recusar candidatura"
+                                      ? registration.campaign.kind === "CAMPER"
+                                        ? "Recusar inscrição"
+                                        : "Recusar candidatura"
                                       : statusLabels[s]}
                                 </option>
                               ))}

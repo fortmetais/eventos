@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowRight, Check, CheckCircle2, ShieldCheck } from "lucide-react";
 import { api, ApiError } from "../lib/api";
@@ -307,16 +307,31 @@ export function Registration() {
       visible("base:availability")
     )
       need("availability", "sua disponibilidade");
-    if (step === 2 && config?.volunteer && visible("base:shirt"))
+    if (
+      step === 2 &&
+      (config?.volunteer || config?.camper) &&
+      visible("base:shirt")
+    )
       need("shirt", "o tamanho da camiseta");
     if (config)
-      for (const q of step === 0
-        ? identityQuestions
-        : step === 2
-          ? otherQuestions
-          : step === 4
-            ? agreementQuestions
-            : []) {
+      for (const q of config.layout
+        ? orderedFields(
+            config,
+            data?.kind ?? config.layout.kind,
+            stepIds[step],
+            minor,
+          )
+            .filter((field) => field.key.startsWith("question:"))
+            .map((field) =>
+              config.questions.find((q) => `question:${q.id}` === field.key)!,
+            )
+        : step === 0
+          ? identityQuestions
+          : step === 2
+            ? otherQuestions
+            : step === 4
+              ? agreementQuestions
+              : []) {
         const a = payload.answers?.[q.id];
         if (
           q.required &&
@@ -349,6 +364,14 @@ export function Registration() {
         (payload.emergencyPhone?.replace(/\D/g, "").length ?? 0) < 10
       )
         next.emergencyPhone = "Informe telefone com DDD.";
+      if (
+        visible("base:emergencyAlternativePhone") &&
+        payload.emergencyAlternativePhone &&
+        !/^\d{10,13}$/.test(
+          payload.emergencyAlternativePhone.replace(/\D/g, ""),
+        )
+      )
+        next.emergencyAlternativePhone = "Informe telefone com DDD.";
       for (const [flag, detail] of healthQuestions) {
         if (!visible(`health:${flag}`)) continue;
         if (typeof health[flag] !== "boolean")
@@ -632,6 +655,28 @@ export function Registration() {
               <p className="description">{introConfig.volunteer.training}</p>
             </>
           )}
+          {introConfig.camper && (
+            <>
+              <Notice kind="info">
+                O envio da inscrição não garante uma vaga. Aguarde a análise e a
+                confirmação da organização.
+              </Notice>
+              {introConfig.camper.description?.trim() && (
+                <>
+                  <h3>Descrição</h3>
+                  <p className="description">
+                    {introConfig.camper.description}
+                  </p>
+                </>
+              )}
+              <h3>Regras para participar</h3>
+              <p className="description">{introConfig.camper.requirements}</p>
+              <h3>Orientações de chegada e participação</h3>
+              <p className="description">
+                {introConfig.camper.arrivalInstructions}
+              </p>
+            </>
+          )}
           {error && <Notice>{error}</Notice>}
           {credential ? (
             <button
@@ -714,7 +759,7 @@ export function Registration() {
             .catch((error) => setError((error as Error).message));
         }}
       >
-        Ver regras e preparação
+        {config.camper ? "Ver regras e orientações" : "Ver regras e preparação"}
       </button>
       <p className="muted">Ficha — versão {form?.version}</p>
       <BackLink to={`/eventos/${data.event.id}`}>Sobre o evento</BackLink>
@@ -793,7 +838,7 @@ export function Registration() {
                 },
               }}
             />
-            {step === 0 && config.volunteer && (
+            {step === 0 && (config.volunteer || config.camper) && (
               <Field label="Idade no início do evento">
                 <input
                   readOnly
@@ -1079,6 +1124,23 @@ export function Registration() {
                   <dd>{payload.availability}</dd>
                 </>
               )}
+              {(
+                [
+                  ["address", "Endereço"],
+                  ["shirt", "Camiseta"],
+                  [
+                    "emergencyAlternativePhone",
+                    "Telefone alternativo de emergência",
+                  ],
+                ] as const
+              ).map(([key, label]) =>
+                payload[key] && visible(`base:${key}`) ? (
+                  <Fragment key={key}>
+                    <dt>{label}</dt>
+                    <dd>{payload[key]}</dd>
+                  </Fragment>
+                ) : null,
+              )}
             </dl>
             {reviewHealth.length > 0 && (
               <details>
@@ -1148,6 +1210,16 @@ export function Registration() {
               </>
             )}
             <div className="terms-text">{config.terms}</div>
+            {config.camper && (
+              <>
+                <h3>Regras para participar</h3>
+                <p className="description">{config.camper.requirements}</p>
+                <h3>Orientações de chegada e participação</h3>
+                <p className="description">
+                  {config.camper.arrivalInstructions}
+                </p>
+              </>
+            )}
             {config.layout && (
               <RegistrationFields
                 form={config}

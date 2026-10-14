@@ -22,6 +22,8 @@ interface AuthState {
   eventManagementEnabled?: boolean;
   volunteerRegistrationsEnabled?: boolean;
   volunteerRegistrationsReady?: boolean;
+  camperRegistrationsEnabled?: boolean;
+  camperRegistrationsReady?: boolean;
   temporaryHome?: boolean;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
@@ -40,6 +42,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [volunteerRegistrationsEnabled, setVolunteerRegistrationsEnabled] =
     useState(false);
   const [volunteerRegistrationsReady, setVolunteerRegistrationsReady] =
+    useState(false);
+  const [camperRegistrationsEnabled, setCamperRegistrationsEnabled] =
+    useState(false);
+  const [camperRegistrationsReady, setCamperRegistrationsReady] =
     useState(false);
   async function refresh() {
     try {
@@ -62,6 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           eventManagementEnabled?: boolean;
           volunteerRegistrationsEnabled?: boolean;
           volunteerRegistrationsReady?: boolean;
+          camperRegistrationsEnabled?: boolean;
+          camperRegistrationsReady?: boolean;
         }>("/config");
         if (!active) return;
         setEventsEnabled(settings.eventsEnabled ?? true);
@@ -71,6 +79,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setVolunteerRegistrationsReady(
           settings.volunteerRegistrationsReady ?? false,
         );
+        setCamperRegistrationsEnabled(
+          settings.camperRegistrationsEnabled ?? false,
+        );
+        setCamperRegistrationsReady(settings.camperRegistrationsReady ?? false);
         setEventManagementEnabled(
           settings.eventManagementEnabled ?? settings.eventsEnabled ?? true,
         );
@@ -131,6 +143,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         eventManagementEnabled,
         volunteerRegistrationsEnabled,
         volunteerRegistrationsReady,
+        camperRegistrationsEnabled,
+        camperRegistrationsReady,
         temporaryHome,
         refresh,
         logout,

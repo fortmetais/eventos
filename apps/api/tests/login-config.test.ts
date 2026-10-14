@@ -8,13 +8,26 @@ describe("configuração do login", () => {
     const db = {
       $queryRaw: () => Promise.reject(new Error("database unavailable")),
     } as unknown as PrismaClient;
-    const app = createApp({ db, rateLimits: false, volunteerRegistrationsEnabled: true });
+    const app = createApp({
+      db,
+      rateLimits: false,
+      volunteerRegistrationsEnabled: true,
+    });
     const response = await request(app).get("/api/v1/config").expect(200);
     expect(response.body.volunteerRegistrationsEnabled).toBe(true);
     expect(response.body.volunteerRegistrationsReady).toBe(false);
-    expect(Object.keys(response.body).sort()).toEqual([
-      "supabaseUrl", "supabaseAnonKey", "timeZone", "eventsEnabled",
-      "eventManagementEnabled", "volunteerRegistrationsEnabled", "volunteerRegistrationsReady",
-    ].sort());
+    expect(Object.keys(response.body).sort()).toEqual(
+      [
+        "supabaseUrl",
+        "supabaseAnonKey",
+        "timeZone",
+        "eventsEnabled",
+        "eventManagementEnabled",
+        "volunteerRegistrationsEnabled",
+        "volunteerRegistrationsReady",
+        "camperRegistrationsEnabled",
+        "camperRegistrationsReady",
+      ].sort(),
+    );
   });
 });

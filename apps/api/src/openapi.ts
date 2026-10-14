@@ -54,6 +54,20 @@ const operations: Operation[] = [
     security: "account",
   },
   {
+    method: "get",
+    path: "/organizations/{organizationId}/events/{eventId}/camper-form",
+    summary: "Modelo completo e última versão da ficha de campistas",
+    security: "account",
+  },
+  {
+    method: "post",
+    path: "/organizations/{organizationId}/events/{eventId}/camper-form",
+    summary:
+      "Publicar nova versão da ficha de campistas e disponibilizar o evento",
+    security: "account",
+    body: "Form",
+  },
+  {
     method: "post",
     path: "/organizations/{organizationId}/events/{eventId}/volunteer-form",
     summary:
@@ -560,10 +574,47 @@ const schemas = {
       volunteer: object(
         {
           template: { enum: ["VOLUNTEER_INTENTION_V1"] },
+          description: string,
           requirements: string,
           training: string,
         },
         ["template", "requirements", "training"],
+      ),
+      camper: object(
+        {
+          template: { enum: ["CAMPER_REGISTRATION_V1"] },
+          description: string,
+          requirements: string,
+          arrivalInstructions: string,
+        },
+        ["template", "requirements", "arrivalInstructions"],
+      ),
+      layout: object(
+        {
+          version: { enum: [1] },
+          kind: { enum: ["CAMPER", "VOLUNTEER"] },
+          steps: {
+            type: "array",
+            minItems: 5,
+            maxItems: 5,
+            items: object(
+              {
+                step: {
+                  enum: ["identification", "photo", "about", "care", "review"],
+                },
+                fields: {
+                  type: "array",
+                  items: object({ key: string, hidden: boolean }, [
+                    "key",
+                    "hidden",
+                  ]),
+                },
+              },
+              ["step", "fields"],
+            ),
+          },
+        },
+        ["version", "kind", "steps"],
       ),
       questions: {
         type: "array",
@@ -586,9 +637,11 @@ const schemas = {
         "photoAssetId",
         "emergencyName",
         "emergencyPhone",
+        "emergencyAlternativePhone",
         "emergencyRelationship",
         "guardianName",
         "guardianPhone",
+        "guardianEmail",
         "guardianRelationship",
         "availability",
         "preferredTeamId",

@@ -9,6 +9,28 @@ import {
   pendingInvitation,
   rememberInvitation,
 } from "../lib/navigation";
+
+const emailRetryKey = "fac:auth-email-retry-at";
+function savedEmailRetry() {
+  try {
+    const deadline = Number(sessionStorage.getItem(emailRetryKey));
+    return Number.isFinite(deadline) ? deadline : 0;
+  } catch {
+    return 0;
+  }
+}
+function rateLimited(error: { status?: number; code?: string }) {
+  return (
+    error.status === 429 ||
+    error.code === "over_email_send_rate_limit" ||
+    error.code === "over_request_rate_limit"
+  );
+}
+const emailLimitMessage =
+  "O serviço de acesso atingiu um limite de solicitações ou de envio de e-mails. Aguarde e tente novamente. Se já tiver uma senha, você pode entrar com ela. O bloqueio pode durar mais conforme o limite do serviço.";
+const accessLimitMessage =
+  "Muitas tentativas de acesso. Aguarde antes de tentar novamente.";
+
 export function Login() {
   const auth = useAuth();
   const [params] = useSearchParams();
@@ -21,12 +43,36 @@ export function Login() {
   const [password, setPassword] = useState("");
   const [recovery, setRecovery] = useState(false);
   const [info, setInfo] = useState("");
+  const [retryAt, setRetryAt] = useState(savedEmailRetry);
+  const [now, setNow] = useState(Date.now);
+  const retrySeconds = Math.max(0, Math.ceil((retryAt - now) / 1000));
+  const sendingEmail = recovery || (!passwordMode && !sent);
+  useEffect(() => {
+    if (retryAt <= Date.now()) return;
+    const timer = window.setInterval(() => {
+      const current = Date.now();
+      setNow(current);
+      if (current >= retryAt) window.clearInterval(timer);
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [retryAt]);
+  function pauseEmailRequests() {
+    const deadline = Date.now() + 60_000;
+    setNow(Date.now());
+    setRetryAt(deadline);
+    try {
+      sessionStorage.setItem(emailRetryKey, String(deadline));
+    } catch {
+      // The in-memory pause still applies when storage is unavailable.
+    }
+  }
   const requested = localDestination(params.get("next")) ?? pendingInvitation();
   useEffect(() => {
     rememberInvitation(requested);
   }, [requested]);
   async function submit(e: FormEvent) {
     e.preventDefault();
+    if (busy || (sendingEmail && retryAt > Date.now())) return;
     setError("");
     setBusy(true);
     try {
@@ -39,7 +85,12 @@ export function Login() {
           email,
           password,
         });
-        if (result.error) throw new Error("Confira seu e-mail e sua senha.");
+        if (result.error)
+          throw new Error(
+            rateLimited(result.error)
+              ? accessLimitMessage
+              : "Confira seu e-mail e sua senha.",
+          );
       } else if (!sent) {
         const callback = new URL("/entrar", window.location.origin);
         if (requested) callback.searchParams.set("next", requested);
@@ -47,10 +98,16 @@ export function Login() {
           email,
           options: { emailRedirectTo: callback.toString() },
         });
-        if (result.error)
+        if (result.error) {
+          if (rateLimited(result.error)) {
+            pauseEmailRequests();
+            throw new Error(emailLimitMessage);
+          }
           throw new Error(
             "Não foi possível enviar o e-mail de acesso. Aguarde e tente novamente.",
           );
+        }
+        pauseEmailRequests();
         setSent(true);
       } else {
         const result = await auth.client.auth.verifyOtp({
@@ -58,7 +115,12 @@ export function Login() {
           token: code,
           type: "email",
         });
-        if (result.error) throw new Error("Código inválido ou expirado.");
+        if (result.error)
+          throw new Error(
+            rateLimited(result.error)
+              ? accessLimitMessage
+              : "Código inválido ou expirado.",
+          );
       }
     } catch (e) {
       setError((e as Error).message);
@@ -68,6 +130,7 @@ export function Login() {
   }
   async function reset(e: FormEvent) {
     e.preventDefault();
+    if (busy || retryAt > Date.now()) return;
     setBusy(true);
     setError("");
     try {
@@ -77,8 +140,14 @@ export function Login() {
       const result = await auth.client.auth.resetPasswordForEmail(email, {
         redirectTo: callback.toString(),
       });
-      if (result.error)
+      if (result.error) {
+        if (rateLimited(result.error)) {
+          pauseEmailRequests();
+          throw new Error(emailLimitMessage);
+        }
         throw new Error("Não foi possível enviar a recuperação.");
+      }
+      pauseEmailRequests();
       setInfo(
         "Se houver uma conta para este e-mail, você receberá as instruções.",
       );
@@ -153,16 +222,23 @@ export function Login() {
           </Field>
         )}
         <button
-          disabled={busy || auth.loading || !auth.client}
+          disabled={
+            busy ||
+            auth.loading ||
+            !auth.client ||
+            (sendingEmail && retrySeconds > 0)
+          }
           className="button primary full"
         >
           {busy
             ? "Aguarde…"
-            : recovery
-              ? "Enviar instruções"
-              : sent || passwordMode
-                ? "Entrar"
-                : "Receber acesso por e-mail"}
+            : sendingEmail && retrySeconds > 0
+              ? `Solicitar novamente em ${retrySeconds} s`
+              : recovery
+                ? "Enviar instruções"
+                : sent || passwordMode
+                  ? "Entrar"
+                  : "Receber acesso por e-mail"}
           <ArrowRight size={17} />
         </button>
         {!sent && (
@@ -172,6 +248,8 @@ export function Login() {
             onClick={() => {
               setPasswordMode(!passwordMode);
               setRecovery(false);
+              setError("");
+              setInfo("");
             }}
           >
             {passwordMode ? "Entrar por e-mail" : "Entrar com senha"}
@@ -181,7 +259,11 @@ export function Login() {
           <button
             type="button"
             className="text-button"
-            onClick={() => setRecovery(true)}
+            onClick={() => {
+              setRecovery(true);
+              setError("");
+              setInfo("");
+            }}
           >
             Esqueci minha senha
           </button>
@@ -193,6 +275,7 @@ export function Login() {
             onClick={() => {
               setSent(false);
               setCode("");
+              setError("");
             }}
           >
             Usar outro e-mail ou reenviar código

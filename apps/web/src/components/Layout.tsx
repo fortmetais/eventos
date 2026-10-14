@@ -34,7 +34,9 @@ export function Layout() {
           </Link>
           <nav aria-label="Menu principal">
             <NavLink to={auth.temporaryHome ? "/eventos" : "/"} end>
-              {auth.eventsEnabled || auth.volunteerRegistrationsReady
+              {auth.eventsEnabled ||
+              auth.volunteerRegistrationsReady ||
+              auth.camperRegistrationsReady
                 ? "Explorar eventos"
                 : "Início"}
             </NavLink>

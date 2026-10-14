@@ -15,6 +15,7 @@ import {
   type FormConfig,
 } from "./events.validation.js";
 import { volunteerTemplate } from "./volunteer-template.js";
+import { camperTemplate } from "./camper-template.js";
 import { DepartmentsRepository } from "./departments.repository.js";
 import { departmentsSchema } from "./departments.validation.js";
 import {
@@ -121,12 +122,22 @@ export class EventsService {
     });
   }
   async volunteerForm(organizationId: string, eventId: string) {
+    return this.registrationForm(organizationId, eventId, "VOLUNTEER");
+  }
+  async camperForm(organizationId: string, eventId: string) {
+    return this.registrationForm(organizationId, eventId, "CAMPER");
+  }
+  private async registrationForm(
+    organizationId: string,
+    eventId: string,
+    kind: "VOLUNTEER" | "CAMPER",
+  ) {
     const event = await this.repo.db.event.findFirst({
       where: { id: eventId, organizationId },
       include: {
         type: true,
         campaigns: {
-          where: { kind: "VOLUNTEER" },
+          where: { kind },
           include: {
             forms: { orderBy: { version: "desc" }, take: 1 },
           },
@@ -138,11 +149,15 @@ export class EventsService {
     assert(
       campaign,
       422,
-      "Cadastre primeiro o período de inscrição dos servos.",
+      `Cadastre primeiro o período de inscrição ${kind === "CAMPER" ? "dos campistas" : "dos servos"}.`,
     );
     const departmentsRepo = new DepartmentsRepository(this.repo.db);
-    const departmentsReady = await departmentsRepo.ready();
-    const departments = await departmentsRepo.list(organizationId, [eventId]);
+    const departmentsReady =
+      kind === "CAMPER" || (await departmentsRepo.ready());
+    const departments =
+      kind === "VOLUNTEER"
+        ? await departmentsRepo.list(organizationId, [eventId])
+        : [];
     return {
       event: { id: event.id, name: event.name, status: event.status },
       campaign: {
@@ -156,14 +171,17 @@ export class EventsService {
       form: campaign.forms[0] ?? null,
       departmentsReady,
       departments,
-      template: volunteerTemplate(
-        event.type.name,
-        departmentsReady
-          ? departments
-              .filter((team) => team.capacity !== null)
-              .map((team) => team.name)
-          : undefined,
-      ),
+      template:
+        kind === "CAMPER"
+          ? camperTemplate(event.type.name)
+          : volunteerTemplate(
+              event.type.name,
+              departmentsReady
+                ? departments
+                    .filter((team) => team.capacity !== null)
+                    .map((team) => team.name)
+                : undefined,
+            ),
     };
   }
   async publishVolunteerForm(
@@ -210,6 +228,56 @@ export class EventsService {
           "Preserve a opção exclusiva para quem não possui sacramentos.",
         );
     }
+    return this.publishRegistrationForm(
+      organizationId,
+      eventId,
+      actorId,
+      "VOLUNTEER",
+      config,
+      file,
+    );
+  }
+  async publishCamperForm(
+    organizationId: string,
+    eventId: string,
+    actorId: string,
+    input: unknown,
+    file?: Express.Multer.File,
+  ) {
+    const config = formSchema.parse(input);
+    assert(
+      config.camper && !config.volunteer && config.layout?.kind === "CAMPER",
+      422,
+      "Utilize a ficha de inscrição para campistas.",
+    );
+    for (const question of camperTemplate("evento").questions) {
+      const configured = config.questions.find((q) => q.id === question.id);
+      assert(
+        configured &&
+          configured.type === question.type &&
+          configured.required === question.required &&
+          (!question.mustBeTrue || configured.mustBeTrue),
+        422,
+        `Preserve o campo básico: ${question.label}`,
+      );
+    }
+    return this.publishRegistrationForm(
+      organizationId,
+      eventId,
+      actorId,
+      "CAMPER",
+      config,
+      file,
+    );
+  }
+  private publishRegistrationForm(
+    organizationId: string,
+    eventId: string,
+    actorId: string,
+    kind: "VOLUNTEER" | "CAMPER",
+    config: FormConfig,
+    file?: Express.Multer.File,
+  ) {
     return this.withFormBanner(
       organizationId,
       eventId,
@@ -228,34 +296,47 @@ export class EventsService {
             "Este evento não aceita publicação de fichas.",
           );
           const campaign = await tx.campaign.findUnique({
-            where: { eventId_kind: { eventId, kind: "VOLUNTEER" } },
+            where: { eventId_kind: { eventId, kind } },
           });
           assert(
             campaign,
             422,
-            "Cadastre primeiro o período de inscrição dos servos.",
+            `Cadastre primeiro o período de inscrição ${kind === "CAMPER" ? "dos campistas" : "dos servos"}.`,
           );
-          const departments = await tx.team.findMany({
-            where: { eventId },
-            orderBy: { name: "asc" },
-          });
           assert(
-            departments.length > 0 &&
-              departments.every((team) => team.capacity !== null),
+            !config.layout || config.layout.kind === kind,
             422,
-            "Cadastre os departamentos e defina as vagas de todos antes de publicar a ficha.",
+            "O layout não corresponde ao público da ficha.",
           );
-          const preferences = config.questions.find(
-            (question) => question.id === "equipes_preferencia",
-          )!;
-          assert(
-            preferences.options.length === departments.length &&
-              departments.every((team) =>
-                preferences.options.includes(team.name),
-              ),
-            409,
-            "Os departamentos da ficha precisam corresponder aos cadastros deste evento. Atualize a ficha.",
-          );
+          if (kind === "CAMPER")
+            assert(
+              campaign.capacity !== null && campaign.capacity > 0,
+              422,
+              "Defina a quantidade de vagas de campistas antes de publicar a ficha.",
+            );
+          if (kind === "VOLUNTEER") {
+            const departments = await tx.team.findMany({
+              where: { eventId },
+              orderBy: { name: "asc" },
+            });
+            assert(
+              departments.length > 0 &&
+                departments.every((team) => team.capacity !== null),
+              422,
+              "Cadastre os departamentos e defina as vagas de todos antes de publicar a ficha.",
+            );
+            const preferences = config.questions.find(
+              (question) => question.id === "equipes_preferencia",
+            )!;
+            assert(
+              preferences.options.length === departments.length &&
+                departments.every((team) =>
+                  preferences.options.includes(team.name),
+                ),
+              409,
+              "Os departamentos da ficha precisam corresponder aos cadastros deste evento. Atualize a ficha.",
+            );
+          }
           await tx.$queryRaw`SELECT campanha_id FROM eventos.campanhas WHERE campanha_id = ${campaign.id}::uuid FOR UPDATE`;
           const invalidCampers = await tx.campaign.count({
             where: {
@@ -291,7 +372,7 @@ export class EventsService {
             data: {
               organizationId,
               actorId,
-              action: "VOLUNTEER_FORM_PUBLISHED",
+              action: `${kind}_FORM_PUBLISHED`,
               entityId: form.id,
             },
           });

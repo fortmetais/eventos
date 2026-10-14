@@ -566,6 +566,16 @@ export function EventSetups() {
                     Ficha de servos
                   </Link>
                 )}
+              {editable &&
+                auth.camperRegistrationsEnabled &&
+                ["DRAFT", "PUBLISHED"].includes(event.status) && (
+                  <Link
+                    className="button outline"
+                    to={`/organizacao/${organizationId}/eventos/${event.id}/ficha-campistas`}
+                  >
+                    Ficha de campistas
+                  </Link>
+                )}
             </div>
           </section>
         ))

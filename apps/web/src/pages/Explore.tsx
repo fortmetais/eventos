@@ -75,7 +75,11 @@ export function Explore() {
         <Loading />
       </div>
     );
-  if (!auth.eventsEnabled && !auth.volunteerRegistrationsReady) {
+  if (
+    !auth.eventsEnabled &&
+    !auth.volunteerRegistrationsReady &&
+    !auth.camperRegistrationsReady
+  ) {
     if (auth.session && !auth.access)
       return (
         <div className="narrow-shell">

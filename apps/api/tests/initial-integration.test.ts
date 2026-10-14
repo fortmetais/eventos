@@ -21,6 +21,7 @@ integration("Etapa inicial com as tabelas de organizações e funções", () => 
   const app = createApp({
     db,
     eventsEnabled: false,
+    camperRegistrationsEnabled: false,
     rateLimits: false,
     resolveIdentity: async (token) =>
       users[token as keyof typeof users] ?? null,

@@ -128,10 +128,12 @@ export function OrganizationLayout() {
                   <CalendarDays size={18} />
                   {auth.eventsEnabled ? "Eventos e fichas" : "Eventos"}
                 </NavLink>
-                {(auth.eventsEnabled || auth.volunteerRegistrationsEnabled) && (
+                {(auth.eventsEnabled ||
+                  auth.volunteerRegistrationsEnabled ||
+                  auth.camperRegistrationsEnabled) && (
                   <NavLink to={`${base}/inscricoes`}>
                     <ClipboardList size={18} />
-                    {auth.eventsEnabled
+                    {auth.eventsEnabled || auth.camperRegistrationsEnabled
                       ? "Inscrições"
                       : "Candidaturas de servos"}
                   </NavLink>
@@ -150,7 +152,9 @@ export function OrganizationLayout() {
               Membros e convites
             </NavLink>
           )}
-          {(auth.eventsEnabled || auth.volunteerRegistrationsReady) &&
+          {(auth.eventsEnabled ||
+            auth.volunteerRegistrationsReady ||
+            auth.camperRegistrationsReady) &&
             membership.healthEventIds.length > 0 && (
               <NavLink to={`${base}/saude`}>
                 <ShieldCheck size={18} />

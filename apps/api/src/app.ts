@@ -62,6 +62,7 @@ export function createApp(
     eventManagementEnabled?: boolean;
     artworkStorage?: ArtworkStorage;
     volunteerRegistrationsEnabled?: boolean;
+    camperRegistrationsEnabled?: boolean;
     decisionEmail?: DecisionEmailSender;
     decisionLinkSecret?: string;
     decisionNotificationsEnabled?: boolean;
@@ -76,6 +77,10 @@ export function createApp(
     dependencies.volunteerRegistrationsEnabled ??
     config.VOLUNTEER_REGISTRATIONS_ENABLED;
   const registrationStage = new RegistrationStage(db);
+  const camperRegistrationsEnabled =
+    dependencies.camperRegistrationsEnabled ??
+    config.CAMPER_REGISTRATIONS_ENABLED;
+  const volunteersOnly = !eventsEnabled && !camperRegistrationsEnabled;
   const notices = new DecisionNoticesService(
     db,
     dependencies.decisionEmail ?? decisionEmailSender,
@@ -169,6 +174,9 @@ export function createApp(
         volunteerRegistrationsReady: volunteerRegistrationsEnabled
           ? await registrationStage.ready()
           : false,
+        camperRegistrationsReady: camperRegistrationsEnabled
+          ? await registrationStage.ready()
+          : false,
         decisionNoticesReady: await notices.ready(),
         guardianAuthorizationsReady: await guardians.ready(),
         departmentsReady: await new DepartmentsRepository(db).ready(),
@@ -190,6 +198,10 @@ export function createApp(
       eventsEnabled,
       eventManagementEnabled,
       volunteerRegistrationsEnabled,
+      camperRegistrationsEnabled,
+      camperRegistrationsReady: camperRegistrationsEnabled
+        ? await registrationStage.ready().catch(() => false)
+        : false,
       volunteerRegistrationsReady: volunteerRegistrationsEnabled
         ? await registrationStage.ready().catch(() => false)
         : false,
@@ -231,7 +243,11 @@ export function createApp(
       ),
     );
   }
-  if (eventsEnabled || volunteerRegistrationsEnabled) {
+  if (
+    eventsEnabled ||
+    volunteerRegistrationsEnabled ||
+    camperRegistrationsEnabled
+  ) {
     const registrations = express.Router();
     registrations.use((req, _res, next) => {
       const managed =
@@ -262,8 +278,8 @@ export function createApp(
       eventsRoutes(
         new EventsController(
           new EventsService(
-            new EventsRepository(db, !eventsEnabled),
-            !eventsEnabled,
+            new EventsRepository(db, volunteersOnly),
+            volunteersOnly,
             dependencies.artworkStorage ?? artworkStorage,
           ),
         ),
@@ -271,6 +287,7 @@ export function createApp(
         auth,
         !eventsEnabled,
         limit,
+        eventsEnabled || camperRegistrationsEnabled,
       ),
     );
     registrations.post(
@@ -283,7 +300,7 @@ export function createApp(
         new RegistrationsController(
           new RegistrationsService(
             new RegistrationsRepository(db),
-            !eventsEnabled,
+            volunteersOnly,
             notices,
             guardians,
           ),
@@ -317,7 +334,7 @@ export function createApp(
           new ProfilesRepository(db),
           async () =>
             eventsEnabled ||
-            (volunteerRegistrationsEnabled &&
+            ((volunteerRegistrationsEnabled || camperRegistrationsEnabled) &&
               (await registrationStage.ready())),
         ),
       ),

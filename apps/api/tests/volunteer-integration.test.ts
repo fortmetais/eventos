@@ -36,6 +36,7 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
     const api = createApp({
       db,
       eventsEnabled: false,
+      camperRegistrationsEnabled: false,
       volunteerRegistrationsEnabled: true,
       rateLimits: false,
       artworkStorage: { upload: artworkUpload, remove: artworkRemove },
@@ -332,7 +333,7 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
           .set("X-Draft-Token", draft.token)
           .expect(422);
       }
-      expect(await db.registration.count()).toBe(0);
+      expect(await db.registration.count({ where: { campaignId } })).toBe(0);
     });
     it("encerramento impede envio e preserva rascunho; reenvio é idempotente", async () => {
       await request(app)
@@ -368,7 +369,7 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
         .set("X-Draft-Token", draft.token)
         .expect(200);
       expect(again.body.id).toBe(registrationId);
-      expect(await db.registration.count()).toBe(1);
+      expect(await db.registration.count({ where: { campaignId } })).toBe(1);
       expect(
         (await db.consent.findUniqueOrThrow({ where: { registrationId } }))
           .imageAuthorized,

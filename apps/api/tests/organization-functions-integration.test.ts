@@ -36,6 +36,7 @@ const url = process.env.TEST_FUNCTION_DATABASE_URL;
     const app = createApp({
       db,
       eventsEnabled: false,
+      camperRegistrationsEnabled: false,
       eventManagementEnabled: true,
       rateLimits: false,
       mail: {
