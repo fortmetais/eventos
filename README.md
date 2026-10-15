@@ -25,7 +25,7 @@ As integrações reais de autenticação, e-mail e fotos precisam de um projeto 
 
 ## 1. Preparar o ambiente
 
-Use Node.js 24 LTS e npm 11.21.1 ou posterior. Versões antigas do npm podem ignorar os overrides de dependências dos workspaces. Execute na raiz:
+Use Node.js 24 LTS e npm 11.19.0 ou posterior. Versões antigas do npm podem ignorar os overrides de dependências dos workspaces. Execute na raiz:
 
 ```powershell
 npm ci

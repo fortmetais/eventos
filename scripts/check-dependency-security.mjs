@@ -25,7 +25,7 @@ assert.equal(
 );
 assert(
   copies.length > 0 && copies.every(([, pkg]) => pkg.version === expected),
-  "O lockfile contém UUID diferente da versão corrigida. Use npm >=11.21.1 para atualizar as dependências.",
+  "O lockfile contém UUID diferente da versão corrigida. Use npm >=11.19.0 para atualizar as dependências.",
 );
 
 // Exercise the repaired bounds checks and the CommonJS API used by ExcelJS.
