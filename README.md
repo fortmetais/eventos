@@ -25,13 +25,15 @@ As integrações reais de autenticação, e-mail e fotos precisam de um projeto 
 
 ## 1. Preparar o ambiente
 
-Use Node.js 24 LTS e npm. Execute na raiz:
+Use Node.js 24 LTS e npm 11.21.1 ou posterior. Versões antigas do npm podem ignorar os overrides de dependências dos workspaces. Execute na raiz:
 
 ```powershell
-npm install
+npm ci
 if (-not (Test-Path apps/api/.env)) { Copy-Item apps/api/.env.example apps/api/.env }
 npm run db:generate
 ```
+
+O ExcelJS usa `uuid` 11.1.1 por override para corrigir a CVE-2026-41907. `npm run dependencies:check`, também executado na compilação, confere a resolução real do ExcelJS, todas as cópias no lockfile e a rejeição de buffers inválidos. Ao atualizar dependências, preserve esse override e use uma versão compatível do npm.
 
 Edite `apps/api/.env`:
 
