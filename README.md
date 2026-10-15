@@ -4,6 +4,8 @@ Aplicação web em português, com React/TypeScript e API Node.js/Express organi
 
 ## O que está implementado
 
+- Importação de cadastros anteriores por Excel, com revisão por organização e sugestões limitadas na inscrição. Consulte o [guia de importação e autopreenchimento](docs/cadastros-anteriores.md); aplicar somente o SQL 13 e manter a consulta pública desativada até revisar o primeiro lote.
+
 - Administração de organizações, convites com prazo e uso único, membros, suspensão e permissões por organização.
 - Edições, tipos de evento, campanhas independentes de campistas/servos, períodos no horário de Brasília, pausa e capacidade.
 - Departamentos e vagas definidos ao criar o evento, preferências vinculadas à ficha e alocação com limite transacional. Ative com o SQL 08; veja o [guia de departamentos](docs/departamentos-e-vagas.md).

@@ -116,6 +116,7 @@ try {
     TEST_NOTICE_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_notice_tests?schema=acesso`,
     TEST_DEPARTMENT_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_department_tests?schema=acesso`,
     TEST_FUNCTION_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_function_tests?schema=acesso`,
+    TEST_IMPORT_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_import_tests?schema=acesso`,
   };
   run(binary("psql"), [
     "-h",
@@ -293,6 +294,43 @@ try {
       "ON_ERROR_STOP=1",
       "-f",
       file,
+    ]);
+  run(binary("psql"), [
+    "-h",
+    "127.0.0.1",
+    "-p",
+    String(port),
+    "-U",
+    "fac_test",
+    "-d",
+    "postgres",
+    "-c",
+    "CREATE DATABASE fac_import_tests",
+  ]);
+  for (const script of [
+    "01_acesso_e_administrador.sql",
+    "02_organizacoes_e_responsaveis.sql",
+    "11_funcoes_organizacao.sql",
+    "03_pessoas_e_participantes.sql",
+    "05_eventos_e_periodos.sql",
+    "06_fichas_servos_e_inscricoes.sql",
+    "08_departamentos_e_vagas.sql",
+    "09_autorizacao_responsavel.sql",
+    "13_cadastros_anteriores.sql",
+  ])
+    run(binary("psql"), [
+      "-h",
+      "127.0.0.1",
+      "-p",
+      String(port),
+      "-U",
+      "fac_test",
+      "-d",
+      "fac_import_tests",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-f",
+      join(root, "database/manual", script),
     ]);
   run(process.execPath, [npmCli, "run", "test"], env);
 } finally {

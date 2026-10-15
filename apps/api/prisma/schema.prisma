@@ -62,6 +62,7 @@ model Account {
   sentInvitations Invitation[]     @relation("InvitationCreator")
   auditActions    AuditLog[]       @relation("AuditActor")
   decisionNotices DecisionNotice[]
+  participantImports ParticipantImport[]
 
   @@map("contas")
   @@schema("acesso")
@@ -96,6 +97,8 @@ model Organization {
   assets       MediaAsset[]
   auditLogs    AuditLog[]
   functions    OrganizationFunction[]
+  participantImports ParticipantImport[]
+  previousParticipants PreviousParticipant[]
 
   @@map("organizacoes")
   @@schema("organizacoes")
@@ -280,6 +283,69 @@ model Person {
   @@index([organizationId, cpf], map: "pessoas_organizacao_id_cpf_idx")
   @@index([organizationId, name], map: "pessoas_organizacao_id_nome_idx")
   @@map("pessoas")
+  @@schema("pessoas")
+}
+
+model ParticipantImport {
+  id             String @id @default(uuid()) @map("lote_id") @db.Uuid
+  organizationId String @map("organizacao_id") @db.Uuid
+  fileHash       String @map("hash_arquivo")
+  fileName       String @map("nome_arquivo")
+  sheet          String @map("aba")
+  mapping        Json @map("mapeamento")
+  state          String @default("PREVIEW") @map("situacao")
+  createdBy      String @map("criado_por") @db.Uuid
+  createdAt      DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  creator        Account @relation(fields: [createdBy], references: [id])
+  rows           ParticipantImportRow[]
+  @@unique([organizationId, fileHash, sheet])
+  @@unique([id, organizationId])
+  @@map("lotes_importacao")
+  @@schema("pessoas")
+}
+
+model ParticipantImportRow {
+  id             String @id @default(uuid()) @map("linha_id") @db.Uuid
+  importId       String @map("lote_id") @db.Uuid
+  organizationId String @map("organizacao_id") @db.Uuid
+  rowNumber      Int @map("numero_linha")
+  original       Json @map("respostas_originais")
+  values         Json @map("valores")
+  decision       String @default("PENDING") @map("decisao")
+  reviewed       Boolean @default(false) @map("revisada")
+  replaceId      String? @map("substituir_id") @db.Uuid
+  profileId      String? @map("cadastro_id") @db.Uuid
+  batch          ParticipantImport @relation(fields: [importId, organizationId], references: [id, organizationId])
+  replacement    PreviousParticipant? @relation("Replacement", fields: [replaceId, organizationId], references: [id, organizationId])
+  profile        PreviousParticipant? @relation("ImportedProfile", fields: [profileId, organizationId], references: [id, organizationId])
+  @@unique([importId, rowNumber])
+  @@map("linhas_importacao")
+  @@schema("pessoas")
+}
+
+model PreviousParticipant {
+  id             String @id @default(uuid()) @map("cadastro_id") @db.Uuid
+  organizationId String @map("organizacao_id") @db.Uuid
+  name           String @map("nome")
+  normalizedName String @map("nome_normalizado")
+  birthDate      DateTime @map("data_nascimento") @db.Date
+  phone          String @map("telefone")
+  normalizedPhone String @map("telefone_normalizado")
+  city           String? @map("cidade")
+  sex            String? @map("sexo")
+  shirt          String? @map("camiseta")
+  responses      Json @map("respostas_originais")
+  createdAt      DateTime @default(now()) @map("criado_em") @db.Timestamptz(3)
+  updatedAt      DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  sourceRows     ParticipantImportRow[] @relation("ImportedProfile")
+  replacements   ParticipantImportRow[] @relation("Replacement")
+  @@unique([organizationId, normalizedName, birthDate, normalizedPhone])
+  @@unique([id, organizationId])
+  @@index([organizationId, normalizedName, birthDate])
+  @@map("cadastros_anteriores")
   @@schema("pessoas")
 }
 

@@ -147,6 +147,12 @@ export function OrganizationLayout() {
             </NavLink>
           )}
           {membership.role === "ORGANIZER" && (
+            <NavLink to={`${base}/cadastros-anteriores`}>
+              <Users size={18} />
+              Cadastros anteriores
+            </NavLink>
+          )}
+          {membership.role === "ORGANIZER" && (
             <NavLink to={`${base}/membros`}>
               <Users size={18} />
               Membros e convites

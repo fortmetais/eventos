@@ -49,6 +49,11 @@ const OrganizationFunctions = lazy(() =>
     default: m.OrganizationFunctions,
   })),
 );
+const ParticipantImports = lazy(() =>
+  import("./pages/ParticipantImports").then((m) => ({
+    default: m.ParticipantImports,
+  })),
+);
 const OrganizationDashboard = lazy(() =>
   import("./pages/Organization").then((m) => ({
     default: m.OrganizationDashboard,
@@ -203,6 +208,10 @@ export function App() {
               <Route path="inscricoes" element={<ReviewRegistrations />} />
               <Route path="membros" element={<Members />} />
               <Route path="funcoes" element={<OrganizationFunctions />} />
+              <Route
+                path="cadastros-anteriores"
+                element={<ParticipantImports />}
+              />
               <Route path="saude" element={<Health />} />
             </Route>
             <Route

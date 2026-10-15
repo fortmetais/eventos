@@ -27,6 +27,7 @@ describe("configuração do login", () => {
         "volunteerRegistrationsReady",
         "camperRegistrationsEnabled",
         "camperRegistrationsReady",
+        "registrationPrefillEnabled",
       ].sort(),
     );
   });

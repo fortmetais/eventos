@@ -29,6 +29,11 @@ import {
   stepIds,
 } from "@fac/form-layout";
 import { RegistrationFields } from "../components/RegistrationFields";
+import {
+  prefillIdentity,
+  prefillIdentityKey,
+  mergePrefill,
+} from "../lib/registration-prefill";
 const steps = [
   "Identificação",
   "Sua foto",
@@ -64,6 +69,8 @@ export function Registration() {
   const [guardian, setGuardian] = useState<GuardianSummary | null>(null);
   const [showIntroduction, setShowIntroduction] = useState(true);
   const [resuming, setResuming] = useState(true);
+  const [prefilled, setPrefilled] = useState(false);
+  const lookupIdentity = prefillIdentityKey(payload);
   const current = useRef({ payload, health });
   current.current = { payload, health };
   const queue = useRef<Promise<unknown>>(Promise.resolve());
@@ -83,6 +90,7 @@ export function Registration() {
     setError("");
     setErrors({});
     setSaved("");
+    setPrefilled(false);
     async function resume() {
       try {
         const raw = localStorage.getItem(storageKey);
@@ -183,6 +191,65 @@ export function Registration() {
     }, 800);
     return () => clearTimeout(timer);
   }, [payload, health, credential, result, showIntroduction]);
+  useEffect(() => {
+    if (
+      !auth.registrationPrefillEnabled ||
+      !credential ||
+      !form ||
+      !campaign.data ||
+      resuming ||
+      showIntroduction ||
+      result
+    )
+      return;
+    const identity = prefillIdentity(current.current.payload);
+    if (!identity) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void api<{ payload: Payload }>(
+        `/public/drafts/${credential.id}/prefill`,
+        {
+          method: "POST",
+          draftToken: credential.token,
+          body: identity,
+          signal: controller.signal,
+        },
+      )
+        .then((response) => {
+          if (
+            controller.signal.aborted ||
+            prefillIdentityKey(current.current.payload) !== lookupIdentity
+          )
+            return;
+          const merged = mergePrefill(
+            current.current.payload,
+            response.payload,
+            form.config,
+            campaign.data!.kind,
+          );
+          if (merged.changed) {
+            setPayload(merged.payload);
+            setPrefilled(true);
+          }
+        })
+        .catch(() => {
+          /* Suggestions never block filling or submitting the form. */
+        });
+    }, 600);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [
+    lookupIdentity,
+    credential,
+    form,
+    campaign.data,
+    auth.registrationPrefillEnabled,
+    resuming,
+    showIntroduction,
+    result,
+  ]);
   function update<K extends keyof Payload>(key: K, value: Payload[K]) {
     setPayload((p) => ({ ...p, [key]: value }));
     setErrors((e) => ({ ...e, [key]: "" }));
@@ -804,6 +871,11 @@ export function Registration() {
           </h2>
         </div>
         {error && <Notice>{error}</Notice>}
+        {prefilled && (
+          <Notice kind="info">
+            Dados anteriores preenchidos. Confira antes de continuar.
+          </Notice>
+        )}
         {config.layout && step !== 4 && (
           <>
             <RegistrationFields

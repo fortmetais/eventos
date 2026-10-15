@@ -6,11 +6,72 @@ type Operation = {
   body?: string;
   query?: string[];
   multipart?: boolean;
+  response?: string;
 };
 const operations: Operation[] = [
   { method: "get", path: "/health", summary: "Verificar processo" },
   { method: "get", path: "/readiness", summary: "Verificar banco" },
   { method: "get", path: "/config", summary: "Configuração pública do Auth" },
+  {
+    method: "get",
+    path: "/organizations/{organizationId}/participant-imports",
+    summary:
+      "Disponibilidade e lotes de cadastros anteriores; somente organizador",
+    security: "account",
+  },
+  ...["inspect", "preview"].map((action) => ({
+    method: "post",
+    path: `/organizations/{organizationId}/participant-imports/${action}`,
+    summary:
+      action === "inspect"
+        ? "Inspecionar abas e cabeçalhos XLSX"
+        : "Preparar prévia privada e idempotente da importação",
+    security: "account" as const,
+    multipart: true,
+  })),
+  {
+    method: "get",
+    path: "/organizations/{organizationId}/participant-imports/{importId}",
+    summary: "Consultar revisão paginada de um lote",
+    security: "account",
+    query: ["page", "pageSize"],
+  },
+  {
+    method: "put",
+    path: "/organizations/{organizationId}/participant-imports/{importId}/rows/{rowId}",
+    summary:
+      "Corrigir ou descartar uma linha; atualização de cadastro exige escolha explícita",
+    security: "account",
+    body: "ImportRowRevision",
+  },
+  {
+    method: "post",
+    path: "/organizations/{organizationId}/participant-imports/{importId}/confirm",
+    summary: "Confirmar lote sem criar inscrições ou aceites; idempotente",
+    security: "account",
+  },
+  {
+    method: "get",
+    path: "/organizations/{organizationId}/previous-participants",
+    summary: "Buscar cadastros anteriores da organização",
+    security: "account",
+    query: ["search", "page", "pageSize"],
+  },
+  {
+    method: "get",
+    path: "/organizations/{organizationId}/previous-participants/{profileId}",
+    summary: "Consultar respostas completas e origens; somente organizador",
+    security: "account",
+  },
+  {
+    method: "post",
+    path: "/public/drafts/{draftId}/prefill",
+    summary:
+      "Sugerir exclusivamente cidade, sexo e camiseta após comparar nome, nascimento e celular",
+    security: "draft",
+    body: "PrefillIdentity",
+    response: "PrefillResult",
+  },
   {
     method: "get",
     path: "/public/parishes",
@@ -429,6 +490,42 @@ const organization = {
   logoUrl: { type: "string", format: "uri", nullable: true },
 };
 const schemas = {
+  PrefillIdentity: object(
+    {
+      name: { ...string, maxLength: 150 },
+      birthDate: { ...string, format: "date" },
+      phone: { ...string, maxLength: 30 },
+    },
+    ["name", "birthDate", "phone"],
+  ),
+  PrefillResult: object(
+    {
+      payload: object({
+        shirt: string,
+        answers: object({ cidade: string, sexo: string }),
+      }),
+    },
+    ["payload"],
+  ),
+  ImportRowRevision: object(
+    {
+      values: object(
+        Object.fromEntries(
+          ["name", "birthDate", "phone", "city", "sex", "shirt"].map((key) => [
+            key,
+            string,
+          ]),
+        ),
+        ["name", "birthDate", "phone", "city", "sex", "shirt"],
+      ),
+      decision: {
+        type: "string",
+        enum: ["KEEP", "DISCARD", "REPLACE", "PENDING"],
+      },
+      replaceId: { ...uuid, nullable: true },
+    },
+    ["values", "decision"],
+  ),
   Organization: object(organization, [
     "name",
     "kind",
@@ -795,21 +892,45 @@ for (const operation of operations) {
           content: {
             "multipart/form-data": {
               schema: object(
-                operation.path.includes("event-setups")
+                operation.path.includes("/participant-imports/")
                   ? {
-                      data: {
-                        ...string,
-                        description: operation.path.endsWith("/details")
-                          ? "JSON com apenas event. Não altera períodos, departamentos, fichas ou estado. Datas são preservadas quando há inscrições."
-                          : "JSON com event, departments e campaigns (servos e campistas).",
+                      file: {
+                        type: "string",
+                        format: "binary",
+                        description: "XLSX até 10 MB e 5.000 respostas.",
                       },
-                      artwork: { type: "string", format: "binary" },
+                      ...(operation.path.endsWith("/preview")
+                        ? {
+                            sheet: string,
+                            mapping: {
+                              ...string,
+                              description:
+                                "JSON com índices de colunas começando em zero; name, birthDate e phone obrigatórios; city, sex e shirt podem ser null.",
+                            },
+                          }
+                        : {}),
                     }
-                  : {
-                      photo: { type: "string", format: "binary" },
-                      crop: string,
-                    },
-                operation.path.includes("event-setups") ? ["data"] : ["photo"],
+                  : operation.path.includes("event-setups")
+                    ? {
+                        data: {
+                          ...string,
+                          description: operation.path.endsWith("/details")
+                            ? "JSON com apenas event. Não altera períodos, departamentos, fichas ou estado. Datas são preservadas quando há inscrições."
+                            : "JSON com event, departments e campaigns (servos e campistas).",
+                        },
+                        artwork: { type: "string", format: "binary" },
+                      }
+                    : {
+                        photo: { type: "string", format: "binary" },
+                        crop: string,
+                      },
+                operation.path.includes("/participant-imports/")
+                  ? operation.path.endsWith("/preview")
+                    ? ["file", "sheet", "mapping"]
+                    : ["file"]
+                  : operation.path.includes("event-setups")
+                    ? ["data"]
+                    : ["photo"],
               ),
             },
           },
@@ -822,7 +943,20 @@ for (const operation of operations) {
     security,
     ...(requestBody ? { requestBody } : {}),
     responses: {
-      "200": { description: "Operação concluída" },
+      "200": {
+        description: "Operação concluída",
+        ...(operation.response
+          ? {
+              content: {
+                "application/json": {
+                  schema: {
+                    $ref: `#/components/schemas/${operation.response}`,
+                  },
+                },
+              },
+            }
+          : {}),
+      },
       ...(operation.method === "post"
         ? { "201": { description: "Recurso criado" } }
         : {}),

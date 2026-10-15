@@ -16,12 +16,21 @@ import type {
   FormVersion,
   PublicCampaign,
 } from "../lib/types";
-const mocks = vi.hoisted(() => ({ api: vi.fn(), photo: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  api: vi.fn(),
+  photo: vi.fn(),
+  prefillEnabled: false,
+}));
 vi.mock("../lib/api", () => ({
   api: mocks.api,
   ApiError: class extends Error {},
 }));
-vi.mock("../lib/auth", () => ({ useAuth: () => ({ session: null }) }));
+vi.mock("../lib/auth", () => ({
+  useAuth: () => ({
+    session: null,
+    registrationPrefillEnabled: mocks.prefillEnabled,
+  }),
+}));
 
 function formVersion(
   version: number,
@@ -104,6 +113,7 @@ const credential = {
 let published: PublicCampaign;
 let draft: Draft;
 beforeEach(() => {
+  mocks.prefillEnabled = false;
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
   mocks.photo
@@ -522,5 +532,52 @@ describe("Entrada e versão da inscrição", () => {
     expect(
       screen.getByText(/O rascunho anterior não pôde ser retomado/),
     ).toBeVisible();
+  });
+  it("ignora respostas atrasadas depois que a identificação foi alterada", async () => {
+    mocks.prefillEnabled = true;
+    draft.payload = {
+      name: "Maria Teste",
+      birthDate: "2000-01-01",
+      phone: "44999999999",
+    };
+    draft.form.config.questions = [
+      {
+        id: "cidade",
+        label: "Cidade",
+        type: "text",
+        required: false,
+        options: [],
+      },
+    ];
+    draft.form.config.layout = defaultLayout(draft.form.config, "VOLUNTEER");
+    let resolve: (value: unknown) => void = () => {};
+    const original = mocks.api.getMockImplementation()!;
+    mocks.api.mockImplementation((path: string, options?: unknown) =>
+      path.endsWith("/prefill")
+        ? new Promise((done) => {
+            resolve = done;
+          })
+        : original(path, options),
+    );
+    storeDraft();
+    view();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Continuar inscrição" }),
+    );
+    await waitFor(() =>
+      expect(mocks.api).toHaveBeenCalledWith(
+        "/public/drafts/draft/prefill",
+        expect.anything(),
+      ),
+    );
+    fireEvent.change(screen.getByLabelText("Nome completo", { exact: false }), {
+      target: { value: "Ana Teste" },
+    });
+    resolve({ payload: { answers: { cidade: "Cidade da pessoa anterior" } } });
+    await new Promise((done) => setTimeout(done, 50));
+    expect(screen.getByRole("combobox", { name: "Cidade" })).toHaveValue("");
+    expect(
+      screen.queryByText(/Dados anteriores preenchidos/),
+    ).not.toBeInTheDocument();
   });
 });

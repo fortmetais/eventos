@@ -56,6 +56,11 @@ EVENTS_ENABLED=false
 EVENT_MANAGEMENT_ENABLED=true
 VOLUNTEER_REGISTRATIONS_ENABLED=true
 CAMPER_REGISTRATIONS_ENABLED=true
+REGISTRATION_PREFILL_ENABLED=false
+
+Cadastros anteriores: aplicar somente database/manual/13_cadastros_anteriores.sql.
+Importar e revisar o primeiro lote antes de definir REGISTRATION_PREFILL_ENABLED=true.
+Guia: docs/cadastros-anteriores.md.
 
 Supabase Storage: manter os nomes dos buckets reais da aplicação. A chave
 privada fica no ambiente do servidor; nunca usar prefixo VITE_ para segredos.

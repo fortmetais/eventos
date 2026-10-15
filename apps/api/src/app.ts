@@ -50,6 +50,8 @@ import { DecisionNoticesService } from "./modules/registrations/decision-notices
 import { decisionNoticesRoutes } from "./modules/registrations/decision-notices.routes.js";
 import { GuardianService } from "./modules/registrations/guardian.service.js";
 import { guardianRoutes } from "./modules/registrations/guardian.routes.js";
+import { ParticipantImportsService } from "./modules/participant-imports/participant-imports.service.js";
+import { participantImportsRoutes } from "./modules/participant-imports/participant-imports.routes.js";
 
 export function createApp(
   dependencies: {
@@ -63,6 +65,7 @@ export function createApp(
     artworkStorage?: ArtworkStorage;
     volunteerRegistrationsEnabled?: boolean;
     camperRegistrationsEnabled?: boolean;
+    registrationPrefillEnabled?: boolean;
     decisionEmail?: DecisionEmailSender;
     decisionLinkSecret?: string;
     decisionNotificationsEnabled?: boolean;
@@ -81,6 +84,12 @@ export function createApp(
     dependencies.camperRegistrationsEnabled ??
     config.CAMPER_REGISTRATIONS_ENABLED;
   const volunteersOnly = !eventsEnabled && !camperRegistrationsEnabled;
+  const participantImports = new ParticipantImportsService(
+    db,
+    new RegistrationsService(new RegistrationsRepository(db), volunteersOnly),
+    dependencies.registrationPrefillEnabled ??
+      config.REGISTRATION_PREFILL_ENABLED,
+  );
   const notices = new DecisionNoticesService(
     db,
     dependencies.decisionEmail ?? decisionEmailSender,
@@ -154,6 +163,25 @@ export function createApp(
   );
   app.get("/api/v1/openapi", (_req, res) => res.json(openapi));
   app.use("/api/v1", organizationFunctionsRoutes(db, auth, limit));
+  const prefillLimit =
+    dependencies.rateLimits === false
+      ? limit
+      : rateLimit({
+          windowMs: 60000,
+          limit: 20,
+          standardHeaders: "draft-8",
+          legacyHeaders: false,
+          message: {
+            error: {
+              code: "RATE_LIMIT",
+              message: "Aguarde um minuto antes de consultar novamente.",
+            },
+          },
+        });
+  app.use(
+    "/api/v1",
+    participantImportsRoutes(participantImports, db, auth, limit, prefillLimit),
+  );
   app.get("/api/v1/readiness", async (_req, res) => {
     try {
       await Promise.all([
@@ -202,6 +230,9 @@ export function createApp(
       camperRegistrationsReady: camperRegistrationsEnabled
         ? await registrationStage.ready().catch(() => false)
         : false,
+      registrationPrefillEnabled:
+        participantImports.prefillEnabled &&
+        (await participantImports.ready().catch(() => false)),
       volunteerRegistrationsReady: volunteerRegistrationsEnabled
         ? await registrationStage.ready().catch(() => false)
         : false,

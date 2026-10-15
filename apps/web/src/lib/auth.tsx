@@ -24,6 +24,7 @@ interface AuthState {
   volunteerRegistrationsReady?: boolean;
   camperRegistrationsEnabled?: boolean;
   camperRegistrationsReady?: boolean;
+  registrationPrefillEnabled?: boolean;
   temporaryHome?: boolean;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
@@ -46,6 +47,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [camperRegistrationsEnabled, setCamperRegistrationsEnabled] =
     useState(false);
   const [camperRegistrationsReady, setCamperRegistrationsReady] =
+    useState(false);
+  const [registrationPrefillEnabled, setRegistrationPrefillEnabled] =
     useState(false);
   async function refresh() {
     try {
@@ -70,6 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           volunteerRegistrationsReady?: boolean;
           camperRegistrationsEnabled?: boolean;
           camperRegistrationsReady?: boolean;
+          registrationPrefillEnabled?: boolean;
         }>("/config");
         if (!active) return;
         setEventsEnabled(settings.eventsEnabled ?? true);
@@ -83,6 +87,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           settings.camperRegistrationsEnabled ?? false,
         );
         setCamperRegistrationsReady(settings.camperRegistrationsReady ?? false);
+        setRegistrationPrefillEnabled(
+          settings.registrationPrefillEnabled ?? false,
+        );
         setEventManagementEnabled(
           settings.eventManagementEnabled ?? settings.eventsEnabled ?? true,
         );
@@ -145,6 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         volunteerRegistrationsReady,
         camperRegistrationsEnabled,
         camperRegistrationsReady,
+        registrationPrefillEnabled,
         temporaryHome,
         refresh,
         logout,

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { chromium } from "@playwright/test";
 import sharp from "sharp";
+import ExcelJS from "exceljs";
+import { normalized } from "../apps/api/dist/modules/participant-imports/workbook.js";
 import { camperTemplate } from "../apps/api/dist/modules/events/camper-template.js";
 import { formSchema } from "../apps/api/dist/modules/events/events.validation.js";
 import { validateSubmission } from "../apps/api/dist/modules/registrations/registrations.validation.js";
@@ -68,8 +70,63 @@ const browser = await chromium.launch({
     : {}),
 });
 mkdirSync(".local/screenshots", { recursive: true });
+const importWorkbook = new ExcelJS.Workbook();
+const importSheet = importWorkbook.addWorksheet("Respostas");
+importSheet.addRow([
+  "Nome",
+  "Nascimento",
+  "Celular",
+  "Cidade",
+  "Sexo",
+  "Camiseta",
+  "Paróquia",
+]);
+importSheet.addRow([
+  "Maria Teste",
+  "2000-01-01",
+  "123",
+  "Loanda",
+  "Feminino",
+  "G",
+  "Resposta reservada",
+]);
+const xlsx = Buffer.from(await importWorkbook.xlsx.writeBuffer());
 try {
   for (const mobile of [false, true]) {
+    const importId = "00000000-0000-4000-8000-000000000008";
+    const rowId = "00000000-0000-4000-8000-000000000009";
+    const previousId = "00000000-0000-4000-8000-000000000010";
+    const importRow = {
+      id: rowId,
+      rowNumber: 2,
+      values: {
+        name: "Maria Teste",
+        birthDate: "2000-01-01",
+        phone: "123",
+        city: "Loanda",
+        sex: "Feminino",
+        shirt: "G",
+      },
+      original: { headers: ["Paróquia"], cells: ["Resposta reservada"] },
+      decision: "PENDING",
+      reviewed: false,
+      replaceId: null,
+      pending: true,
+      errors: ["Confira o celular com DDD."],
+      warnings: [],
+      duplicateRows: [],
+      candidates: [],
+    };
+    const importBatch = {
+      id: importId,
+      fileName: "antigos.xlsx",
+      sheet: "Respostas",
+      state: "PREVIEW",
+      page: 1,
+      pageSize: 50,
+      summary: { total: 1, selected: 0, pending: 1, discarded: 0 },
+      rows: [importRow],
+    };
     const organization = {
       id: orgId,
       name: "Comunidade do encontro",
@@ -160,6 +217,7 @@ try {
             volunteerRegistrationsReady: true,
             camperRegistrationsEnabled: true,
             camperRegistrationsReady: true,
+            registrationPrefillEnabled: true,
           });
         if (path === "/api/v1/me/access")
           return json({
@@ -265,6 +323,110 @@ try {
               : null,
           });
         }
+        const importBase = `/api/v1/organizations/${orgId}/participant-imports`;
+        if (path.startsWith(importBase)) {
+          assert.equal(req.headers().authorization, `Bearer ${jwt}`);
+          if (path === importBase)
+            return json({
+              ready: true,
+              prefillEnabled: false,
+              batches: [
+                {
+                  id: importId,
+                  fileName: "antigos.xlsx",
+                  sheet: "Respostas",
+                  state: importBatch.state,
+                  _count: { rows: 1 },
+                },
+              ],
+            });
+          if (path.endsWith("/inspect"))
+            return json({
+              sheets: [
+                {
+                  name: "Respostas",
+                  headers: [
+                    "Nome",
+                    "Nascimento",
+                    "Celular",
+                    "Cidade",
+                    "Sexo",
+                    "Camiseta",
+                    "Paróquia",
+                  ],
+                  rowCount: 1,
+                  mapping: {
+                    name: 0,
+                    birthDate: 1,
+                    phone: 2,
+                    city: 3,
+                    sex: 4,
+                    shirt: 5,
+                  },
+                },
+              ],
+            });
+          if (path.endsWith("/preview")) {
+            assert(req.postDataBuffer().toString().includes('"phone":2'));
+            return json(importBatch);
+          }
+          if (path.endsWith(`/rows/${rowId}`)) {
+            const body = req.postDataJSON();
+            assert.deepEqual(normalized(body.values).errors, []);
+            assert.equal(body.decision, "KEEP");
+            importRow.values = body.values;
+            importRow.pending = false;
+            importRow.decision = "KEEP";
+            importRow.errors = [];
+            importBatch.summary.pending = 0;
+            importBatch.summary.selected = 1;
+            return json({ saved: true });
+          }
+          if (path.endsWith("/confirm")) {
+            assert.equal(importBatch.summary.pending, 0);
+            importBatch.state = "CONFIRMED";
+            return json({ confirmed: true });
+          }
+          return json(importBatch);
+        }
+        if (
+          path.startsWith(
+            `/api/v1/organizations/${orgId}/previous-participants`,
+          )
+        ) {
+          assert.equal(req.headers().authorization, `Bearer ${jwt}`);
+          if (path.endsWith(previousId))
+            return json({
+              id: previousId,
+              ...importRow.values,
+              sourceRows: [
+                {
+                  rowNumber: 2,
+                  original: importRow.original,
+                  values: importRow.values,
+                  batch: {
+                    id: importId,
+                    fileName: "antigos.xlsx",
+                    sheet: "Respostas",
+                    createdAt: new Date().toISOString(),
+                  },
+                },
+              ],
+            });
+          return json({
+            items:
+              importBatch.state === "CONFIRMED"
+                ? [{ id: previousId, ...importRow.values }]
+                : [],
+            total: importBatch.state === "CONFIRMED" ? 1 : 0,
+          });
+        }
+        if (path === `/api/v1/public/drafts/${draftId}/prefill`) {
+          assert.equal(req.headers()["x-draft-token"], token);
+          return json({
+            payload: { shirt: "M", answers: { cidade: "Loanda - PR" } },
+          });
+        }
         if (path === `/api/v1/public/drafts/${draftId}/photo`)
           return json(
             { id: photoId, url: `${target}/storage-test/photo.png` },
@@ -363,6 +525,42 @@ try {
       path: `.local/screenshots/camper-${mobile ? "mobile" : "desktop"}-setup.png`,
       fullPage: true,
     });
+    await admin.goto(`${target}/organizacao/${orgId}/cadastros-anteriores`);
+    await admin
+      .getByLabel("Arquivo Excel", { exact: false })
+      .setInputFiles({
+        name: "antigos.xlsx",
+        mimeType:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        buffer: xlsx,
+      });
+    await admin.getByRole("button", { name: "Ler planilha" }).click();
+    await admin.getByLabel("Aba da planilha").waitFor();
+    await admin.getByRole("button", { name: "Preparar prévia" }).click();
+    assert(
+      await admin
+        .getByRole("button", { name: "Confirmar importação" })
+        .isDisabled(),
+    );
+    await admin.getByRole("button", { name: "Revisar linha 2" }).click();
+    const editor = admin.getByRole("region", { name: "Revisar linha 2" });
+    await editor.getByLabel("Celular", { exact: true }).fill("44999999999");
+    await editor.getByLabel("Decisão para esta linha").selectOption("KEEP");
+    await editor.getByRole("button", { name: "Salvar revisão" }).click();
+    await admin.getByText("Revisão salva.", { exact: true }).waitFor();
+    await admin.getByRole("button", { name: "Confirmar importação" }).click();
+    await admin.getByText(/Lote confirmado/).waitFor();
+    await admin.getByRole("button", { name: "Consultar Maria Teste" }).click();
+    await admin.getByText("Resposta reservada", { exact: true }).waitFor();
+    await admin.screenshot({
+      path: `.local/screenshots/import-${mobile ? "mobile" : "desktop"}.png`,
+      fullPage: true,
+    });
+    assert(
+      await admin.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth + 2,
+      ),
+    );
     const visitor = await visitorContext.newPage();
     await visitor.goto(`${target}/inscricao/${campaignId}`);
     await visitor
@@ -384,6 +582,17 @@ try {
     await visitor
       .getByLabel("Data de nascimento", { exact: false })
       .fill(mobile ? "2012-01-01" : "1990-01-01");
+    await visitor
+      .getByText("Dados anteriores preenchidos. Confira antes de continuar.", {
+        exact: true,
+      })
+      .waitFor();
+    assert.equal(
+      await visitor
+        .getByRole("combobox", { name: "Cidade onde mora", exact: true })
+        .inputValue(),
+      "Loanda - PR",
+    );
     await visitor
       .getByRole("combobox", { name: "Cidade onde mora", exact: true })
       .fill("Loanda");
@@ -503,7 +712,7 @@ try {
     await visitorContext.close();
   }
   console.info(
-    "Ficha de campistas verificada em desktop e celular: publicação, banner, ordem e ocultação, cinco etapas, foto, saúde, rascunho e responsável.",
+    "Desktop e celular verificados: importação, revisão, consulta privada, autopreenchimento, ficha de campistas, foto, saúde, rascunho e responsável.",
   );
 } finally {
   await browser.close();
