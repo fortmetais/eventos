@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { randomUUID } from "node:crypto";
 import { assert } from "../../core/errors.js";
 import { json } from "../../core/security.js";
 import {
@@ -23,6 +24,14 @@ import {
   type ArtworkStorage,
 } from "../../core/artwork-storage.js";
 import { uploadFormBanner } from "./form-banner.js";
+import { requireAvailableEventSlug } from "./event-slug.js";
+import { id } from "../../core/security.js";
+import {
+  EventArtwork,
+  type StoredArtwork,
+  type EventArtworkValues,
+} from "./event-artwork.js";
+import { z } from "zod";
 
 export class EventsService {
   constructor(
@@ -76,11 +85,98 @@ export class EventsService {
   administrative(organizationId: string, authorizedEvents?: string[]) {
     return this.repo.administrative(organizationId, authorizedEvents);
   }
-  async create(organizationId: string, actorId: string, input: unknown) {
-    const { departments, ...eventInput } = (
+  private async withEventArtwork<T>(
+    organizationId: string,
+    eventId: string,
+    editing: boolean,
+    file: Express.Multer.File | undefined,
+    mobileFile: Express.Multer.File | undefined,
+    removeMobile: boolean,
+    save: (
+      tx: Prisma.TransactionClient,
+      images: EventArtworkValues,
+    ) => Promise<T>,
+  ) {
+    assert(
+      !mobileFile || !removeMobile,
+      422,
+      "Escolha enviar ou remover o banner de celular.",
+    );
+    if (editing) {
+      const existing = await this.repo.db.event.findFirst({
+        where: { id: eventId, organizationId },
+        select: { id: true },
+      });
+      assert(existing, 404, "Evento não encontrado.");
+    }
+    const artwork = new EventArtwork(this.bannerStorage);
+    const { desktop, mobile } = await artwork.uploadChanges(
+      organizationId,
+      eventId,
+      file,
+      mobileFile,
+    );
+    const previous: StoredArtwork[] = [];
+    let result: T;
+    try {
+      result = await this.repo.db.$transaction(async (tx) => {
+        if (editing) {
+          await tx.$queryRaw`SELECT evento_id FROM eventos.eventos WHERE evento_id = ${eventId}::uuid AND organizacao_id = ${organizationId}::uuid FOR UPDATE`;
+          const current = await tx.event.findFirst({
+            where: { id: eventId, organizationId },
+          });
+          assert(current, 404, "Evento não encontrado.");
+          if (desktop && current.imageBucket && current.imageKey)
+            previous.push({
+              bucket: current.imageBucket,
+              key: current.imageKey,
+              thumbnailKey: current.imageThumbnailKey,
+            });
+          if (
+            (mobile || removeMobile) &&
+            current.mobileImageBucket &&
+            current.mobileImageKey
+          )
+            previous.push({
+              bucket: current.mobileImageBucket,
+              key: current.mobileImageKey,
+            });
+        }
+        return save(tx, {
+          ...(desktop
+            ? {
+                imageUrl: desktop.url,
+                imageBucket: desktop.bucket,
+                imageKey: desktop.key,
+                imageThumbnailKey: desktop.thumbnailKey,
+              }
+            : {}),
+          ...artwork.mobileValues(mobile, removeMobile),
+        });
+      });
+    } catch (error) {
+      for (const image of [desktop, mobile])
+        if (image)
+          await artwork.cleanup(image.bucket, image.key, image.thumbnailKey);
+      throw error;
+    }
+    for (const image of previous)
+      await artwork.cleanup(image.bucket, image.key, image.thumbnailKey);
+    return result;
+  }
+  async create(
+    organizationId: string,
+    actorId: string,
+    input: unknown,
+    file?: Express.Multer.File,
+    mobileFile?: Express.Multer.File,
+  ) {
+    const { departments, removeMobileArtwork, ...eventInput } = (
       input && typeof input === "object" && !Array.isArray(input) ? input : {}
     ) as Record<string, unknown>;
     const parsed = eventSchema.parse(eventInput);
+    const removeMobile =
+      z.boolean().optional().parse(removeMobileArtwork) ?? false;
     const departmentData =
       departments === undefined ? [] : departmentsSchema.parse(departments);
     if (departments !== undefined)
@@ -90,36 +186,48 @@ export class EventsService {
       422,
       "Novos departamentos não reutilizam identificadores de outro evento.",
     );
-    return this.repo.db.$transaction(async (tx) => {
-      const type = await tx.eventType.upsert({
-        where: {
-          organizationId_name: { organizationId, name: parsed.typeName },
-        },
-        create: { organizationId, name: parsed.typeName },
-        update: {},
-      });
-      const { typeName: _, ...data } = parsed;
-      const event = await tx.event.create({
-        data: {
-          ...data,
-          startsAt: new Date(data.startsAt),
-          endsAt: new Date(data.endsAt),
-          organizationId,
-          typeId: type.id,
-        },
-      });
-      for (const { id: _, ...department } of departmentData)
-        await tx.team.create({ data: { ...department, eventId: event.id } });
-      await tx.auditLog.create({
-        data: {
-          organizationId,
-          actorId,
-          action: "EVENT_CREATED",
-          entityId: event.id,
-        },
-      });
-      return event;
-    });
+    const eventId = randomUUID();
+    return this.withEventArtwork(
+      organizationId,
+      eventId,
+      false,
+      file,
+      mobileFile,
+      removeMobile,
+      async (tx, images) => {
+        await requireAvailableEventSlug(tx, parsed.slug);
+        const type = await tx.eventType.upsert({
+          where: {
+            organizationId_name: { organizationId, name: parsed.typeName },
+          },
+          create: { organizationId, name: parsed.typeName },
+          update: {},
+        });
+        const { typeName: _, ...data } = parsed;
+        const event = await tx.event.create({
+          data: {
+            ...data,
+            ...images,
+            id: eventId,
+            startsAt: new Date(data.startsAt),
+            endsAt: new Date(data.endsAt),
+            organizationId,
+            typeId: type.id,
+          },
+        });
+        for (const { id: _, ...department } of departmentData)
+          await tx.team.create({ data: { ...department, eventId: event.id } });
+        await tx.auditLog.create({
+          data: {
+            organizationId,
+            actorId,
+            action: "EVENT_CREATED",
+            entityId: event.id,
+          },
+        });
+        return event;
+      },
+    );
   }
   async volunteerForm(organizationId: string, eventId: string) {
     return this.registrationForm(organizationId, eventId, "VOLUNTEER");
@@ -384,38 +492,59 @@ export class EventsService {
         }),
     );
   }
-  async update(organizationId: string, eventId: string, input: unknown) {
-    const { typeName, ...data } = eventSchema.parse(input);
-    return this.repo.db.$transaction(async (tx) => {
-      const existing = await tx.event.findFirst({
-        where: { id: eventId, organizationId },
-      });
-      assert(existing, 404, "Evento não encontrado.");
-      const count = await tx.registration.count({
-        where: { campaign: { eventId } },
-      });
-      assert(
-        !count ||
-          (data.startsAt === existing.startsAt.toISOString().slice(0, 10) &&
-            data.endsAt === existing.endsAt.toISOString().slice(0, 10)),
-        409,
-        "Eventos com inscrições preservam suas datas.",
-      );
-      const type = await tx.eventType.upsert({
-        where: { organizationId_name: { organizationId, name: typeName } },
-        create: { organizationId, name: typeName },
-        update: {},
-      });
-      return tx.event.update({
-        where: { id: eventId },
-        data: {
-          ...data,
-          typeId: type.id,
-          startsAt: new Date(data.startsAt),
-          endsAt: new Date(data.endsAt),
-        },
-      });
-    });
+  async update(
+    organizationId: string,
+    eventId: string,
+    input: unknown,
+    file?: Express.Multer.File,
+    mobileFile?: Express.Multer.File,
+  ) {
+    const { removeMobileArtwork, ...eventInput } = z
+      .object({ removeMobileArtwork: z.boolean().default(false) })
+      .passthrough()
+      .parse(input);
+    const { typeName, ...data } = eventSchema.parse(eventInput);
+    const removeMobile = removeMobileArtwork;
+    return this.withEventArtwork(
+      organizationId,
+      eventId,
+      true,
+      file,
+      mobileFile,
+      removeMobile,
+      async (tx, images) => {
+        const existing = await tx.event.findFirst({
+          where: { id: eventId, organizationId },
+        });
+        assert(existing, 404, "Evento não encontrado.");
+        await requireAvailableEventSlug(tx, data.slug, eventId);
+        const count = await tx.registration.count({
+          where: { campaign: { eventId } },
+        });
+        assert(
+          !count ||
+            (data.startsAt === existing.startsAt.toISOString().slice(0, 10) &&
+              data.endsAt === existing.endsAt.toISOString().slice(0, 10)),
+          409,
+          "Eventos com inscrições preservam suas datas.",
+        );
+        const type = await tx.eventType.upsert({
+          where: { organizationId_name: { organizationId, name: typeName } },
+          create: { organizationId, name: typeName },
+          update: {},
+        });
+        return tx.event.update({
+          where: { id: eventId },
+          data: {
+            ...data,
+            ...images,
+            typeId: type.id,
+            startsAt: new Date(data.startsAt),
+            endsAt: new Date(data.endsAt),
+          },
+        });
+      },
+    );
   }
   async status(
     organizationId: string,
@@ -635,7 +764,9 @@ export class EventsService {
   async publicEvent(eventId: string) {
     const event = await this.repo.db.event.findFirst({
       where: {
-        id: eventId,
+        ...(id.safeParse(eventId).success
+          ? { id: eventId }
+          : { slug: eventId }),
         status: { in: ["PUBLISHED", "COMPLETED"] },
         organization: { active: true },
       },

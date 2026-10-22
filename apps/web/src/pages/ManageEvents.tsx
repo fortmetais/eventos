@@ -22,6 +22,8 @@ import {
 import { editableLayout, syncLegacyFlags } from "@fac/form-layout";
 import { useAuth } from "../lib/auth";
 import { EventSetups } from "./EventSetups";
+import { EventPresentationEditor } from "../components/EventPresentationEditor";
+import { normalizeEventSlug, publicEventPath } from "../lib/event-presentation";
 import {
   DepartmentsEditor,
   departmentRows,
@@ -34,6 +36,7 @@ const blankEvent = {
   name: "",
   description: "",
   imageUrl: "",
+  slug: "",
   location: "",
   city: "",
   startsAt: "",
@@ -53,6 +56,18 @@ function FullManageEvents() {
   const [editor, setEditor] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [values, setValues] = useState(blankEvent);
+  const [desktop, setDesktop] = useState<File | null>(null);
+  const [mobile, setMobile] = useState<File | null>(null);
+  const [mobileUrl, setMobileUrl] = useState<string | null>(null);
+  const [removeMobile, setRemoveMobile] = useState(false);
+  const [editorVersion, setEditorVersion] = useState(0);
+  function resetImages(url?: string | null) {
+    setDesktop(null);
+    setMobile(null);
+    setMobileUrl(url ?? null);
+    setRemoveMobile(false);
+    setEditorVersion((v) => v + 1);
+  }
   const [departments, setDepartments] = useState(() => departmentRows());
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -63,22 +78,32 @@ function FullManageEvents() {
     setBusy(true);
     setError("");
     try {
+      const data = {
+        ...values,
+        slug: normalizeEventSlug(values.slug) || null,
+        imageUrl: values.imageUrl || null,
+        removeMobileArtwork: removeMobile,
+        ...(!editingId ? { departments: departmentPayload(departments) } : {}),
+      };
+      let body: typeof data | FormData = data;
+      if (desktop || mobile) {
+        const files = new FormData();
+        files.append("data", JSON.stringify(data));
+        if (desktop) files.append("artwork", desktop);
+        if (mobile) files.append("mobileArtwork", mobile);
+        body = files;
+      }
       await api(
         `/organizations/${organizationId}/events${editingId ? `/${editingId}` : ""}`,
         {
           method: editingId ? "PUT" : "POST",
-          body: {
-            ...values,
-            imageUrl: values.imageUrl || null,
-            ...(!editingId
-              ? { departments: departmentPayload(departments) }
-              : {}),
-          },
+          body,
         },
       );
       setEditor(false);
       setEditingId(null);
       setValues(blankEvent);
+      resetImages();
       state.refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -108,11 +133,13 @@ function FullManageEvents() {
       name: event.name,
       description: event.description,
       imageUrl: event.imageUrl ?? "",
+      slug: event.slug ?? "",
       location: event.location,
       city: event.city,
       startsAt: event.startsAt.slice(0, 10),
       endsAt: event.endsAt.slice(0, 10),
     });
+    resetImages(event.mobileImageUrl);
     setEditor(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -127,6 +154,7 @@ function FullManageEvents() {
               onClick={() => {
                 setEditingId(null);
                 setValues(blankEvent);
+                resetImages();
                 setDepartments(departmentRows());
                 setEditor((v) => !v);
               }}
@@ -211,15 +239,21 @@ function FullManageEvents() {
               }
             />
           </Field>
-          <Field label="URL HTTPS da imagem (opcional)">
-            <input
-              type="url"
-              value={values.imageUrl}
-              onChange={(e) =>
-                setValues((v) => ({ ...v, imageUrl: e.target.value }))
-              }
-            />
-          </Field>
+          <EventPresentationEditor
+            key={editorVersion}
+            eventId={editingId}
+            slug={values.slug}
+            onSlug={(slug) => setValues((v) => ({ ...v, slug }))}
+            desktopUrl={values.imageUrl}
+            mobileUrl={mobileUrl}
+            desktop={desktop}
+            mobile={mobile}
+            onDesktop={setDesktop}
+            onMobile={setMobile}
+            removeMobile={removeMobile}
+            onRemoveMobile={setRemoveMobile}
+            disabled={busy}
+          />
           {!editingId && (
             <DepartmentsEditor rows={departments} onChange={setDepartments} />
           )}
@@ -312,7 +346,7 @@ function FullManageEvents() {
                 )}
                 {event.status === "PUBLISHED" && (
                   <>
-                    <Link className="text-button" to={`/eventos/${event.id}`}>
+                    <Link className="text-button" to={publicEventPath(event)}>
                       <Eye size={15} />
                       Ver página pública
                     </Link>

@@ -91,6 +91,95 @@ async function begin() {
     });
 }
 describe("Preparação de eventos", () => {
+  it("envia banners separados e normaliza o endereço na edição do evento", async () => {
+    mocks.api.mockResolvedValue([
+      {
+        ...publishedEvent,
+        slug: "fac-anterior",
+        mobileImageUrl: "https://storage.test/celular.webp",
+      },
+    ]);
+    view();
+    expect(
+      await screen.findByRole("link", { name: "Ver página do evento" }),
+    ).toHaveAttribute("href", "/eventos/fac-anterior");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Editar evento" }),
+    );
+    fireEvent.change(screen.getByLabelText(/^Endereço personalizado/), {
+      target: { value: "3 FAC São José 2027" },
+    });
+    fireEvent.blur(screen.getByLabelText(/^Endereço personalizado/));
+    expect(screen.getByText(/Link para compartilhar/)).toHaveTextContent(
+      "/eventos/3-fac-sao-jose-2027",
+    );
+    const desktop = new File(["computador"], "desktop.png", {
+      type: "image/png",
+    });
+    const mobile = new File(["celular"], "mobile.png", { type: "image/png" });
+    await userEvent.upload(
+      screen.getByLabelText(/^Banner para computador/),
+      desktop,
+    );
+    await userEvent.upload(
+      screen.getByLabelText(/^Banner para celular/),
+      mobile,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Salvar evento" }),
+    );
+    await waitFor(() =>
+      expect(
+        mocks.api.mock.calls.some(([, options]) => options?.method === "PUT"),
+      ).toBe(true),
+    );
+    const call = mocks.api.mock.calls.find(
+      ([, options]) => options?.method === "PUT",
+    )!;
+    expect(call[1].body.get("artwork")).toBe(desktop);
+    expect(call[1].body.get("mobileArtwork")).toBe(mobile);
+    expect(JSON.parse(call[1].body.get("data")).event.slug).toBe(
+      "3-fac-sao-jose-2027",
+    );
+  });
+  it("remove apenas o banner do celular e permite desfazer antes de salvar", async () => {
+    mocks.api.mockResolvedValue([
+      {
+        ...publishedEvent,
+        mobileImageUrl: "https://storage.test/celular.webp",
+      },
+    ]);
+    view();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Editar evento" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Remover banner de celular" }),
+    );
+    expect(
+      screen.queryByAltText("Prévia do banner de celular"),
+    ).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Desfazer" }));
+    expect(screen.getByAltText("Prévia do banner de celular")).toHaveAttribute(
+      "src",
+      "https://storage.test/celular.webp",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Remover banner de celular" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Salvar evento" }),
+    );
+    await waitFor(() =>
+      expect(
+        mocks.api.mock.calls.some(([, options]) => options?.method === "PUT"),
+      ).toBe(true),
+    );
+    const call = mocks.api.mock.calls.find(
+      ([, options]) => options?.method === "PUT",
+    )!;
+    expect(JSON.parse(call[1].body.get("data")).removeMobileArtwork).toBe(true);
+  });
   it("evento publicado com inscrições oferece edição e salva apenas dados e arte", async () => {
     mocks.api.mockResolvedValue([publishedEvent]);
     view();
@@ -113,7 +202,10 @@ describe("Preparação de eventos", () => {
       target: { value: "FAC 2027 atualizado" },
     });
     const file = new File(["imagem"], "arte.png", { type: "image/png" });
-    await userEvent.upload(screen.getByLabelText(/^Substituir a arte/), file);
+    await userEvent.upload(
+      screen.getByLabelText(/^Banner para computador/),
+      file,
+    );
     await userEvent.click(
       screen.getByRole("button", { name: "Salvar evento" }),
     );
@@ -168,7 +260,7 @@ describe("Preparação de eventos", () => {
       target: { value: "Novo local de teste" },
     });
     await userEvent.upload(
-      screen.getByLabelText(/^Substituir a arte/),
+      screen.getByLabelText(/^Banner para computador/),
       new File(["imagem"], "arte.png", { type: "image/png" }),
     );
     await userEvent.click(
@@ -188,10 +280,9 @@ describe("Preparação de eventos", () => {
     expect(screen.getByLabelText(/^Local do evento/)).toHaveValue(
       "Novo local de teste",
     );
-    expect(screen.getByAltText("Prévia da arte do evento")).toHaveAttribute(
-      "src",
-      "blob:test-artwork",
-    );
+    expect(
+      screen.getByAltText("Prévia do banner de computador"),
+    ).toHaveAttribute("src", "blob:test-artwork");
     expect(screen.getByRole("button", { name: "Salvar evento" })).toBeEnabled();
   });
   it("edição de rascunho mantém o formulário completo e a rota de preparação", async () => {
@@ -330,9 +421,12 @@ describe("Preparação de eventos", () => {
       target: { value: "2027-01-12" },
     });
     const file = new File(["imagem"], "arte.png", { type: "image/png" });
-    await userEvent.upload(screen.getByLabelText(/^Selecionar arte/), file);
+    await userEvent.upload(
+      screen.getByLabelText(/^Banner para computador/),
+      file,
+    );
     expect(
-      await screen.findByAltText("Prévia da arte do evento"),
+      await screen.findByAltText("Prévia do banner de computador"),
     ).toHaveAttribute("src", "blob:test-artwork");
     mocks.api.mockImplementation(async (_path, options) => {
       if (options?.method === "POST")
@@ -353,7 +447,9 @@ describe("Preparação de eventos", () => {
       "2027-01-12",
     );
     expect(call[1].body.get("artwork")).toBe(file);
-    expect(screen.getByAltText("Prévia da arte do evento")).toBeInTheDocument();
+    expect(
+      screen.getByAltText("Prévia do banner de computador"),
+    ).toBeInTheDocument();
   });
   it("secretaria consulta sem criar; banco pendente oferece atualização", async () => {
     mocks.role = "SECRETARY";

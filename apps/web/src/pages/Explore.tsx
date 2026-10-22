@@ -14,6 +14,7 @@ import { useAuth } from "../lib/auth";
 import { organizationDestination, pendingInvitation } from "../lib/navigation";
 import type { EventEdition, Page } from "../lib/types";
 import { date } from "../lib/types";
+import { publicEventPath } from "../lib/event-presentation";
 import { Empty, Loading, Notice, OrganizationAvatar } from "../components/ui";
 export function EventCard({ event }: { event: EventEdition }) {
   const organization = event.organization!;
@@ -23,7 +24,7 @@ export function EventCard({ event }: { event: EventEdition }) {
         <OrganizationAvatar organization={organization} />
         <div>
           <span className="event-type">{event.type.name}</span>
-          <Link to={`/eventos/${event.id}`}>
+          <Link to={publicEventPath(event)}>
             <h3>{event.name}</h3>
           </Link>
         </div>

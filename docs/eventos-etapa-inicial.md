@@ -17,9 +17,11 @@ Não execute `db:migrate`, `db:deploy`, `db:seed` ou `db push` na base criada gr
 
 ## Arte do evento
 
+O cadastro agora oferece banners separados para computador e celular, além do endereço público personalizável. Antes de implantar esta atualização, aplicar a etapa 14. Consulte [banners e endereço do evento](banners-e-endereco-evento.md).
+
 O envio utiliza o projeto Supabase já configurado na API, em um bucket público separado chamado `artes-eventos`. A API prepara esse bucket no primeiro envio, se a chave de servidor tiver permissão. Não precisa configurar SMTP para enviar imagens. É possível definir outro nome com `SUPABASE_ARTWORK_BUCKET` no `.env` da API.
 
-Aceita JPEG, PNG e WebP de até 10 MB, sem animação. O servidor verifica a imagem real e gera WebP de até 1080 × 1920, preservando a proporção, sem cortar textos. A proporção recomendada é **9:16 vertical**. O arquivo original não é armazenado. A prévia usa somente uma URL temporária do navegador.
+Aceita JPEG, PNG e WebP de até 10 MB por arquivo, sem animação. O servidor verifica a imagem real e gera WebP dentro de 1920 × 1920 para computador e 960 × 1280 para celular, preservando a proporção, sem cortar textos. Recomenda-se 1920 × 640 horizontal para computador e 768 × 960 vertical para celular. O arquivo original não é armazenado. A prévia usa somente uma URL temporária do navegador.
 
 A arte é material de divulgação pública, inclusive durante a preparação. Fotos de identificação permanecem no bucket privado `identificacao`. No PostgreSQL são gravados a URL permanente, o nome do bucket e a chave do arquivo. Se houver falha ao guardar o evento, a API tenta remover a nova arte; se a substituição for concluída, tenta remover a anterior. Falhas de remoção são registradas sem dados pessoais e podem exigir limpeza posterior do Storage.
 

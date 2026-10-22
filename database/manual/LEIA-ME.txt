@@ -138,6 +138,11 @@ Auth, convites e fotos dependem das chaves e configurações privadas no .env.
 Siga deploy/supabase/CONFIGURAR_AUTH.txt para configurar a autenticação.
 
 Referências oficiais:
+Banners e endereço do evento: executar 14_banners_e_url_evento.sql após 05,
+antes de publicar a atualização. Acrescenta quatro colunas opcionais na
+tabela eventos.eventos, sem tabelas novas. Script aditivo e repetível.
+Guia: docs/banners-e-endereco-evento.md. Links por UUID são preservados.
+
 Cadastros anteriores: executar somente 13_cadastros_anteriores.sql após 01/02/03.
 Importação é restrita ao organizador. Manter REGISTRATION_PREFILL_ENABLED=false
 até revisar o primeiro lote; depois ativar e reiniciar a API. Guia completo:

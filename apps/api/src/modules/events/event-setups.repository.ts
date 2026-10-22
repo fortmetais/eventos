@@ -9,7 +9,10 @@ export class EventSetupsRepository {
     const result = await this.db.$queryRaw<{ ready: boolean }[]>`
       SELECT to_regclass('eventos.tipos_evento') IS NOT NULL
         AND to_regclass('eventos.eventos') IS NOT NULL
-        AND to_regclass('eventos.campanhas') IS NOT NULL AS ready`;
+        AND to_regclass('eventos.campanhas') IS NOT NULL
+        AND (SELECT count(*) = 4 FROM information_schema.columns
+          WHERE table_schema = 'eventos' AND table_name = 'eventos'
+          AND column_name IN ('url_personalizada','url_arte_celular','bucket_arte_celular','chave_arte_celular')) AS ready`;
     return result[0]?.ready === true;
   }
   async requireReady() {

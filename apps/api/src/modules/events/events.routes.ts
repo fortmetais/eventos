@@ -4,6 +4,7 @@ import { organizationAccess } from "../../core/auth.js";
 import type { EventsController } from "./events.controller.js";
 import multer from "multer";
 import { AppError } from "../../core/errors.js";
+import { eventArtworkUpload } from "./event-artwork-upload.js";
 export function eventsRoutes(
   c: EventsController,
   db: PrismaClient,
@@ -75,11 +76,21 @@ export function eventsRoutes(
     );
     return r;
   }
-  r.post("/organizations/:organizationId/events", auth, write, c.create);
+  const artworkUpload = eventArtworkUpload();
+  r.post(
+    "/organizations/:organizationId/events",
+    auth,
+    write,
+    limit,
+    artworkUpload,
+    c.create,
+  );
   r.put(
     "/organizations/:organizationId/events/:eventId",
     auth,
     write,
+    limit,
+    artworkUpload,
     c.update,
   );
   r.patch(

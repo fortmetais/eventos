@@ -164,7 +164,11 @@ await context.route("**/*", async (route) => {
       return json(route, events[0], 201);
     }
   }
-  if (url.pathname === `/api/v1/organizations/${id}/event-setups/event-test/details` && request.method() === "PUT") {
+  if (
+    url.pathname ===
+      `/api/v1/organizations/${id}/event-setups/event-test/details` &&
+    request.method() === "PUT"
+  ) {
     const match = request.postData().match(/name="data"\r\n\r\n([^\r]+)\r\n/);
     assert(match);
     const data = JSON.parse(match[1]);
@@ -174,6 +178,21 @@ await context.route("**/*", async (route) => {
     events[0] = { ...events[0], ...data.event };
     writes++;
     return json(route, events[0]);
+  }
+  if (url.pathname === "/api/v1/public/events/3-fac-2027")
+    return json(route, {
+      ...events[0],
+      slug: "3-fac-2027",
+      organization,
+      imageUrl: `${target}/fixture-desktop.svg`,
+      mobileImageUrl: `${target}/fixture-mobile.svg`,
+    });
+  if (url.pathname.startsWith("/fixture-")) {
+    const mobile = url.pathname.includes("mobile");
+    return route.fulfill({
+      contentType: "image/svg+xml",
+      body: `<svg xmlns="http://www.w3.org/2000/svg" width="${mobile ? 768 : 1920}" height="${mobile ? 960 : 640}" viewBox="0 0 ${mobile ? 768 : 1920} ${mobile ? 960 : 640}"><rect width="100%" height="100%" fill="#112b66"/><text x="40" y="100" fill="#edc068" font-size="48">FAC 2027 — ${mobile ? "Celular" : "Computador"}</text></svg>`,
+    });
   }
   if (url.pathname.startsWith("/api/v1/")) {
     errors.push(`API inesperada: ${url.pathname}`);
@@ -225,15 +244,27 @@ try {
       .fill(capacity);
   }
   // PNG mínimo para validar seleção e prévia sem depender do Storage real.
-  await page.getByLabel("Selecionar arte", { exact: false }).setInputFiles({
-    name: "arte.png",
-    mimeType: "image/png",
-    buffer: Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB1kAAAAASUVORK5CYII=",
-      "base64",
-    ),
-  });
-  await page.getByAltText("Prévia da arte do evento").waitFor();
+  await page
+    .getByLabel("Banner para computador", { exact: false })
+    .setInputFiles({
+      name: "arte.png",
+      mimeType: "image/png",
+      buffer: Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB1kAAAAASUVORK5CYII=",
+        "base64",
+      ),
+    });
+  await page.getByAltText("Prévia do banner de computador").waitFor();
+  await page
+    .getByLabel("Endereço personalizado", { exact: false })
+    .fill("3 FAC 2027");
+  await page.getByLabel("Endereço personalizado", { exact: false }).blur();
+  assert.equal(
+    await page
+      .getByLabel("Endereço personalizado", { exact: false })
+      .inputValue(),
+    "3-fac-2027",
+  );
   await page.screenshot({
     path: ".local/screenshots/evento-formulario-desktop.png",
     fullPage: true,
@@ -262,10 +293,7 @@ try {
     .waitFor();
   assert.equal(writes, 1);
   await page.getByRole("button", { name: "Editar evento" }).click();
-  assert.equal(
-    await page.getByLabel(/^Departamento 2/).inputValue(),
-    "ANJO",
-  );
+  assert.equal(await page.getByLabel(/^Departamento 2/).inputValue(), "ANJO");
   assert.equal(
     await page
       .getByLabel("Vagas — departamento 2", { exact: false })
@@ -279,29 +307,105 @@ try {
   await page.getByRole("button", { name: "Cancelar edição" }).click();
   events[0].status = "PUBLISHED";
   events[0].hasRegistrations = true;
-  events[0].imageUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB1kAAAAASUVORK5CYII=";
-  const preserved = structuredClone({ campaigns: events[0].campaigns, teams: events[0].teams, imageUrl: events[0].imageUrl });
+  events[0].imageUrl =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB1kAAAAASUVORK5CYII=";
+  const preserved = structuredClone({
+    campaigns: events[0].campaigns,
+    teams: events[0].teams,
+    imageUrl: events[0].imageUrl,
+  });
   await page.reload();
-  await page.getByRole("button", { name: "Editar evento", exact: true }).click();
-  assert.equal(await page.getByLabel("Data de início", { exact: false }).isDisabled(), true);
-  assert.equal(await page.getByLabel("Data de término", { exact: false }).isDisabled(), true);
-  assert.equal(await page.getByLabel("O evento dura mais de um dia").isDisabled(), true);
-  assert.equal(await page.getByLabel("Abertura — servos", { exact: false }).count(), 0);
-  assert.equal(await page.getByRole("button", { name: "Adicionar departamento" }).count(), 0);
-  for (const [name, viewport] of [["desktop", { width: 1366, height: 1000 }], ["celular", { width: 390, height: 844 }]]) {
+  await page
+    .getByRole("button", { name: "Editar evento", exact: true })
+    .click();
+  assert.equal(
+    await page.getByLabel("Data de início", { exact: false }).isDisabled(),
+    true,
+  );
+  assert.equal(
+    await page.getByLabel("Data de término", { exact: false }).isDisabled(),
+    true,
+  );
+  assert.equal(
+    await page.getByLabel("O evento dura mais de um dia").isDisabled(),
+    true,
+  );
+  assert.equal(
+    await page.getByLabel("Abertura — servos", { exact: false }).count(),
+    0,
+  );
+  assert.equal(
+    await page.getByRole("button", { name: "Adicionar departamento" }).count(),
+    0,
+  );
+  for (const [name, viewport] of [
+    ["desktop", { width: 1366, height: 1000 }],
+    ["celular", { width: 390, height: 844 }],
+  ]) {
     await page.setViewportSize(viewport);
-    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-    await page.screenshot({ path: `.local/screenshots/evento-publicado-edicao-${name}.png`, fullPage: true });
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+      true,
+    );
+    await page.screenshot({
+      path: `.local/screenshots/evento-publicado-edicao-${name}.png`,
+      fullPage: true,
+    });
   }
-  await page.getByLabel("Nome do evento", { exact: false }).fill("FAC 2027 — Evento atualizado");
-  await page.getByLabel("Local do evento", { exact: false }).fill("Novo local da comunidade");
-  await page.getByRole("button", { name: "Salvar evento", exact: true }).click();
-  await page.getByText("Dados do evento atualizados. Inscrições e fichas foram preservadas.").waitFor();
+  await page
+    .getByLabel("Nome do evento", { exact: false })
+    .fill("FAC 2027 — Evento atualizado");
+  await page
+    .getByLabel("Local do evento", { exact: false })
+    .fill("Novo local da comunidade");
+  await page
+    .getByRole("button", { name: "Salvar evento", exact: true })
+    .click();
+  await page
+    .getByText(
+      "Dados do evento atualizados. Inscrições e fichas foram preservadas.",
+    )
+    .waitFor();
   await page.reload();
-  await page.getByRole("heading", { name: "FAC 2027 — Evento atualizado", exact: true }).waitFor();
+  await page
+    .getByRole("heading", { name: "FAC 2027 — Evento atualizado", exact: true })
+    .waitFor();
   assert.equal(events[0].status, "PUBLISHED");
-  assert.deepEqual({ campaigns: events[0].campaigns, teams: events[0].teams, imageUrl: events[0].imageUrl }, preserved);
+  assert.deepEqual(
+    {
+      campaigns: events[0].campaigns,
+      teams: events[0].teams,
+      imageUrl: events[0].imageUrl,
+    },
+    preserved,
+  );
   assert.equal(writes, 2);
+  for (const [name, viewport] of [
+    ["desktop", { width: 1366, height: 1000 }],
+    ["mobile", { width: 390, height: 844 }],
+  ]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${target}/eventos/3-fac-2027`);
+    const banner = page.locator("picture.event-banner img");
+    await banner.waitFor();
+    await banner.evaluate((image) => image.decode());
+    assert.equal(
+      await banner.evaluate((image) => new URL(image.currentSrc).pathname),
+      `/fixture-${name}.svg`,
+    );
+    assert.equal(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+      true,
+    );
+    await page.screenshot({
+      path: `.local/screenshots/evento-banner-${name}.png`,
+      fullPage: true,
+    });
+  }
   assert.deepEqual(errors, []);
   console.log(
     "Cadastro, edição de publicado com inscritos, proteção das datas e layout móvel validados no navegador. Nenhum registro real criado.",

@@ -13,6 +13,7 @@ import type {
 } from "../lib/types";
 import { date } from "../lib/types";
 import { formatBrazilianPhone } from "../lib/phone";
+import { publicEventPath } from "../lib/event-presentation";
 import { BackLink, Field, Loading, Notice } from "../components/ui";
 import { PhotoPicker } from "../components/PhotoPicker";
 import { SignedPhoto } from "../components/SignedPhoto";
@@ -666,7 +667,7 @@ export function Registration() {
       <div
         className={`auth-shell registration-introduction ${introConfig.banner ? "has-banner" : ""}`}
       >
-        <BackLink to={`/eventos/${data.event.id}`}>Sobre o evento</BackLink>
+        <BackLink to={publicEventPath(data.event)}>Sobre o evento</BackLink>
         <RegistrationBanner
           banner={introConfig.banner}
           eventName={data.event.name}
@@ -829,7 +830,7 @@ export function Registration() {
         {config.camper ? "Ver regras e orientações" : "Ver regras e preparação"}
       </button>
       <p className="muted">Ficha — versão {form?.version}</p>
-      <BackLink to={`/eventos/${data.event.id}`}>Sobre o evento</BackLink>
+      <BackLink to={publicEventPath(data.event)}>Sobre o evento</BackLink>
       <div className="wizard-event">
         <span className="eyebrow">
           {data.kind === "CAMPER" ? "QUERO PARTICIPAR" : "QUERO SERVIR"}

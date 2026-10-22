@@ -1091,10 +1091,40 @@ svg {
 }
 .event-cover {
   width: 100%;
-  height: 300px;
-  object-fit: cover;
+  height: auto;
+  object-fit: contain;
   border-radius: 14px;
   margin-bottom: 24px;
+}
+.event-banner {
+  display: block;
+}
+.event-banner-editors {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+.event-banner-editor {
+  min-width: 0;
+}
+.event-banner-preview {
+  width: 100%;
+  height: 170px;
+  object-fit: contain;
+  background: #f3f0fa;
+  border-radius: 12px;
+}
+.event-public-link {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.event-public-link span {
+  color: var(--purple);
+}
+@media (max-width: 767px) {
+  .event-banner-editors {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .detail-facts {
   display: flex;

@@ -2,7 +2,9 @@ import { z } from "zod";
 import { eventSchema } from "./events.validation.js";
 import { departmentsSchema } from "./departments.validation.js";
 
-export const eventDetailsSchema = z.object({ event: eventSchema }).strict();
+export const eventDetailsSchema = z
+  .object({ event: eventSchema, removeMobileArtwork: z.boolean().optional() })
+  .strict();
 
 const period = z
   .object({
@@ -21,6 +23,7 @@ const period = z
 export const eventSetupSchema = z
   .object({
     event: eventSchema,
+    removeMobileArtwork: z.boolean().optional(),
     departments: departmentsSchema.optional(),
     campaigns: z
       .array(period)

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { id } from "../../core/security.js";
 import { validateLayout, syncLegacyFlags } from "@fac/form-layout";
+import { optionalEventSlug } from "./event-slug.js";
 export const dateOnly = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -14,6 +15,7 @@ export const eventSchema = z
   .object({
     typeName: z.string().trim().min(2).max(80),
     name: z.string().trim().min(3).max(150),
+    slug: optionalEventSlug,
     description: z.string().trim().min(10).max(5000),
     imageUrl: z
       .string()

@@ -12,6 +12,11 @@ function input(req: Request) {
     throw new AppError(400, "Os dados do evento não puderam ser lidos.");
   }
 }
+function file(req: Request, name: string) {
+  return (req.files as Record<string, Express.Multer.File[]> | undefined)?.[
+    name
+  ]?.[0];
+}
 export class EventSetupsController {
   constructor(private service: EventSetupsService) {}
   list = async (req: Request, res: Response) => {
@@ -25,7 +30,9 @@ export class EventSetupsController {
           param(req, "organizationId"),
           account(req).id,
           input(req),
-          req.file,
+          file(req, "artwork"),
+          undefined,
+          file(req, "mobileArtwork"),
         ),
       );
   };
@@ -35,8 +42,9 @@ export class EventSetupsController {
         param(req, "organizationId"),
         account(req).id,
         input(req),
-        req.file,
+        file(req, "artwork"),
         param(req, "eventId"),
+        file(req, "mobileArtwork"),
       ),
     );
   };
@@ -47,7 +55,8 @@ export class EventSetupsController {
         account(req).id,
         param(req, "eventId"),
         input(req),
-        req.file,
+        file(req, "artwork"),
+        file(req, "mobileArtwork"),
       ),
     );
   };

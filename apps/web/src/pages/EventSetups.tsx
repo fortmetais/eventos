@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { CalendarDays, ImagePlus, Plus } from "lucide-react";
+import { useRef, useState, type FormEvent } from "react";
+import { CalendarDays, Plus } from "lucide-react";
 import { useOrganization } from "./Organization";
 import { Link } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { useRemote } from "../lib/hooks";
 import { api, ApiError } from "../lib/api";
+import { EventPresentationEditor } from "../components/EventPresentationEditor";
+import { normalizeEventSlug, publicEventPath } from "../lib/event-presentation";
 import { date, dateTime, type EventEdition } from "../lib/types";
 import { Empty, Field, Loading, Notice, PageHeading } from "../components/ui";
 import {
@@ -16,6 +18,7 @@ import {
 const blank = {
   typeName: "FAC",
   name: "",
+  slug: "",
   description: "",
   location: "",
   city: "",
@@ -60,22 +63,17 @@ export function EventSetups() {
   const [departments, setDepartments] = useState(() => departmentRows());
   const [artwork, setArtwork] = useState<File | null>(null);
   const [previousArt, setPreviousArt] = useState<string | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [mobileArtwork, setMobileArtwork] = useState<File | null>(null);
+  const [previousMobileArt, setPreviousMobileArt] = useState<string | null>(
+    null,
+  );
+  const [removeMobileArtwork, setRemoveMobileArtwork] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
   const saving = useRef(false);
   const [editorVersion, setEditorVersion] = useState(0);
   const editable = membership.role === "ORGANIZER";
-  useEffect(() => {
-    if (!artwork) {
-      setPreview(null);
-      return;
-    }
-    const url = URL.createObjectURL(artwork);
-    setPreview(url);
-    return () => URL.revokeObjectURL(url);
-  }, [artwork]);
   function begin(event?: EventEdition) {
     if (saving.current) return;
     setEditorVersion((value) => value + 1);
@@ -92,6 +90,7 @@ export function EventSetups() {
         ? {
             typeName: event.type.name,
             name: event.name,
+            slug: event.slug ?? "",
             description: event.description,
             location: event.location,
             city: event.city,
@@ -112,6 +111,9 @@ export function EventSetups() {
     setPeriods(next);
     setDepartments(departmentRows(event?.teams));
     setArtwork(null);
+    setMobileArtwork(null);
+    setRemoveMobileArtwork(false);
+    setPreviousMobileArt(event?.mobileImageUrl ?? null);
     setPreviousArt(event?.imageUrl ?? null);
     setError("");
     setSuccess("");
@@ -127,7 +129,12 @@ export function EventSetups() {
     setBusy(true);
     try {
       const data = {
-        event: { ...values, endsAt: range ? values.endsAt : values.startsAt },
+        event: {
+          ...values,
+          slug: normalizeEventSlug(values.slug) || null,
+          endsAt: range ? values.endsAt : values.startsAt,
+        },
+        ...(removeMobileArtwork ? { removeMobileArtwork: true } : {}),
         ...(!detailsOnly
           ? {
               departments: departmentPayload(departments),
@@ -155,6 +162,7 @@ export function EventSetups() {
       const body = new FormData();
       body.append("data", JSON.stringify(data));
       if (artwork) body.append("artwork", artwork);
+      if (mobileArtwork) body.append("mobileArtwork", mobileArtwork);
       await api(
         `/organizations/${organizationId}/event-setups${editingId ? `/${editingId}${detailsOnly ? "/details" : ""}` : ""}`,
         {
@@ -164,6 +172,7 @@ export function EventSetups() {
       );
       setEditor(false);
       setArtwork(null);
+      setMobileArtwork(null);
       setSuccess(
         detailsOnly
           ? "Dados do evento atualizados. Inscrições e fichas foram preservadas."
@@ -400,62 +409,21 @@ export function EventSetups() {
                 />
               </>
             )}
-            <h3>Arte do evento</h3>
-            <div className="artwork-editor">
-              <div className="artwork-preview">
-                {preview || previousArt ? (
-                  <img
-                    src={preview ?? previousArt!}
-                    alt="Prévia da arte do evento"
-                  />
-                ) : (
-                  <span>
-                    <ImagePlus size={32} /> Arte vertical
-                    <br />
-                    9:16
-                  </span>
-                )}
-              </div>
-              <div>
-                <Field
-                  label={
-                    previousArt
-                      ? "Substituir a arte"
-                      : "Selecionar arte (opcional)"
-                  }
-                  hint="JPEG, PNG ou WebP até 10 MB. Recomendado: 1080 × 1920 pixels (9:16 vertical)."
-                >
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp"
-                    key={`${editingId ?? "new"}-${editor}`}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      setError("");
-                      if (
-                        file &&
-                        (!["image/jpeg", "image/png", "image/webp"].includes(
-                          file.type,
-                        ) ||
-                          file.size > 10 * 1024 * 1024)
-                      ) {
-                        setError(
-                          "Escolha uma arte JPEG, PNG ou WebP com até 10 MB.",
-                        );
-                        setArtwork(null);
-                        e.target.value = "";
-                        return;
-                      }
-                      setArtwork(file ?? null);
-                    }}
-                  />
-                </Field>
-                <p>
-                  A imagem será otimizada sem recortar textos ou outros
-                  elementos. A arte é destinada à divulgação pública.
-                </p>
-              </div>
-            </div>
+            <EventPresentationEditor
+              key={editorVersion}
+              eventId={editingId}
+              slug={values.slug}
+              onSlug={(slug) => setValues((current) => ({ ...current, slug }))}
+              desktopUrl={previousArt}
+              mobileUrl={previousMobileArt}
+              desktop={artwork}
+              mobile={mobileArtwork}
+              onDesktop={setArtwork}
+              onMobile={setMobileArtwork}
+              removeMobile={removeMobileArtwork}
+              onRemoveMobile={setRemoveMobileArtwork}
+              disabled={busy}
+            />
             <p>
               {detailsOnly
                 ? "As alterações serão aplicadas ao evento sem interromper as inscrições."
@@ -471,6 +439,7 @@ export function EventSetups() {
                 onClick={() => {
                   setEditor(false);
                   setArtwork(null);
+                  setMobileArtwork(null);
                   setError("");
                 }}
               >
@@ -555,6 +524,11 @@ export function EventSetups() {
                 >
                   Editar evento
                 </button>
+              )}
+              {["PUBLISHED", "COMPLETED"].includes(event.status) && (
+                <Link className="button outline" to={publicEventPath(event)}>
+                  Ver página do evento
+                </Link>
               )}
               {editable &&
                 auth.volunteerRegistrationsEnabled &&

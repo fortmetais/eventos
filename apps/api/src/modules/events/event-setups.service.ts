@@ -1,11 +1,7 @@
 import { randomUUID } from "node:crypto";
-import sharp from "sharp";
-import {
-  eventThumbnail,
-  uploadImagePair,
-} from "../../core/image-thumbnails.js";
+import { eventThumbnail } from "../../core/image-thumbnails.js";
 import type { Prisma } from "@prisma/client";
-import { AppError, assert } from "../../core/errors.js";
+import { assert } from "../../core/errors.js";
 import type { ArtworkStorage } from "../../core/artwork-storage.js";
 import type { EventSetupsRepository } from "./event-setups.repository.js";
 import {
@@ -13,12 +9,18 @@ import {
   eventSetupSchema,
 } from "./event-setups.validation.js";
 import { DepartmentsRepository } from "./departments.repository.js";
+import { requireAvailableEventSlug } from "./event-slug.js";
+
+import { EventArtwork, type StoredArtwork } from "./event-artwork.js";
 
 export class EventSetupsService {
+  private artwork: EventArtwork;
   constructor(
     private repo: EventSetupsRepository,
-    private storage: ArtworkStorage,
-  ) {}
+    storage: ArtworkStorage,
+  ) {
+    this.artwork = new EventArtwork(storage);
+  }
   async list(organizationId: string) {
     await this.repo.requireReady();
     return this.repo.list(organizationId);
@@ -29,19 +31,29 @@ export class EventSetupsService {
     eventId: string,
     input: unknown,
     file?: Express.Multer.File,
+    mobileFile?: Express.Multer.File,
   ) {
-    const { event: parsed } = eventDetailsSchema.parse(input);
+    const { event: parsed, removeMobileArtwork } =
+      eventDetailsSchema.parse(input);
+    assert(
+      !mobileFile || !removeMobileArtwork,
+      422,
+      "Escolha enviar ou remover o banner de celular.",
+    );
     await this.repo.requireReady();
     const existing = await this.repo.db.event.findFirst({
       where: { id: eventId, organizationId },
     });
     assert(existing, 404, "Evento não encontrado.");
     const registrationsReady = await this.repo.registrationsReady();
-    const uploaded = file
-      ? await this.uploadArtwork(organizationId, eventId, file)
-      : undefined;
-    let previous:
-      { bucket: string; key: string; thumbnailKey?: string | null } | undefined;
+    const { desktop: uploaded, mobile: uploadedMobile } =
+      await this.artwork.uploadChanges(
+        organizationId,
+        eventId,
+        file,
+        mobileFile,
+      );
+    const previous: StoredArtwork[] = [];
     let result;
     try {
       result = await this.repo.db.$transaction(async (tx) => {
@@ -51,6 +63,7 @@ export class EventSetupsService {
           where: { id: eventId, organizationId },
         });
         assert(current, 404, "Evento não encontrado.");
+        await requireAvailableEventSlug(tx, parsed.slug, eventId);
         await this.preserveDates(tx, current, parsed, registrationsReady);
         const { typeName, imageUrl: _, ...values } = parsed;
         const type = await tx.eventType.upsert({
@@ -59,11 +72,20 @@ export class EventSetupsService {
           update: {},
         });
         if (uploaded && current.imageBucket && current.imageKey)
-          previous = {
+          previous.push({
             bucket: current.imageBucket,
             key: current.imageKey,
             thumbnailKey: current.imageThumbnailKey,
-          };
+          });
+        if (
+          (uploadedMobile || removeMobileArtwork) &&
+          current.mobileImageBucket &&
+          current.mobileImageKey
+        )
+          previous.push({
+            bucket: current.mobileImageBucket,
+            key: current.mobileImageKey,
+          });
         const event = await tx.event.update({
           where: { id: eventId },
           data: {
@@ -79,6 +101,7 @@ export class EventSetupsService {
                   imageThumbnailKey: uploaded.thumbnailKey,
                 }
               : {}),
+            ...this.artwork.mobileValues(uploadedMobile, removeMobileArtwork),
           },
           include: { type: true, campaigns: true },
         });
@@ -94,15 +117,17 @@ export class EventSetupsService {
       });
     } catch (error) {
       if (uploaded)
-        await this.cleanup(
+        await this.artwork.cleanup(
           uploaded.bucket,
           uploaded.key,
           uploaded.thumbnailKey,
         );
+      if (uploadedMobile)
+        await this.artwork.cleanup(uploadedMobile.bucket, uploadedMobile.key);
       throw error;
     }
-    if (previous)
-      await this.cleanup(previous.bucket, previous.key, previous.thumbnailKey);
+    for (const image of previous)
+      await this.artwork.cleanup(image.bucket, image.key, image.thumbnailKey);
     return eventThumbnail(result);
   }
   async save(
@@ -111,12 +136,19 @@ export class EventSetupsService {
     input: unknown,
     file?: Express.Multer.File,
     editingId?: string,
+    mobileFile?: Express.Multer.File,
   ) {
     const {
       event: parsed,
       campaigns,
       departments,
+      removeMobileArtwork,
     } = eventSetupSchema.parse(input);
+    assert(
+      !mobileFile || !removeMobileArtwork,
+      422,
+      "Escolha enviar ou remover o banner de celular.",
+    );
     await this.repo.requireReady();
     const departmentsRepo = new DepartmentsRepository(this.repo.db);
     const departmentsReady = await departmentsRepo.ready();
@@ -141,11 +173,14 @@ export class EventSetupsService {
     const registrationsReady = editingId
       ? await this.repo.registrationsReady()
       : false;
-    const uploaded = file
-      ? await this.uploadArtwork(organizationId, eventId, file)
-      : undefined;
-    let previous:
-      { bucket: string; key: string; thumbnailKey?: string | null } | undefined;
+    const { desktop: uploaded, mobile: uploadedMobile } =
+      await this.artwork.uploadChanges(
+        organizationId,
+        eventId,
+        file,
+        mobileFile,
+      );
+    const previous: StoredArtwork[] = [];
     let result;
     try {
       result = await this.repo.db.$transaction(async (tx) => {
@@ -163,12 +198,22 @@ export class EventSetupsService {
           );
           await this.preserveDates(tx, existing, parsed, registrationsReady);
           if (uploaded && existing.imageBucket && existing.imageKey)
-            previous = {
+            previous.push({
               bucket: existing.imageBucket,
               key: existing.imageKey,
               thumbnailKey: existing.imageThumbnailKey,
-            };
+            });
+          if (
+            (uploadedMobile || removeMobileArtwork) &&
+            existing.mobileImageBucket &&
+            existing.mobileImageKey
+          )
+            previous.push({
+              bucket: existing.mobileImageBucket,
+              key: existing.mobileImageKey,
+            });
         }
+        await requireAvailableEventSlug(tx, parsed.slug, editingId);
         const { typeName, imageUrl: _, ...values } = parsed;
         const type = await tx.eventType.upsert({
           where: { organizationId_name: { organizationId, name: typeName } },
@@ -188,6 +233,7 @@ export class EventSetupsService {
                 imageThumbnailKey: uploaded.thumbnailKey,
               }
             : {}),
+          ...this.artwork.mobileValues(uploadedMobile, removeMobileArtwork),
         };
         if (editingId) await tx.event.update({ where: { id: eventId }, data });
         else
@@ -277,15 +323,17 @@ export class EventSetupsService {
       });
     } catch (error) {
       if (uploaded)
-        await this.cleanup(
+        await this.artwork.cleanup(
           uploaded.bucket,
           uploaded.key,
           uploaded.thumbnailKey,
         );
+      if (uploadedMobile)
+        await this.artwork.cleanup(uploadedMobile.bucket, uploadedMobile.key);
       throw error;
     }
-    if (previous)
-      await this.cleanup(previous.bucket, previous.key, previous.thumbnailKey);
+    for (const image of previous)
+      await this.artwork.cleanup(image.bucket, image.key, image.thumbnailKey);
     return eventThumbnail(result);
   }
   private async preserveDates(
@@ -309,72 +357,5 @@ export class EventSetupsService {
       409,
       "Eventos com inscrições preservam suas datas. Você pode alterar os demais dados e a arte.",
     );
-  }
-  private async uploadArtwork(
-    organizationId: string,
-    eventId: string,
-    file: Express.Multer.File,
-  ) {
-    assert(
-      file.size <= 10 * 1024 * 1024,
-      413,
-      "Escolha uma arte com até 10 MB.",
-    );
-    let buffer: Buffer;
-    let thumbnail: Buffer;
-    try {
-      const image = sharp(file.buffer, {
-        limitInputPixels: 40_000_000,
-        animated: false,
-      });
-      const metadata = await image.metadata();
-      assert(
-        ["jpeg", "png", "webp"].includes(metadata.format ?? "") &&
-          (metadata.pages ?? 1) === 1,
-        422,
-        "Escolha uma arte JPEG, PNG ou WebP, sem animação.",
-      );
-      // Preserve todo o cartaz, inclusive textos; não aplicar corte 9:16 automático.
-      buffer = await image
-        .clone()
-        .rotate()
-        .resize({
-          width: 1080,
-          height: 1920,
-          fit: "inside",
-          withoutEnlargement: true,
-        })
-        .webp({ quality: 88 })
-        .toBuffer();
-      thumbnail = await image
-        .autoOrient()
-        .resize(320, 570, { fit: "inside", withoutEnlargement: true })
-        .webp({ quality: 82 })
-        .toBuffer();
-    } catch (error) {
-      if (error instanceof AppError) throw error;
-      throw new AppError(
-        422,
-        "A imagem não pôde ser lida. Escolha outro arquivo JPEG, PNG ou WebP.",
-      );
-    }
-    return uploadImagePair(
-      this.storage,
-      `${organizationId}/${eventId}/${randomUUID()}.webp`,
-      buffer,
-      thumbnail,
-    );
-  }
-  private async cleanup(
-    bucket: string,
-    key: string,
-    thumbnailKey?: string | null,
-  ) {
-    if (thumbnailKey) await this.cleanup(bucket, thumbnailKey);
-    try {
-      await this.storage.remove(bucket, key);
-    } catch {
-      console.warn(JSON.stringify({ event: "artwork_cleanup_pending" }));
-    }
   }
 }

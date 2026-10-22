@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { account } from "../../core/auth.js";
 import { pageQuery, param } from "../../core/security.js";
 import { publicFilters } from "./events.validation.js";
+import { eventReference } from "./event-slug.js";
 import type { EventsService } from "./events.service.js";
 import { AppError } from "../../core/errors.js";
 function formInput(req: Request) {
@@ -14,6 +15,11 @@ function formInput(req: Request) {
 }
 export class EventsController {
   constructor(private service: EventsService) {}
+  private artwork(req: Request, name: string) {
+    return (req.files as Record<string, Express.Multer.File[]> | undefined)?.[
+      name
+    ]?.[0];
+  }
   camperForm = async (req: Request, res: Response) => {
     res.json(
       await this.service.camperForm(
@@ -50,7 +56,9 @@ export class EventsController {
         await this.service.create(
           param(req, "organizationId"),
           account(req).id,
-          req.body,
+          formInput(req),
+          this.artwork(req, "artwork"),
+          this.artwork(req, "mobileArtwork"),
         ),
       );
   };
@@ -59,7 +67,9 @@ export class EventsController {
       await this.service.update(
         param(req, "organizationId"),
         param(req, "eventId"),
-        req.body,
+        formInput(req),
+        this.artwork(req, "artwork"),
+        this.artwork(req, "mobileArtwork"),
       ),
     );
   };
@@ -114,7 +124,9 @@ export class EventsController {
     );
   };
   publicEvent = async (req: Request, res: Response) => {
-    res.json(await this.service.publicEvent(param(req, "eventId")));
+    res.json(
+      await this.service.publicEvent(eventReference.parse(req.params.eventId)),
+    );
   };
   publicCampaign = async (req: Request, res: Response) => {
     res.json(await this.service.publicCampaign(param(req, "campaignId")));

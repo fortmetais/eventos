@@ -50,10 +50,15 @@ export const errorHandler: ErrorRequestHandler = (
     error instanceof Prisma.PrismaClientKnownRequestError &&
     error.code === "P2002"
   ) {
+    const slugConflict = JSON.stringify(error.meta?.target ?? "").includes(
+      "url_personalizada",
+    );
     response.status(409).json({
       error: {
-        code: "CONFLICT",
-        message: "Já existe um registro com essas informações.",
+        code: slugConflict ? "EVENT_SLUG_CONFLICT" : "CONFLICT",
+        message: slugConflict
+          ? "Este endereço já está em uso. Escolha outro para o evento."
+          : "Já existe um registro com essas informações.",
       },
     });
     return;

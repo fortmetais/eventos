@@ -12,18 +12,18 @@ Criação de versão em POST `/organizations/:organizationId/campaigns/:campaign
 
 GET `/public/parishes` retorna somente `{ id, name, city, state }` das organizações ativas de tipo `PARISH`, ordenadas por nome. É público e limitado a 120 requisições por minuto. Não retorna contatos, CNPJ, endereço completo, membros nem convites. O campo **Qual paróquia frequenta?** carrega a lista ao focar e filtra no navegador, sem consulta por letra; a inscrição continua salvando uma resposta textual, selecionada ou livre. Não cria organizações e não requer SQL adicional.
 
-| Método e caminho                                                  | Permissão                                    |
-| ----------------------------------------------------------------- | -------------------------------------------- |
-| GET `/config`                                                     | Público; somente URL e chave pública do Auth |
-| GET `/me/access`                                                  | Conta; suas organizações ativas              |
-| GET/POST `/admin/organizations`                                   | Administrador global                         |
-| PUT `/admin/organizations/:organizationId`                        | Administrador global; dados e estado ativo   |
+| Método e caminho                                                  | Permissão                                                  |
+| ----------------------------------------------------------------- | ---------------------------------------------------------- |
+| GET `/config`                                                     | Público; somente URL e chave pública do Auth               |
+| GET `/me/access`                                                  | Conta; suas organizações ativas                            |
+| GET/POST `/admin/organizations`                                   | Administrador global                                       |
+| PUT `/admin/organizations/:organizationId`                        | Administrador global; dados e estado ativo                 |
 | PUT `/organizations/:organizationId`                              | Organizador ativo da própria organização; dados e logotipo |
-| GET `/organizations/:organizationId/members`                      | Organizador ou administrador global          |
-| POST `/organizations/:organizationId/invitations`                 | Organizador ou administrador global          |
-| DELETE `/organizations/:organizationId/invitations/:invitationId` | Revogação                                    |
-| PATCH `/organizations/:organizationId/members/:memberId`          | Função, suspensão e eventos de saúde         |
-| POST `/invitations/:token/accept`                                 | Conta com e-mail confirmado correspondente   |
+| GET `/organizations/:organizationId/members`                      | Organizador ou administrador global                        |
+| POST `/organizations/:organizationId/invitations`                 | Organizador ou administrador global                        |
+| DELETE `/organizations/:organizationId/invitations/:invitationId` | Revogação                                                  |
+| PATCH `/organizations/:organizationId/members/:memberId`          | Função, suspensão e eventos de saúde                       |
+| POST `/invitations/:token/accept`                                 | Conta com e-mail confirmado correspondente                 |
 
 Organização: `name`, `kind` (PARISH/COMMUNITY/ORGANIZATION), `city`, `state` (UF), `contact`. A atualização administrativa em `/admin/organizations/:organizationId` também exige `active`. A atualização pelo organizador em `/organizations/:organizationId` rejeita esse campo e preserva o estado ativo. Dados complementares opcionais: `cnpj`, `legalName` (razão social), `tradeName` (nome fantasia), `postalCode` (CEP), `street` (logradouro), `number`, `complement` e `neighborhood` (bairro). CNPJ numérico ou alfanumérico é validado pelos dígitos verificadores e salvo sem pontuação; CEP é salvo com oito dígitos. Campos opcionais vazios são salvos como `null`; campos omitidos na edição são preservados.
 
@@ -48,6 +48,8 @@ A alteração de função, o convite, o aceite, a revogação e a edição de me
 Em bases graduais, aplique `database/manual/11_funcoes_organizacao.sql` antes desta versão. A atualização é aditiva e repetível, cria Organizador, Secretaria e Saúde por organização e associa os vínculos e convites antigos sem mudar seus perfis, suspensão ou autorizações. Novas organizações recebem esses padrões automaticamente. A migração equivalente é `202610100002_organization_functions`. A versão local foi preparada; produção e Hostinger aguardam solicitação do usuário.
 
 ## Eventos e fichas
+
+Os detalhes públicos aceitam UUID ou `slug` em `/public/events/:eventId`. Edições incluem `slug` opcional e `mobileImageUrl`. Cadastro e edição aceitam multipart `data` e arquivos `artwork` (computador) e `mobileArtwork` (celular), ou o JSON anterior sem arquivos. `removeMobileArtwork:true` remove somente o banner do celular; não pode acompanhar um novo arquivo de celular. No fluxo gradual, `slug` fica dentro de `event` e a opção de remoção na raiz. Consulte [banners e endereço do evento](banners-e-endereco-evento.md) para regras e atualização aditiva do banco.
 
 | Método e caminho                                                                  | Uso                                                  |
 | --------------------------------------------------------------------------------- | ---------------------------------------------------- |

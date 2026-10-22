@@ -184,11 +184,15 @@ model Event {
   organizationId String       @map("organizacao_id") @db.Uuid
   typeId         String       @map("tipo_evento_id") @db.Uuid
   name           String       @map("nome")
+  slug           String?      @unique(map: "eventos_url_personalizada_key") @map("url_personalizada")
   description    String       @map("descricao")
   imageUrl       String?      @map("url_arte")
   imageBucket    String?      @map("bucket_arte")
   imageKey       String?      @map("chave_arte")
   imageThumbnailKey String?   @map("chave_miniatura_arte")
+  mobileImageUrl String?      @map("url_arte_celular")
+  mobileImageBucket String?   @map("bucket_arte_celular")
+  mobileImageKey String?      @map("chave_arte_celular")
   location       String       @map("local")
   city           String       @map("cidade")
   startsAt       DateTime     @map("inicio_em") @db.Date

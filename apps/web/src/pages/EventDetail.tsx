@@ -21,8 +21,19 @@ export function EventDetail() {
       <PageHeading eyebrow={event.type.name} title={event.name}>
         {event.organization?.name}
       </PageHeading>
-      {event.imageUrl && (
-        <img className="event-cover" src={event.imageUrl} alt={event.name} />
+      {(event.imageUrl || event.mobileImageUrl) && (
+        <picture className="event-banner">
+          {event.mobileImageUrl && (
+            <source media="(max-width: 767px)" srcSet={event.mobileImageUrl} />
+          )}
+          <img
+            className="event-cover"
+            src={event.imageUrl || event.mobileImageUrl!}
+            alt={event.name}
+            fetchPriority="high"
+            decoding="async"
+          />
+        </picture>
       )}
       <section className="panel">
         <div className="detail-facts">

@@ -136,6 +136,7 @@ try {
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
     "05_eventos_e_periodos.sql",
+    "14_banners_e_url_evento.sql",
   ]) {
     run(binary("psql"), [
       "-h",
@@ -152,6 +153,21 @@ try {
       join(root, "database", "manual", script),
     ]);
   }
+  // A etapa aditiva deve poder ser reaplicada a uma instalação gradual.
+  run(binary("psql"), [
+    "-h",
+    "127.0.0.1",
+    "-p",
+    String(port),
+    "-U",
+    "fac_test",
+    "-d",
+    "fac_events_tests",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-f",
+    join(root, "database/manual/14_banners_e_url_evento.sql"),
+  ]);
   run(process.execPath, [npmCli, "run", "db:deploy"], env);
   run(binary("psql"), [
     "-h",
@@ -171,6 +187,7 @@ try {
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
     "05_eventos_e_periodos.sql",
+    "14_banners_e_url_evento.sql",
     "06_fichas_servos_e_inscricoes.sql",
     "08_departamentos_e_vagas.sql",
     "09_autorizacao_responsavel.sql",
@@ -208,6 +225,7 @@ try {
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
     "05_eventos_e_periodos.sql",
+    "14_banners_e_url_evento.sql",
     "06_fichas_servos_e_inscricoes.sql",
     "07_avisos_e_confirmacao_servos.sql",
     "08_departamentos_e_vagas.sql",
@@ -245,6 +263,7 @@ try {
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
     "05_eventos_e_periodos.sql",
+    "14_banners_e_url_evento.sql",
     "06_fichas_servos_e_inscricoes.sql",
     "08_departamentos_e_vagas.sql",
   ])
@@ -280,6 +299,7 @@ try {
     join(root, "apps/api/tests/fixtures/organization-functions-legacy.sql"),
     join(root, "database/manual/11_funcoes_organizacao.sql"),
     join(root, "database/manual/05_eventos_e_periodos.sql"),
+    join(root, "database/manual/14_banners_e_url_evento.sql"),
   ])
     run(binary("psql"), [
       "-h",
@@ -313,6 +333,7 @@ try {
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
     "05_eventos_e_periodos.sql",
+    "14_banners_e_url_evento.sql",
     "06_fichas_servos_e_inscricoes.sql",
     "08_departamentos_e_vagas.sql",
     "09_autorizacao_responsavel.sql",

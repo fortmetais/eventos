@@ -135,6 +135,8 @@ export interface EventEdition {
   id: string;
   organizationId: string;
   name: string;
+  slug?: string | null;
+  mobileImageUrl?: string | null;
   description: string;
   imageUrl?: string | null;
   imageThumbnailUrl?: string | null;

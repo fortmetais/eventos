@@ -46,7 +46,11 @@ WITH esperado (etapa, esquema, tabela, coluna, tipo, aceita_nulo) AS (
     ('11 - funções da organização', 'organizacoes', 'membros', 'funcao_id', 'uuid', 'YES'),
     ('11 - funções da organização', 'organizacoes', 'convites', 'funcao_id', 'uuid', 'YES'),
     ('12 - miniaturas', 'organizacoes', 'organizacoes', 'chave_miniatura_logotipo', 'text', 'YES'),
-    ('12 - miniaturas', 'eventos', 'eventos', 'chave_miniatura_arte', 'text', 'YES')
+    ('12 - miniaturas', 'eventos', 'eventos', 'chave_miniatura_arte', 'text', 'YES'),
+    ('14 - banners e URL', 'eventos', 'eventos', 'url_personalizada', 'text', 'YES'),
+    ('14 - banners e URL', 'eventos', 'eventos', 'url_arte_celular', 'text', 'YES'),
+    ('14 - banners e URL', 'eventos', 'eventos', 'bucket_arte_celular', 'text', 'YES'),
+    ('14 - banners e URL', 'eventos', 'eventos', 'chave_arte_celular', 'text', 'YES')
 )
 SELECT current_database() AS banco,
        e.etapa,
