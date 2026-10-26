@@ -2,6 +2,8 @@
 
 Prefixo `/api/v1`. Dados JSON. Fotos multipart. Erros: `{ "error": { "code": "...", "message": "...", "fields": {} } }`. Validação usa 422, autenticação 401, falta de permissão 403, recurso fora do escopo 404 e conflito 409.
 
+Histórico do cartaz: `POST /public/site-visits` recebe exclusivamente `event` (`view` ou `registration_click`) e `screen` (`SMALL`, `MEDIUM`, `LARGE`), da origem configurada. Mantém totais diários no servidor, sem dados pessoais. Requer SQL 15 e `SITE_VISIT_TRACKING_ENABLED=true`. Ver [histórico de acessos](historico-acessos-site.md) para limites, comportamento em falhas e consulta restrita dos totais.
+
 Autenticação: `Authorization: Bearer <access_token Supabase>`. Inscrições anônimas: `X-Draft-Token: <token do rascunho>`. Credenciais de rascunho nunca vão na URL. Respostas são `Cache-Control: no-store`.
 
 Com `TEMPORARY_SITE=true` e `APPLICATION_TEST_ACCESS=true`, o cartaz permanece na raiz e os caminhos `/eventos`, `/inscricao/:campaignId`, `/resposta/:noticeId` e `/autorizacao/:authorizationId` usam React. A API `/api/v1/public/*` é encaminhada para os serviços e preserva validação, períodos, tokens e limites de requisições. A documentação `/api/v1/openapi` continua bloqueada nesse modo. Com `APPLICATION_TEST_ACCESS=false`, o modo temporário isolado continua bloqueando a API de negócio. A liberação está incluída nesta atualização.

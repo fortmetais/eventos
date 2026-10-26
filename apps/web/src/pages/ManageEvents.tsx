@@ -271,7 +271,7 @@ function FullManageEvents() {
           </div>
         </form>
       )}
-      {state.loading ? (
+      {editor ? null : state.loading ? (
         <Loading />
       ) : state.error ? (
         <Notice>{state.error}</Notice>

@@ -186,6 +186,12 @@ describe("Preparação de eventos", () => {
     await userEvent.click(
       await screen.findByRole("button", { name: "Editar evento" }),
     );
+    expect(
+      screen.queryByRole("heading", { name: publishedEvent.name }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Ficha de servos" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByLabelText(/^Nome do evento/)).toHaveValue(
       publishedEvent.name,
     );
@@ -212,6 +218,9 @@ describe("Preparação de eventos", () => {
     await screen.findByText(
       "Dados do evento atualizados. Inscrições e fichas foram preservadas.",
     );
+    expect(
+      await screen.findByRole("heading", { name: publishedEvent.name }),
+    ).toBeInTheDocument();
     const call = mocks.api.mock.calls.find(
       ([, options]) => options?.method === "PUT",
     )!;
@@ -235,6 +244,12 @@ describe("Preparação de eventos", () => {
     );
     expect(screen.getByLabelText(/^Data de início/)).toBeEnabled();
     expect(screen.getByLabelText(/^Data de término/)).toBeEnabled();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Cancelar edição" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: publishedEvent.name }),
+    ).toBeInTheDocument();
     cleanup();
     mocks.role = "SECRETARY";
     view();
@@ -268,8 +283,8 @@ describe("Preparação de eventos", () => {
     );
     expect(screen.getByRole("button", { name: "Novo evento" })).toBeDisabled();
     expect(
-      screen.getByRole("button", { name: "Editar evento" }),
-    ).toBeDisabled();
+      screen.queryByRole("button", { name: "Editar evento" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Cancelar edição" }),
     ).toBeDisabled();

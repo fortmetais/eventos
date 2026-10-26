@@ -50,6 +50,18 @@ enum RegistrationStatus {
   @@schema("inscricoes")
 }
 
+model SiteVisitDaily {
+  day                DateTime @map("dia") @db.Date
+  screen             String   @map("tela")
+  pageViews          Int      @default(0) @map("visualizacoes")
+  registrationClicks Int      @default(0) @map("cliques_inscricao")
+  updatedAt          DateTime @default(now()) @updatedAt @map("atualizado_em") @db.Timestamptz(3)
+
+  @@id([day, screen], map: "visitas_site_pk")
+  @@map("visitas_site")
+  @@schema("acesso")
+}
+
 model Account {
   id              String           @id(map: "contas_pk") @map("conta_id") @db.Uuid
   email           String

@@ -52,6 +52,7 @@ import { GuardianService } from "./modules/registrations/guardian.service.js";
 import { guardianRoutes } from "./modules/registrations/guardian.routes.js";
 import { ParticipantImportsService } from "./modules/participant-imports/participant-imports.service.js";
 import { participantImportsRoutes } from "./modules/participant-imports/participant-imports.routes.js";
+import { siteVisitsRoutes } from "./modules/site-visits/site-visits.routes.js";
 
 export function createApp(
   dependencies: {
@@ -62,6 +63,7 @@ export function createApp(
     rateLimits?: boolean;
     eventsEnabled?: boolean;
     eventManagementEnabled?: boolean;
+    siteVisitTrackingEnabled?: boolean;
     artworkStorage?: ArtworkStorage;
     volunteerRegistrationsEnabled?: boolean;
     camperRegistrationsEnabled?: boolean;
@@ -162,6 +164,18 @@ export function createApp(
     res.json({ status: "ok", service: "fac-api" }),
   );
   app.get("/api/v1/openapi", (_req, res) => res.json(openapi));
+  if (
+    dependencies.siteVisitTrackingEnabled ??
+    config.SITE_VISIT_TRACKING_ENABLED
+  ) {
+    app.use(
+      "/api/v1",
+      siteVisitsRoutes(db, {
+        origin: config.WEB_URL,
+        rateLimits: dependencies.rateLimits,
+      }),
+    );
+  }
   app.use("/api/v1", organizationFunctionsRoutes(db, auth, limit));
   const prefillLimit =
     dependencies.rateLimits === false

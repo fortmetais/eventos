@@ -16,6 +16,10 @@ const environment = z
     TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
     WEB_URL: z.string().url().default("http://localhost:5173"),
     DATABASE_URL: z.string().optional(),
+    SITE_VISIT_TRACKING_ENABLED: z
+      .enum(["true", "false"])
+      .default("true")
+      .transform((value) => value === "true"),
     EVENTS_ENABLED: z
       .enum(["true", "false"])
       .default("true")

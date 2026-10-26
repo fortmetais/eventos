@@ -50,7 +50,12 @@ WITH esperado (etapa, esquema, tabela, coluna, tipo, aceita_nulo) AS (
     ('14 - banners e URL', 'eventos', 'eventos', 'url_personalizada', 'text', 'YES'),
     ('14 - banners e URL', 'eventos', 'eventos', 'url_arte_celular', 'text', 'YES'),
     ('14 - banners e URL', 'eventos', 'eventos', 'bucket_arte_celular', 'text', 'YES'),
-    ('14 - banners e URL', 'eventos', 'eventos', 'chave_arte_celular', 'text', 'YES')
+    ('14 - banners e URL', 'eventos', 'eventos', 'chave_arte_celular', 'text', 'YES'),
+    ('15 - visitas do cartaz', 'acesso', 'visitas_site', 'dia', 'date', 'NO'),
+    ('15 - visitas do cartaz', 'acesso', 'visitas_site', 'tela', 'text', 'NO'),
+    ('15 - visitas do cartaz', 'acesso', 'visitas_site', 'visualizacoes', 'int4', 'NO'),
+    ('15 - visitas do cartaz', 'acesso', 'visitas_site', 'cliques_inscricao', 'int4', 'NO'),
+    ('15 - visitas do cartaz', 'acesso', 'visitas_site', 'atualizado_em', 'timestamptz', 'NO')
 )
 SELECT current_database() AS banco,
        e.etapa,

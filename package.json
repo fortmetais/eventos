@@ -17,6 +17,7 @@
     "test:browser:initial": "node scripts/browser-initial-check.mjs",
     "test:browser:invitation": "node scripts/browser-invitation-check.mjs",
     "test:browser:events": "node scripts/browser-event-setups-check.mjs",
+    "test:browser:visits": "node scripts/browser-site-visits-check.mjs",
     "test:browser:volunteers": "node scripts/browser-volunteer-check.mjs",
     "typecheck": "npm run typecheck --workspaces",
     "db:generate": "npm run db:generate -w @fac/api",

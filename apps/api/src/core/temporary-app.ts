@@ -85,6 +85,7 @@ export function createTemporaryApp(
     posterPath?: string;
     musicPath?: string;
     trustProxy?: number;
+    trackVisits?: boolean;
   } = {},
 ) {
   const posterPath =
@@ -117,7 +118,7 @@ export function createTemporaryApp(
           styleSrc: ["'self'"],
           imgSrc: ["'self'"],
           mediaSrc: ["'self'"],
-          connectSrc: ["'none'"],
+          connectSrc: [options.trackVisits ? "'self'" : "'none'"],
           fontSrc: ["'none'"],
         },
       },
@@ -171,6 +172,16 @@ export function createTemporaryApp(
       .type("application/javascript")
       .sendFile(musicScriptPath, { dotfiles: "allow" });
   });
+  if (options.trackVisits)
+    app.get("/visitas-v1.js", (_req, res) => {
+      res.setHeader("Cache-Control", "public, max-age=3600");
+      res
+        .type("application/javascript")
+        .sendFile(
+          fileURLToPath(new URL("../../public/visitas-v1.js", import.meta.url)),
+          { dotfiles: "allow" },
+        );
+    });
   for (const [file, type] of [
     ["favicon.svg", "image/svg+xml"],
     ["favicon.ico", "image/x-icon"],
@@ -188,7 +199,16 @@ export function createTemporaryApp(
       !req.path.startsWith("/assets/")
     ) {
       res.setHeader("Cache-Control", "no-store");
-      res.type("html").send(page);
+      res
+        .type("html")
+        .send(
+          options.trackVisits
+            ? page.replace(
+                "</head>",
+                '    <script src="/visitas-v1.js" defer></script>\n  </head>',
+              )
+            : page,
+        );
       return;
     }
     next();

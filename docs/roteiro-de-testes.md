@@ -278,6 +278,7 @@ Para encerrar a homologação, todos os P0 aplicáveis à entrega devem passar n
 
 ## Referências do projeto
 
+- [Histórico agregado de visitas e cliques no cartaz](historico-acessos-site.md)
 - [Banners de computador/celular e endereço personalizável do evento](banners-e-endereco-evento.md)
 - [Eventos e períodos](eventos-etapa-inicial.md)
 - [Ficha de servos e campos da referência](ficha-servos.md)

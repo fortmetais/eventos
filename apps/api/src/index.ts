@@ -21,6 +21,7 @@ async function createApplication() {
     return createPreviewApp(api, {
       supabaseUrl: config.SUPABASE_URL,
       trustProxy: runtime.TRUST_PROXY,
+      trackVisits: config.SITE_VISIT_TRACKING_ENABLED,
     });
   return config.SERVE_WEB
     ? createHostedApp(api, {

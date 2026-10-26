@@ -449,7 +449,7 @@ export function EventSetups() {
           </fieldset>
         </form>
       )}
-      {state.loading ? (
+      {editor ? null : state.loading ? (
         <Loading />
       ) : state.error ? (
         <>

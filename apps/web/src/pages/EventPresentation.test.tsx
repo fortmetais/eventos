@@ -62,6 +62,12 @@ it("o cadastro completo usa os mesmos banners e endereço personalizado", async 
   await userEvent.click(
     screen.getByRole("button", { name: "Editar informações" }),
   );
+  expect(
+    screen.queryByRole("heading", { name: event.name }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("link", { name: /Ver página pública/ }),
+  ).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText(/^Endereço personalizado/), {
     target: { value: "4 FAC 2028" },
   });
@@ -82,6 +88,9 @@ it("o cadastro completo usa os mesmos banners e endereço personalizado", async 
     slug: "4-fac-2028",
     imageUrl: event.imageUrl,
   });
+  expect(
+    await screen.findByRole("heading", { name: event.name }),
+  ).toBeInTheDocument();
 });
 it("a página pública recebe o slug e oferece a imagem de celular sem recortar o banner", async () => {
   mocks.api.mockResolvedValue(event);

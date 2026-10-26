@@ -138,6 +138,11 @@ Auth, convites e fotos dependem das chaves e configurações privadas no .env.
 Siga deploy/supabase/CONFIGURAR_AUTH.txt para configurar a autenticação.
 
 Referências oficiais:
+Histórico do cartaz: executar 15_historico_acessos_site.sql após 01, antes
+de publicar a contagem. Mantém totais por dia e faixa de tela, sem dados
+pessoais. Guia: docs/historico-acessos-site.md. Não garante impedir a pausa
+do Supabase gratuito e não gera acessos artificiais.
+
 Banners e endereço do evento: executar 14_banners_e_url_evento.sql após 05,
 antes de publicar a atualização. Acrescenta quatro colunas opcionais na
 tabela eventos.eventos, sem tabelas novas. Script aditivo e repetível.

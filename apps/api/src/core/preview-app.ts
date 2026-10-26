@@ -10,6 +10,7 @@ const posterAssets = new Set([
   "/pagina-temporaria.css",
   "/lazaro.mp3",
   "/musica.js",
+  "/visitas-v1.js",
   "/favicon.svg",
   "/favicon.ico",
 ]);
@@ -25,9 +26,13 @@ export function createPreviewApp(
     webRoot?: string;
     supabaseUrl?: string;
     trustProxy?: number;
+    trackVisits?: boolean;
   } = {},
 ) {
-  const temporary = createTemporaryApp({ trustProxy: options.trustProxy });
+  const temporary = createTemporaryApp({
+    trustProxy: options.trustProxy,
+    trackVisits: options.trackVisits,
+  });
   const hosted = createHostedApp(api, { ...options, temporaryHome: true });
   const app = express();
   app.disable("x-powered-by");
