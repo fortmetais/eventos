@@ -193,7 +193,9 @@ const url = process.env.TEST_DATABASE_URL;
       const prior = await db.event.findUniqueOrThrow({
         where: { id: eventId },
       });
-      const count = await db.event.count();
+      const count = await db.event.count({
+        where: { organizationId: { in: [org, other] } },
+      });
       const start = upload.mock.calls.length;
       const failed = await request(app)
         .post(path(other))
@@ -203,7 +205,11 @@ const url = process.env.TEST_DATABASE_URL;
         .attach("mobileArtwork", mobile, "m.png")
         .expect(409);
       expect(failed.body.error.code).toBe("EVENT_SLUG_CONFLICT");
-      expect(await db.event.count()).toBe(count);
+      expect(
+        await db.event.count({
+          where: { organizationId: { in: [org, other] } },
+        }),
+      ).toBe(count);
       for (const call of upload.mock.calls.slice(start))
         expect(remove).toHaveBeenCalledWith("artes-eventos", call[0]);
       expect(remove).not.toHaveBeenCalledWith("artes-eventos", prior.imageKey);
@@ -257,7 +263,9 @@ const url = process.env.TEST_DATABASE_URL;
       await request(app).get(`/api/v1/public/events/${eventId}`).expect(200);
     });
     it("recusa arquivos inválidos e não deixa o primeiro banner órfão", async () => {
-      const count = await db.event.count();
+      const count = await db.event.count({
+        where: { organizationId: { in: [org, other] } },
+      });
       const start = upload.mock.calls.length;
       await request(app)
         .post(path())
@@ -266,7 +274,11 @@ const url = process.env.TEST_DATABASE_URL;
         .attach("artwork", desktop, "desktop.png")
         .attach("mobileArtwork", Buffer.from("arquivo inválido"), "fake.png")
         .expect(422);
-      expect(await db.event.count()).toBe(count);
+      expect(
+        await db.event.count({
+          where: { organizationId: { in: [org, other] } },
+        }),
+      ).toBe(count);
       for (const call of upload.mock.calls.slice(start))
         expect(remove).toHaveBeenCalledWith("artes-eventos", call[0]);
       const calls = upload.mock.calls.length;

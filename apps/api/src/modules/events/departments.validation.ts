@@ -1,8 +1,9 @@
 import { z } from "zod";
+import { id } from "../../core/security.js";
 import { departmentName } from "./departments.repository.js";
 export const departmentSchema = z
   .object({
-    id: z.string().uuid().optional(),
+    id: id.optional(),
     name: z.string().trim().min(2).max(100).transform(departmentName),
     capacity: z.number().int().min(0).max(100000),
   })

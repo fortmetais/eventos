@@ -48,6 +48,7 @@ export const draftPayloadSchema = z
     imageAuthorized: z.boolean().optional(),
     answers: z
       .record(
+        z.string(),
         z.union([
           z.string().max(2000),
           z.number().finite(),
@@ -103,11 +104,14 @@ export const fullPayloadSchema = draftPayloadSchema.extend({
   emergencyPhone: phone.optional(),
   emergencyRelationship: requiredText.optional(),
   termsAccepted: z.literal(true, {
-    errorMap: () => ({ message: "Aceite os termos para enviar." }),
+    error: "Aceite os termos para enviar.",
   }),
   imageAuthorized: z.boolean().default(false),
   answers: z
-    .record(z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]))
+    .record(
+      z.string(),
+      z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
+    )
     .default({}),
 });
 export function ageAt(birth: string, eventDate: Date) {
