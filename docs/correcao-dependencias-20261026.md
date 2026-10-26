@@ -23,12 +23,14 @@ Essas adaptações seguem o [guia oficial de migração do Zod](https://zod.dev/
 
 ## Hospedagem e GitHub
 
-A última publicação utilizou o repositório `fortmetais/eventos`, mas a configuração de associação e implantação automática foi removida depois da publicação para atender à preferência de sincronização manual. Essa remoção pode explicar o aviso de GitHub desconectado no painel; não significa que o código deixou de existir no GitHub. A associação precisa ser restaurada e seu estado confirmado no painel, preservando a preferência de publicar somente sob pedido.
+A configuração de associação com o repositório havia sido removida depois da publicação anterior para atender à preferência de sincronização manual. Essa remoção explicava o aviso de GitHub desconectado no painel; o código continuava no GitHub.
 
-O conector oficial hospedado da Hostinger foi adicionado e autenticado nesta sessão. A conexão do GitHub no site e a publicação desta correção ainda precisam ser verificadas com as ferramentas de hospedagem; o cadastro do conector, por si só, não altera o site nem suas dependências em produção. Não há alteração de tabelas ou dados do Supabase nesta correção.
+Em 26/10/2026, a associação com `fortmetais/eventos`, branch `main`, foi restaurada e conferida pela API da Hostinger. A opção `is_enabled: false` mantém o repositório conectado e ignora novos pushes, preservando a preferência de publicar somente sob pedido. Não remover novamente a associação para desligar publicações automáticas.
+
+A versão `18fdb4087ecdb68a38d3a80b0e5f21b1531d1cbe` foi publicada em `facnsaloanda.com.br` pelo build `01a17825-e31f-73a2-a834-3cdefc8d23ee`, com estado final `completed`. A instalação na Hostinger e a verificação das versões corrigidas passaram. Não foi necessária alteração de tabelas ou colunas do Supabase.
 
 ## Verificação
 
 Em 26/10/2026, `npm audit --json` retornou zero vulnerabilidades, incluindo dependências de desenvolvimento. Os 305 testes da API/PostgreSQL isolado e os 194 da interface passaram, assim como tipos, compilação, inicialização pelo carregador da Hostinger e percurso de visitas/cliques em computador e celular. Duas verificações de contagem de eventos foram limitadas às organizações do próprio teste para evitar interferência de outros testes executados em paralelo.
 
-A automação do painel pelo navegador foi interrompida pela ferramenta por não conseguir determinar a URL atual com segurança. O novo servidor `hostinger` está registrado e autenticado no perfil real do usuário, mas a sessão atual ainda não expõe suas operações de hospedagem. O guia do conector pede reiniciar o aplicativo para carregar um servidor recém-adicionado. A reconexão do repositório e a publicação devem ser concluídas após esse reinício; não considerar a auditoria do código local como confirmação da versão atualmente hospedada.
+Na publicação, a auditoria da própria Hostinger retornou zero vulnerabilidades e a consulta de vulnerabilidades do site retornou lista vazia. Foram conferidos os 26 arquivos publicados da interface contra os arquivos compilados localmente, a página inicial, login, perfil, evento por UUID e endereço personalizado, banners para computador e celular, proteção da administração e prontidão da API/banco. Os percursos no navegador terminaram sem erros de página ou rolagem horizontal. Visitas e clique de diagnóstico foram confirmados no histórico agregado; não foram criadas inscrições nem enviados e-mails.
