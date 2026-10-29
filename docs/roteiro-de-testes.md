@@ -2,13 +2,15 @@
 
 Revisão de 11/10/2026. Este roteiro verifica o percurso da organização até a participação no evento e distingue recursos disponíveis no site, recursos bloqueados pela publicação e alterações que ainda estão somente no desenvolvimento.
 
+Atualização de 29/10/2026: o botão do cartaz passa a mostrar **INSCRIÇÕES PARA SERVOS ENCERRADAS**, desativado e sem link para o Google Forms. Publicação autorizada pelo usuário em 29/10/2026.
+
 **Conclusão da análise:** o fluxo principal já está implementado. A versão local libera inscrições públicas, respostas de presença e autorização do responsável mesmo com o cartaz no início; mantém os controles de período, ficha publicada e tokens. O site publicado ainda usa a versão anterior com bloqueio desses caminhos. Autorização do responsável, ficha completa da organização, edição de eventos publicados e funções cadastráveis estão no código local; a sincronização com a Hostinger aguarda solicitação do usuário.
 
 ## Situação atual
 
 | Área | Situação encontrada | O que falta verificar ou concluir |
 | --- | --- | --- |
-| Página inicial | Cartaz, botão INSCRIÇÃO para Google Forms, música e favicon publicados | Conferir apresentação e som em aparelhos reais; o Google Forms não alimenta automaticamente as inscrições internas |
+| Página inicial | Cartaz, música e favicon; aviso INSCRIÇÕES PARA SERVOS ENCERRADAS | Conferir texto legível e botão sem ação em computador e celular após a publicação |
 | Acesso e perfil | Login por e-mail, senha, recuperação, perfil e câmera publicados | Confirmar novos links no domínio correto, persistência da foto e câmeras físicas |
 | Organizações e convites | Cadastro, membros, papéis, aceite e revogação implementados | Repetir o convite real com uma conta nova e conferir a atualização de Aguardando aceite |
 | Eventos e departamentos | Cadastro, períodos independentes, arte, departamentos e vagas implementados; estrutura pronta no site | Percurso manual do organizador, imagem real e horários |
@@ -49,7 +51,7 @@ Na versão local atual, `TEMPORARY_SITE=true` com `APPLICATION_TEST_ACCESS=true`
 
 Na configuração atual, preparar o período de campistas não libera a ficha de campistas. O editor completo está na versão de eventos habilitados. Alterar somente essa opção também não remove o bloqueio da página temporária: a liberação das rotas públicas precisa fazer parte da preparação da homologação.
 
-O botão **INSCRIÇÃO** do cartaz abre o Google Forms informado. Para testar a aplicação interna, use o link gerado na ficha de servos ou campistas, no ambiente de homologação. A revisão não encontrou uma importação automática das respostas desse Google Forms.
+Na atualização de 29/10/2026, o botão do cartaz informa **INSCRIÇÕES PARA SERVOS ENCERRADAS** e não abre mais o Google Forms. Para testar a aplicação interna, use o link gerado na ficha de servos ou campistas, no ambiente de homologação.
 
 ## Preparação da rodada
 
@@ -89,7 +91,7 @@ Faça I01 a I03, A01 a A06, O01 a O07, E01 a E06, F01 a F04 e P01 a P04. Essa ro
 
 | Caso | Prioridade | O que fazer | Resultado esperado |
 | --- | --- | --- | --- |
-| I01 | P1 | Abrir o início no computador e celular; clicar em INSCRIÇÃO | Cartaz legível, imagem sem corte indevido, favicon da aplicação e botão cobrindo o aviso antigo. O botão abre o Google Forms correto |
+| I01 | P1 | Abrir o início no computador e celular; conferir o aviso de encerramento | Cartaz legível, imagem sem corte indevido, favicon da aplicação e botão cobrindo o aviso antigo. INSCRIÇÕES PARA SERVOS ENCERRADAS cabe no botão, que está desativado, sem link nem abertura de nova aba |
 | I02 | P1 | Abrir em uma visita nova; usar o ícone de som duas vezes | Música tenta iniciar em 30%. Se o navegador bloquear a reprodução automática, clicar no ícone inicia o som; o mesmo ícone permite silenciar e reativar |
 | I03 | P0 | Entrar pelo endereço `/entrar`; depois usar o link do logotipo para voltar ao início | A página de acesso abre sem ser substituída pelo cartaz; ao voltar ao início, o cartaz aparece |
 

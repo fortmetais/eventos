@@ -2,7 +2,9 @@
 
 Publicação autorizada em 26/10/2026 para o repositório `fortmetais/eventos` e o site `facnsaloanda.com.br`. A tabela foi aplicada ao Supabase, com as cinco colunas, RLS e bloqueio de acesso direto pelos papéis do navegador conferidos. As 50 colunas da conferência de atualizações passaram. As sincronizações seguintes continuam sob pedido do usuário.
 
-Quando a pessoa abre o cartaz em uma aba visível, o navegador registra uma visualização. Ao clicar em **INSCRIÇÃO**, registra um clique e mantém a abertura normal do Google Forms. Recarregar a página conta outra visita; alternar entre abas não duplica a visualização. A contagem representa visitas e cliques, não pessoas únicas nem inscrições concluídas.
+Quando a pessoa abre o cartaz em uma aba visível, o navegador registra uma visualização. Recarregar a página conta outra visita; alternar entre abas não duplica a visualização. A contagem representa visitas e cliques, não pessoas únicas nem inscrições concluídas.
+
+Na atualização de 29/10/2026, o botão exibe **INSCRIÇÕES PARA SERVOS ENCERRADAS**, desativado e sem link. As visualizações continuam sendo contadas; o botão não gera novos cliques de inscrição. O histórico de cliques anterior é preservado. Publicação autorizada pelo usuário em 29/10/2026.
 
 ## Informações armazenadas
 
@@ -38,9 +40,9 @@ A conferência de atualizações inclui as cinco colunas. Para consultar o hist�
 
 1. Abrir o cartaz: aparece uma visualização no dia e faixa correspondentes.
 2. Alternar entre abas: não conta outra visualização. Recarregar: conta outra visita.
-3. Clicar em INSCRIÇÃO: abre o formulário e incrementa somente o contador de cliques.
+3. Conferir **INSCRIÇÕES PARA SERVOS ENCERRADAS**: o botão está desativado, não abre formulário ou nova aba e não incrementa cliques.
 4. Conferir em computador e celular, sem envio de cookies no coletor.
-5. Interromper o coletor ou simular falha no banco: cartaz, música e link continuam utilizáveis.
+5. Interromper o coletor ou simular falha no banco: cartaz, música e aviso de encerramento continuam sendo apresentados.
 6. Confirmar que a tabela não contém dados pessoais e que requisições inválidas ou de outra origem não alteram os totais.
 
 Verificação local em 26/10/2026: 301 testes da API e do banco isolado, 194 da interface, compilação e verificação de tipos aprovados. `npm run test:browser:visits` confirmou visitas e cliques em computador e celular, com a origem correta e sem envio de cookies. A verificação de gravação em produção será realizada após a publicação, sem criar inscrições ou enviar e-mails.

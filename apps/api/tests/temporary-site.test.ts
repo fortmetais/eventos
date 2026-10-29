@@ -6,13 +6,17 @@ import { runtimeSettings } from "../src/core/runtime.js";
 describe("página temporária do FAC", () => {
   const app = createTemporaryApp();
   it.each(["/", "/entrar", "/admin", "/inscricao/123", "/convite/abc"])(
-    "exibe a arte e o acesso à inscrição no caminho %s",
+    "exibe a arte e o aviso de inscrições encerradas no caminho %s",
     async (path) => {
       const response = await request(app)
         .get(path)
         .set("Accept", "text/html")
         .expect(200);
-      expect(response.text).toContain("FAC 2027 — Inscrição");
+      expect(response.text).toContain("INSCRIÇÕES PARA SERVOS ENCERRADAS");
+      expect(response.text).toContain(
+        'class="registration-link" type="button" disabled',
+      );
+      expect(response.text).not.toContain("docs.google.com/forms");
       expect(response.text).toContain('src="/fac-2027.jpg"');
       expect(response.text).toContain('src="/musica.js?v=2" defer');
       expect(response.text).toContain('id="background-music"');

@@ -95,11 +95,12 @@ describe("Fluxos públicos e painéis com o cartaz no início", () => {
         .expect("Content-Type", /image\/webp/)
         .expect(200);
   });
-  it("mantém arte, inscrição externa e música no início com a CSP do cartaz", async () => {
+  it("mantém arte, aviso de encerramento e música no início com a CSP do cartaz", async () => {
     const response = await request(preview()).get("/?source=test").expect(200);
     expect(response.type).toBe("text/html");
     expect(response.text).toContain('class="poster-page"');
-    expect(response.text).toContain("docs.google.com/forms/");
+    expect(response.text).toContain("INSCRIÇÕES PARA SERVOS ENCERRADAS");
+    expect(response.text).not.toContain("docs.google.com/forms/");
     expect(response.text).toContain('src="/lazaro.mp3"');
     expect(response.text).not.toContain("Test application");
     expect(response.headers["content-security-policy"]).toContain(

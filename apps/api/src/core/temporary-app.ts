@@ -9,11 +9,11 @@ const page = `<!doctype html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#020d20">
-    <meta name="description" content="FAC 2027, de 5 a 9 de fevereiro, em Loanda, Paraná. Acesse o formulário de inscrição.">
-    <title>FAC 2027 — Inscrição</title>
+    <meta name="description" content="FAC 2027, de 5 a 9 de fevereiro, em Loanda, Paraná. Inscrições para servos encerradas.">
+    <title>FAC 2027 — Inscrições para servos encerradas</title>
     <link rel="icon" href="/favicon.ico?v=encontro-1" sizes="16x16 32x32 48x48">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=encontro-1" sizes="any">
-    <link rel="stylesheet" href="/pagina-temporaria.css?v=musica-icone-1">
+    <link rel="stylesheet" href="/pagina-temporaria.css?v=inscricoes-encerradas-1">
     <script src="/musica.js?v=2" defer></script>
   </head>
   <body>
@@ -27,10 +27,9 @@ const page = `<!doctype html>
           alt="FAC: o melhor carnaval da sua vida está chegando! De 05 a 09 de fevereiro de 2027. Paróquia Nossa Senhora Aparecida, Loanda, Paraná, e Comunidade Santa Teresinha do Menino Jesus."
           fetchpriority="high" decoding="async">
         </picture>
-        <a class="registration-link"
-          href="https://docs.google.com/forms/d/e/1FAIpQLSfLJ440VZ0P-7V405JhBBys9uXtFSjv7VRryltkQOROb93Cjw/viewform?pli=1"
-          target="_blank" rel="noopener noreferrer"
-          aria-label="INSCRIÇÃO — abrir formulário em nova aba">INSCRIÇÃO</a>
+        <button class="registration-link" type="button" disabled>
+          INSCRIÇÕES PARA SERVOS ENCERRADAS
+        </button>
         <div class="music-player">
           <audio id="background-music" src="/lazaro.mp3" loop preload="none" hidden
             aria-label="Música de fundo: Lázaro"></audio>
@@ -63,8 +62,9 @@ body { min-height: 100vh; min-height: 100svh; background: radial-gradient(ellips
 .poster-page { min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 20px; }
 .poster-frame { position: relative; width: min(100%, 1041px, max(280px, calc((100vh - 40px) * 1041 / 1510))); width: min(100%, 1041px, max(280px, calc((100svh - 40px) * 1041 / 1510))); aspect-ratio: 1041 / 1510; }
 .poster { display: block; width: 100%; height: auto; object-fit: contain; }
-.registration-link { position: absolute; left: 19%; top: 73.5%; width: 62%; height: 10.5%; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; border: 1px solid #f5d68c; border-radius: 12px; background: linear-gradient(135deg, #ffe7a3, #d8a335); color: #07152b; font: 800 clamp(14px, 2.7vw, 25px)/1.4 system-ui, sans-serif; letter-spacing: 0.08em; text-decoration: none; box-shadow: 0 8px 24px #0006; }
-.registration-link:hover { background: #ffe7a3; }
+.registration-link { position: absolute; left: 19%; top: 73.5%; width: 62%; height: 10.5%; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; border: 1px solid #f5d68c; border-radius: 12px; background: linear-gradient(135deg, #ffe7a3, #d8a335); color: #07152b; font: 800 clamp(12px, min(2.5vw, 3vh), 22px)/1.3 system-ui, sans-serif; letter-spacing: 0.06em; text-align: center; text-decoration: none; box-shadow: 0 8px 24px #0006; }
+.registration-link:disabled { opacity: 1; cursor: default; -webkit-text-fill-color: #07152b; }
+.registration-link:not(:disabled):hover { background: #ffe7a3; }
 .registration-link:focus-visible { outline: 3px solid #fff; outline-offset: 5px; }
 .music-player { position: absolute; top: -4px; right: 1.5%; width: 44px; font: 14px/1.4 system-ui, sans-serif; }
 .music-controls { display: flex; align-items: center; justify-content: center; min-height: 44px; }
