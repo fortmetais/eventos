@@ -4,6 +4,8 @@ Aplicação web em português, com React/TypeScript e API Node.js/Express organi
 
 ## O que está implementado
 
+- Assistente de importação de candidaturas de servos por CSV/Excel, com associação de perguntas, normalização, conferência e incorporação parcial nas inscrições. Aplicar o SQL 16 após 06/13; veja o [guia de importação de candidaturas](docs/importacao-candidaturas.md).
+
 - Importação de cadastros anteriores por Excel, com revisão por organização e sugestões limitadas na inscrição. Consulte o [guia de importação e autopreenchimento](docs/cadastros-anteriores.md); aplicar somente o SQL 13 e manter a consulta pública desativada até revisar o primeiro lote.
 
 - Administração de organizações, convites com prazo e uso único, membros, suspensão e permissões por organização.

@@ -117,6 +117,7 @@ try {
     TEST_DEPARTMENT_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_department_tests?schema=acesso`,
     TEST_FUNCTION_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_function_tests?schema=acesso`,
     TEST_IMPORT_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_import_tests?schema=acesso`,
+    TEST_EVENT_IMPORT_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_event_import_tests?schema=acesso`,
   };
   run(binary("psql"), [
     "-h",
@@ -352,6 +353,65 @@ try {
       "ON_ERROR_STOP=1",
       "-f",
       join(root, "database/manual", script),
+    ]);
+  // Ensaiar a atualização aditiva nas bases graduais que já têm inscrições.
+  for (const database of [
+    "fac_volunteer_tests",
+    "fac_notice_tests",
+    "fac_department_tests",
+    "fac_import_tests",
+  ])
+    for (const script of [
+      "13_cadastros_anteriores.sql",
+      "16_importacao_candidaturas.sql",
+    ])
+      run(binary("psql"), [
+        "-h",
+        "127.0.0.1",
+        "-p",
+        String(port),
+        "-U",
+        "fac_test",
+        "-d",
+        database,
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-f",
+        join(root, "database/manual", script),
+      ]);
+  run(binary("psql"), [
+    "-h",
+    "127.0.0.1",
+    "-p",
+    String(port),
+    "-U",
+    "fac_test",
+    "-d",
+    "postgres",
+    "-c",
+    "CREATE DATABASE fac_event_import_tests",
+  ]);
+  const eventImportUrl = `postgresql://fac_test@127.0.0.1:${port}/fac_event_import_tests`;
+  run(process.execPath, [npmCli, "run", "db:deploy"], {
+    ...env,
+    DATABASE_URL: eventImportUrl,
+    DIRECT_URL: eventImportUrl,
+  });
+  // O SQL manual também deve aceitar reaplicação numa instalação por migrations.
+  for (let attempt = 0; attempt < 2; attempt++)
+    run(binary("psql"), [
+      "-h",
+      "127.0.0.1",
+      "-p",
+      String(port),
+      "-U",
+      "fac_test",
+      "-d",
+      "fac_event_import_tests",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-f",
+      join(root, "database/manual/16_importacao_candidaturas.sql"),
     ]);
   run(process.execPath, [npmCli, "run", "test"], env);
 } finally {

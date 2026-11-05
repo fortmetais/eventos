@@ -234,6 +234,7 @@ model Campaign {
   forms         FormVersion[]
   drafts        Draft[]
   registrations Registration[]
+  participantImports ParticipantImport[]
 
   @@unique([eventId, kind], map: "campanhas_evento_publico_uk")
   @@map("campanhas")
@@ -250,6 +251,7 @@ model FormVersion {
   campaign      Campaign       @relation(fields: [campaignId], references: [id])
   drafts        Draft[]
   registrations Registration[]
+  participantImports ParticipantImport[]
 
   @@unique([campaignId, version])
   @@map("versoes_ficha")
@@ -305,6 +307,13 @@ model Person {
 model ParticipantImport {
   id             String @id @default(uuid()) @map("lote_id") @db.Uuid
   organizationId String @map("organizacao_id") @db.Uuid
+  mode           String @default("HISTORY") @map("modo")
+  destinationKey String @default("HISTORY") @map("destino")
+  campaignId     String? @map("campanha_id") @db.Uuid
+  formVersionId  String? @map("versao_ficha_id") @db.Uuid
+  rules          Json @default("[]") @map("equivalencias")
+  revision       Int @default(0) @map("revisao")
+  step           Int @default(1) @map("etapa")
   fileHash       String @map("hash_arquivo")
   fileName       String @map("nome_arquivo")
   sheet          String @map("aba")
@@ -315,8 +324,10 @@ model ParticipantImport {
   updatedAt      DateTime @updatedAt @map("atualizado_em") @db.Timestamptz(3)
   organization   Organization @relation(fields: [organizationId], references: [id])
   creator        Account @relation(fields: [createdBy], references: [id])
+  campaign       Campaign? @relation(fields: [campaignId], references: [id])
+  form           FormVersion? @relation(fields: [formVersionId], references: [id])
   rows           ParticipantImportRow[]
-  @@unique([organizationId, fileHash, sheet])
+  @@unique([organizationId, fileHash, sheet, destinationKey], map: "lotes_importacao_arquivo_destino_uk")
   @@unique([id, organizationId])
   @@map("lotes_importacao")
   @@schema("pessoas")
@@ -333,10 +344,19 @@ model ParticipantImportRow {
   reviewed       Boolean @default(false) @map("revisada")
   replaceId      String? @map("substituir_id") @db.Uuid
   profileId      String? @map("cadastro_id") @db.Uuid
+  executionState String @default("PENDING") @map("execucao")
+  revision       Int @default(0) @map("revisao")
+  overrides      Json @default("{}") @map("correcoes")
+  distinctReason String? @map("motivo_distinto")
+  registrationId String? @map("inscricao_id") @db.Uuid
+  replacementRegistrationId String? @map("substituir_inscricao_id") @db.Uuid
   batch          ParticipantImport @relation(fields: [importId, organizationId], references: [id, organizationId])
   replacement    PreviousParticipant? @relation("Replacement", fields: [replaceId, organizationId], references: [id, organizationId])
   profile        PreviousParticipant? @relation("ImportedProfile", fields: [profileId, organizationId], references: [id, organizationId])
+  registration   Registration? @relation("ImportedRegistration", fields: [registrationId], references: [id])
+  replacementRegistration Registration? @relation("ReplacementRegistration", fields: [replacementRegistrationId], references: [id])
   @@unique([importId, rowNumber])
+  @@index([registrationId], map: "linhas_importacao_inscricao_idx")
   @@map("linhas_importacao")
   @@schema("pessoas")
 }
@@ -368,7 +388,9 @@ model PreviousParticipant {
 model Registration {
   id                    String                 @id @default(uuid()) @map("inscricao_id") @db.Uuid
   protocol              String                 @unique @map("protocolo")
-  draftId               String                 @unique @map("rascunho_id") @db.Uuid
+  draftId               String?                @unique @map("rascunho_id") @db.Uuid
+  origin                String                 @default("PUBLIC_FORM") @map("origem")
+  importData            Json?                  @map("dados_importacao")
   personId              String                 @map("pessoa_id") @db.Uuid
   campaignId            String                 @map("campanha_id") @db.Uuid
   formVersionId         String                 @map("versao_ficha_id") @db.Uuid
@@ -378,7 +400,7 @@ model Registration {
   status                RegistrationStatus     @default(RECEIVED) @map("situacao")
   createdAt             DateTime               @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
   updatedAt             DateTime               @updatedAt @map("atualizado_em") @db.Timestamp(3)
-  draft                 Draft                  @relation(fields: [draftId], references: [id])
+  draft                 Draft?                 @relation(fields: [draftId], references: [id])
   person                Person                 @relation(fields: [personId], references: [id])
   campaign              Campaign               @relation(fields: [campaignId], references: [id])
   form                  FormVersion            @relation(fields: [formVersionId], references: [id])
@@ -389,8 +411,11 @@ model Registration {
   guardianAuthorization GuardianAuthorization?
   history               StatusHistory[]
   decisionNotices       DecisionNotice[]
+  importRows            ParticipantImportRow[] @relation("ImportedRegistration")
+  replacementImportRows ParticipantImportRow[] @relation("ReplacementRegistration")
 
   @@index([campaignId, status])
+  @@index([campaignId, origin], map: "inscricoes_campanha_origem_idx")
   @@index([accountId])
   @@map("inscricoes")
   @@schema("inscricoes")

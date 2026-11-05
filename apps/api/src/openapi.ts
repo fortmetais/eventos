@@ -24,7 +24,7 @@ const operations: Operation[] = [
     path: `/organizations/{organizationId}/participant-imports/${action}`,
     summary:
       action === "inspect"
-        ? "Inspecionar abas e cabeçalhos XLSX"
+        ? "Inspecionar abas e cabeçalhos CSV/XLSX"
         : "Preparar prévia privada e idempotente da importação",
     security: "account" as const,
     multipart: true,
@@ -47,7 +47,28 @@ const operations: Operation[] = [
   {
     method: "post",
     path: "/organizations/{organizationId}/participant-imports/{importId}/confirm",
-    summary: "Confirmar lote sem criar inscrições ou aceites; idempotente",
+    summary:
+      "Confirmar lote histórico ou linhas selecionadas de candidaturas; não cria aceites",
+    security: "account",
+  },
+  {
+    method: "post",
+    path: "/organizations/{organizationId}/participant-imports/event",
+    summary: "Salvar CSV/XLSX para campanha de servos e versão publicada",
+    security: "account",
+    multipart: true,
+  },
+  {
+    method: "put",
+    path: "/organizations/{organizationId}/participant-imports/{importId}/settings",
+    summary:
+      "Salvar associações, equivalências e etapa com revisão concorrente",
+    security: "account",
+  },
+  {
+    method: "post",
+    path: "/organizations/{organizationId}/participant-imports/{importId}/cancel",
+    summary: "Cancelar lote ainda não incorporado com revisão concorrente",
     security: "account",
   },
   {
@@ -56,6 +77,20 @@ const operations: Operation[] = [
     summary: "Buscar cadastros anteriores da organização",
     security: "account",
     query: ["search", "page", "pageSize"],
+  },
+  {
+    method: "post",
+    path: "/organizations/{organizationId}/participant-imports/{importId}/review",
+    summary:
+      "Conferir explicitamente linhas sem conflitos com revisão concorrente",
+    security: "account",
+  },
+  {
+    method: "patch",
+    path: "/organizations/{organizationId}/registrations/{registrationId}/imported-data",
+    summary:
+      "Corrigir dados de candidatura importada com justificativa e controle de atualização",
+    security: "account",
   },
   {
     method: "get",
@@ -355,7 +390,15 @@ const operations: Operation[] = [
     path: "/organizations/{organizationId}/registrations",
     summary: "Listar fichas sem saúde",
     security: "account",
-    query: ["eventId", "campaignId", "status", "page", "pageSize"],
+    query: [
+      "eventId",
+      "campaignId",
+      "status",
+      "origin",
+      "completeness",
+      "page",
+      "pageSize",
+    ],
   },
   {
     method: "get",

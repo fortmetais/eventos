@@ -460,9 +460,18 @@ export class GuardianService {
           data: json({ ...((original?.data as object) ?? {}), ...health }),
         },
       });
-      await tx.consent.update({
+      await tx.consent.upsert({
         where: { registrationId: item.registrationId },
-        data: {
+        create: {
+          registrationId: item.registrationId,
+          version: "GUARDIAN_AUTHORIZATION",
+          termsText: item.termsText,
+          accepted: false,
+          acceptedAt: signedAt,
+          guardianAuthorized: true,
+          imageAuthorized: data.imageAuthorized,
+        },
+        update: {
           guardianAuthorized: true,
           imageAuthorized: data.imageAuthorized,
         },

@@ -9,6 +9,7 @@ import { orderedFields, stepIds } from "@fac/form-layout";
 import { api } from "../lib/api";
 import { DecisionNotice } from "../components/DecisionNotice";
 import { GuardianNotice } from "../components/GuardianNotice";
+import { ImportedRegistrationCorrection } from "../components/ImportedRegistrationCorrection";
 import type {
   EventEdition,
   Page,
@@ -43,6 +44,8 @@ export function ReviewRegistrations() {
   const [eventId, setEventId] = useState(search.get("evento") ?? "");
   const [campaignId, setCampaignId] = useState("");
   const [status, setStatus] = useState("");
+  const [origin, setOrigin] = useState("");
+  const [completeness, setCompleteness] = useState("");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -54,6 +57,8 @@ export function ReviewRegistrations() {
     ...(eventId ? { eventId } : {}),
     ...(campaignId ? { campaignId } : {}),
     ...(status ? { status } : {}),
+    ...(origin ? { origin } : {}),
+    ...(completeness ? { completeness } : {}),
   });
   const list = useRemote<Page<Registration>>(
     `/organizations/${organizationId}/registrations?${params}`,
@@ -252,6 +257,32 @@ export function ReviewRegistrations() {
             ))}
           </select>
         </Field>
+        <Field label="Origem">
+          <select
+            value={origin}
+            onChange={(e) => {
+              setOrigin(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">Todas</option>
+            <option value="PUBLIC_FORM">Ficha da aplicação</option>
+            <option value="IMPORT">Importada</option>
+          </select>
+        </Field>
+        <Field label="Complementação">
+          <select
+            value={completeness}
+            onChange={(e) => {
+              setCompleteness(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">Todas</option>
+            <option value="PENDING">Com pendências</option>
+            <option value="COMPLETE">Completa</option>
+          </select>
+        </Field>
       </div>
       {membership.role === "ORGANIZER" && eventId && (
         <form className="panel inline-form" onSubmit={createTeam}>
@@ -340,6 +371,14 @@ export function ReviewRegistrations() {
                         <td>
                           <strong>{r.person.name}</strong>
                           <small>{r.protocol}</small>
+                          {r.origin === "IMPORT" && (
+                            <small>
+                              Importada ·{" "}
+                              {(r.importData?.pending?.length ?? 0) > 0
+                                ? "Complementação pendente"
+                                : "Conferir complementação"}
+                            </small>
+                          )}
                         </td>
                         <td>
                           {r.campaign.kind === "CAMPER" ? "Campista" : "Servo"}
@@ -417,6 +456,63 @@ export function ReviewRegistrations() {
                     </div>
                   </div>
                   <p className="protocol-small">{registration.protocol}</p>
+                  {registration.origin === "IMPORT" && (
+                    <section aria-label="Origem e pendências da importação">
+                      <Notice kind="info">
+                        Candidatura importada. É possível avaliar, aprovar e
+                        reservar departamento. A confirmação final exige a
+                        complementação pelo participante, disponível na próxima
+                        entrega.
+                      </Notice>
+                      {registration.importData?.source?.fileName && (
+                        <p>
+                          Arquivo de origem:{" "}
+                          {registration.importData.source.fileName}
+                        </p>
+                      )}
+                      {!!registration.importData?.pending?.length && (
+                        <details open>
+                          <summary>Pendências para confirmação</summary>
+                          <ul>
+                            {registration.importData.pending.map((item) => (
+                              <li key={item}>{item}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                      {registration.importData?.original && (
+                        <details>
+                          <summary>Respostas originais importadas</summary>
+                          <dl className="review-list">
+                            {registration.importData.original.headers.map(
+                              (header, index) => (
+                                <div key={index}>
+                                  <dt>{header}</dt>
+                                  <dd>
+                                    {registration.importData!.original!.cells[
+                                      index
+                                    ] || "Não informado na origem"}
+                                  </dd>
+                                </div>
+                              ),
+                            )}
+                          </dl>
+                        </details>
+                      )}
+                    </section>
+                  )}
+                  {membership.role === "ORGANIZER" &&
+                    registration.origin === "IMPORT" && (
+                      <ImportedRegistrationCorrection
+                        key={`${registration.id}:${registration.updatedAt}`}
+                        organizationId={organizationId!}
+                        registration={registration}
+                        onSaved={() => {
+                          detail.refresh();
+                          list.refresh();
+                        }}
+                      />
+                    )}
                   <dl className="review-list">
                     <dt>Evento</dt>
                     <dd>{registration.campaign.event.name}</dd>
@@ -630,7 +726,14 @@ export function ReviewRegistrations() {
                                   registration.campaign.allowWaitlist,
                               )
                               .map((s) => (
-                                <option key={s} value={s}>
+                                <option
+                                  key={s}
+                                  value={s}
+                                  disabled={
+                                    s === "CONFIRMED" &&
+                                    registration.origin === "IMPORT"
+                                  }
+                                >
                                   {s === "APPROVED"
                                     ? registration.campaign.kind === "CAMPER"
                                       ? "Aprovar inscrição"

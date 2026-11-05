@@ -352,6 +352,8 @@ export class RegistrationsService {
       eventId?: string;
       campaignId?: string;
       status?: RegistrationStatus;
+      origin?: "PUBLIC_FORM" | "IMPORT";
+      completeness?: "PENDING" | "COMPLETE";
     },
     page: number,
     pageSize: number,
@@ -364,6 +366,30 @@ export class RegistrationsService {
       },
       ...(filters.campaignId ? { campaignId: filters.campaignId } : {}),
       ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.origin ? { origin: filters.origin } : {}),
+      ...(filters.completeness === "PENDING"
+        ? {
+            AND: {
+              origin: "IMPORT",
+              OR: [
+                { importData: { path: ["pending"], not: [] } },
+                { consent: { is: null } },
+                { consent: { is: { accepted: false } } },
+              ],
+            },
+          }
+        : filters.completeness === "COMPLETE"
+          ? {
+              OR: [
+                { origin: "PUBLIC_FORM" },
+                {
+                  origin: "IMPORT",
+                  importData: { path: ["pending"], equals: [] },
+                  consent: { is: { accepted: true } },
+                },
+              ],
+            }
+          : {}),
     };
     const [items, total] = await this.repo.list(
       where,
@@ -416,6 +442,7 @@ export class RegistrationsService {
           include: {
             campaign: { include: { event: true } },
             team: { select: basicTeam },
+            consent: true,
           },
         });
         assert(
@@ -438,6 +465,19 @@ export class RegistrationsService {
             "Esta campanha não possui lista de espera.",
           );
         if (status === "CONFIRMED") {
+          if (registration.origin === "IMPORT") {
+            const pending = (
+              registration.importData as { pending?: unknown } | null
+            )?.pending;
+            assert(
+              Array.isArray(pending) &&
+                pending.length === 0 &&
+                registration.consent?.accepted === true,
+              409,
+              "Esta candidatura importada precisa de complementação e aceite dos termos antes da confirmação final. A aprovação e a reserva do departamento podem ser mantidas.",
+              "IMPORT_COMPLETION_REQUIRED",
+            );
+          }
           const snapshot = registration.snapshot as { birthDate?: string };
           if (
             snapshot.birthDate &&

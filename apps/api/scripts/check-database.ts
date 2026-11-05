@@ -163,6 +163,14 @@ try {
   console.info(
     "Esta checagem confirma acesso SQL às tabelas; não valida login nem operações das telas.",
   );
+  const [eventImports] = await db.$queryRaw<
+    { ready: boolean }[]
+  >`SELECT count(*)=3 AS ready FROM information_schema.columns WHERE (table_schema,table_name,column_name) IN (('pessoas','lotes_importacao','modo'),('pessoas','linhas_importacao','execucao'),('inscricoes','inscricoes','dados_importacao'))`;
+  console.info(
+    eventImports?.ready
+      ? "Importação guiada: estrutura adicional da etapa 16 encontrada."
+      : "Importação guiada pendente: execute database/manual/16_importacao_candidaturas.sql após 06/13 antes de publicar o novo código.",
+  );
 } catch (error) {
   const code =
     typeof error === "object" && error !== null && "errorCode" in error

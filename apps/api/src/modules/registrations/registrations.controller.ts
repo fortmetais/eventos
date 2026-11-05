@@ -6,6 +6,8 @@ import type { RegistrationsService } from "./registrations.service.js";
 const filters = z.object({
   eventId: id.optional(),
   campaignId: id.optional(),
+  origin: z.enum(["PUBLIC_FORM", "IMPORT"]).optional(),
+  completeness: z.enum(["PENDING", "COMPLETE"]).optional(),
   status: z
     .enum([
       "RECEIVED",

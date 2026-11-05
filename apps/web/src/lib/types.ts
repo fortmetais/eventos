@@ -214,6 +214,20 @@ export interface Draft {
   email?: string;
 }
 export interface Registration {
+  updatedAt?: string;
+  origin?: "PUBLIC_FORM" | "IMPORT";
+  importData?: {
+    pending?: string[];
+    source?: {
+      batchId?: string;
+      rowId?: string;
+      fileName?: string;
+      submittedAt?: string | null;
+    };
+    historical?: Record<string, unknown>;
+    original?: { headers: string[]; cells: string[] };
+    departmentIds?: string[];
+  } | null;
   noticeWarning?: string;
   accountId?: string | null;
   form?: FormVersion;

@@ -175,14 +175,14 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
     afterAll(async () => {
       await db.$disconnect();
     });
-    it("estrutura manual possui 20 tabelas, RLS e prontidão sem liberar campistas", async () => {
+    it("estrutura manual atualizada preserva RLS e prontidão sem liberar campistas", async () => {
       const result = await request(app).get("/api/v1/config").expect(200);
       expect(result.body.volunteerRegistrationsReady).toBe(true);
       expect(result.body.eventsEnabled).toBe(false);
       const tables = await db.$queryRaw<
         { rowsecurity: boolean }[]
       >`SELECT rowsecurity FROM pg_tables WHERE schemaname IN ('acesso','organizacoes','pessoas','eventos','inscricoes','saude','arquivos')`;
-      expect(tables).toHaveLength(21);
+      expect(tables).toHaveLength(24);
       expect(tables.every((t) => t.rowsecurity)).toBe(true);
       await request(app)
         .get(`/api/v1/public/campaigns/${camperId}`)

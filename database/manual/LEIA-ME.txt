@@ -138,6 +138,14 @@ Auth, convites e fotos dependem das chaves e configurações privadas no .env.
 Siga deploy/supabase/CONFIGURAR_AUTH.txt para configurar a autenticação.
 
 Referências oficiais:
+Importação de candidaturas: executar 16_importacao_candidaturas.sql após
+06 e 13, antes de publicar o novo código. Amplia lotes/linhas e acrescenta
+origem e dados de importação nas inscrições; permite rascunho ausente nas
+importadas. Não incorpora arquivos nem cria contas/aceites. Guia completo:
+docs/importacao-candidaturas.md. Recuperação/complementação ficam para a
+segunda entrega; as reservas são permitidas e a confirmação final depende
+dos dados obrigatórios.
+
 Histórico do cartaz: executar 15_historico_acessos_site.sql após 01, antes
 de publicar a contagem. Mantém totais por dia e faixa de tela, sem dados
 pessoais. Guia: docs/historico-acessos-site.md. Não garante impedir a pausa

@@ -225,6 +225,7 @@ export class MediaService {
     assert(registration, 404, "Inscrição não encontrada.");
     const assetId = (registration.snapshot as Record<string, unknown>)
       .photoAssetId;
+    assert(registration.draftId, 404, "Foto indisponível.");
     assert(typeof assetId === "string", 404, "Foto indisponível.");
     const asset = await this.repo.db.mediaAsset.findFirst({
       where: { id: assetId, draftId: registration.draftId },

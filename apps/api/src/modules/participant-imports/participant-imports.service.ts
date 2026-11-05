@@ -110,14 +110,14 @@ export class ParticipantImportsService {
   async ready() {
     const result = await this.db.$queryRaw<
       { ready: boolean }[]
-    >`SELECT bool_and(to_regclass(nome) IS NOT NULL) AS ready FROM unnest(ARRAY['pessoas.lotes_importacao','pessoas.linhas_importacao','pessoas.cadastros_anteriores']) AS tabelas(nome)`;
+    >`SELECT bool_and(to_regclass(nome) IS NOT NULL) AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='pessoas' AND table_name='lotes_importacao' AND column_name='destino') AS ready FROM unnest(ARRAY['pessoas.lotes_importacao','pessoas.linhas_importacao','pessoas.cadastros_anteriores']) AS tabelas(nome)`;
     return result[0]?.ready === true;
   }
   async requireReady() {
     assert(
       await this.ready(),
       503,
-      "A importação aguarda a configuração dos cadastros anteriores.",
+      "A importação aguarda a atualização dos cadastros anteriores e a etapa 16 do banco.",
       "PARTICIPANT_IMPORT_SETUP_REQUIRED",
     );
   }
@@ -126,7 +126,7 @@ export class ParticipantImportsService {
     if (!ready)
       return { ready, prefillEnabled: this.prefillEnabled, batches: [] };
     const batches = await this.db.participantImport.findMany({
-      where: { organizationId },
+      where: { organizationId, mode: "HISTORY" },
       orderBy: { createdAt: "desc" },
       take: 50,
       select: {
@@ -165,10 +165,11 @@ export class ParticipantImportsService {
         await tx.$queryRaw`SELECT organizacao_id FROM organizacoes.organizacoes WHERE organizacao_id = ${organizationId}::uuid FOR UPDATE`;
         const existing = await tx.participantImport.findUnique({
           where: {
-            organizationId_fileHash_sheet: {
+            organizationId_fileHash_sheet_destinationKey: {
               organizationId,
               fileHash: hash,
               sheet: sheetName,
+              destinationKey: "HISTORY",
             },
           },
         });
