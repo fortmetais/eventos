@@ -21,6 +21,12 @@ Reenvio de arquivo atualizado ou reordenado deve ser comparado com a campanha ex
 
 Inscrições já enviadas pela ficha da aplicação mantêm suas respostas imutáveis: selecionar uma delas associa a linha importada, sem substituir a ficha. Atualizações de candidaturas importadas exigem a mesma versão de destino. No detalhe da candidatura, o organizador pode corrigir dados básicos e perguntas disponíveis, informando motivo. A edição verifica a última atualização, grava histórico e conserva a primeira evidência da origem; termos, saúde e autorizações não são inventados por esse recurso.
 
+### Padrão dos campos na conferência
+
+As equivalências, a revisão por linha e a correção posterior compartilham os mesmos controles. Cidade usa a pesquisa da inscrição e a escolha grava `Cidade - UF`; a UF não é inferida a partir do nome. Paróquia oferece os cadastros existentes e permite texto livre para locais ainda não cadastrados. Telefone usa máscara com DDD e a API conserva os dígitos; valores originais inválidos longos ficam inteiramente visíveis até correção explícita. Datas e números usam seus tipos próprios. Camiseta e sexo mantêm opções fechadas, e seleções múltiplas usam caixas de seleção, com exclusividade de “nenhum” quando definida na ficha. As preferências históricas de equipes podem continuar acima de três.
+
+Os textos de nomes, edições, formação e cônjuge não são convertidos automaticamente em categorias nem recebem capitalização inferida. A resposta original permanece preservada. A pesquisa de cidades é uma ajuda para conferência, não uma conversão automática de todos os registros antigos: o organizador precisa selecionar a correspondência correta, especialmente nos municípios homônimos.
+
 ## Vagas e pendências
 
 A confirmação da importação cria candidaturas **Recebidas**, sem envio de mensagens. A gestão permite analisar, aprovar e alocar nos departamentos, respeitando as vagas. Aprovar/rejeitar explicitamente segue os avisos existentes; ausência de e-mail é informada e não é substituída por contato inventado.

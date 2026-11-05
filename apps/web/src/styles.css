@@ -909,6 +909,12 @@ svg {
 .check-options {
   display: block;
 }
+.import-choice-options {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
 .notice {
   display: flex;
   align-items: flex-start;

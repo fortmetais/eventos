@@ -72,6 +72,7 @@ export type EventImportTarget = {
   options?: { value: string; label: string }[];
   historical?: boolean;
   hidden?: boolean;
+  exclusiveOption?: string;
 };
 export type EventImportMapping = {
   column: number;

@@ -12,6 +12,7 @@ export function CityAutocomplete({
   required,
   invalid,
   name,
+  disabled = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -19,6 +20,7 @@ export function CityAutocomplete({
   required?: boolean;
   invalid?: boolean;
   name: string;
+  disabled?: boolean;
 }) {
   const id = useId();
   const listId = `${id}-cities`;
@@ -37,7 +39,14 @@ export function CityAutocomplete({
   );
 
   useEffect(() => {
-    if (!open || cities) return;
+    if (disabled) {
+      setOpen(false);
+      setActive(-1);
+    }
+  }, [disabled]);
+
+  useEffect(() => {
+    if (!open || cities || disabled) return;
     let cancelled = false;
     setLoading(true);
     setFailed(false);
@@ -54,7 +63,7 @@ export function CityAutocomplete({
     return () => {
       cancelled = true;
     };
-  }, [open, cities, retry]);
+  }, [open, cities, retry, disabled]);
 
   useEffect(() => {
     if (open && active >= 0)
@@ -81,6 +90,7 @@ export function CityAutocomplete({
       <input
         ref={inputRef}
         name={name}
+        disabled={disabled}
         role="combobox"
         aria-label={label}
         aria-autocomplete="list"
@@ -131,7 +141,7 @@ export function CityAutocomplete({
           }
         }}
       />
-      {open && matches.length > 0 && (
+      {!disabled && open && matches.length > 0 && (
         <div className="city-suggestions">
           <ul
             ref={listRef}

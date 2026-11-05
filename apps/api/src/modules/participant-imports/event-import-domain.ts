@@ -26,6 +26,7 @@ export type EventImportTarget = {
   options?: { value: string; label: string }[];
   historical?: boolean;
   hidden?: boolean;
+  exclusiveOption?: string;
 };
 export type ImportSheet = {
   name: string;
@@ -282,6 +283,9 @@ export function eventImportCatalog(
           : question.options.map((value) => ({ value, label: value })),
       historical: Boolean(question.mustBeTrue),
       hidden: !fieldVisible(form, "VOLUNTEER", `question:${question.id}`),
+      ...(question.exclusiveOption
+        ? { exclusiveOption: question.exclusiveOption }
+        : {}),
     });
   }
   return base;

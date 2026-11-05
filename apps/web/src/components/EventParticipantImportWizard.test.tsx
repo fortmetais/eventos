@@ -10,6 +10,7 @@ import {
 import { MemoryRouter } from "react-router-dom";
 import { EventParticipantImportWizard } from "./EventParticipantImportWizard";
 import { ApiError } from "../lib/api";
+import { loadBrazilianCities, normalizeCitySearch } from "../lib/brazil-cities";
 import type {
   EventImportBatch,
   EventImportRow,
@@ -17,6 +18,10 @@ import type {
 } from "../lib/participant-imports";
 
 const mocks = vi.hoisted(() => ({ api: vi.fn(), refresh: vi.fn() }));
+vi.mock("../lib/brazil-cities", async (original) => ({
+  ...(await original<typeof import("../lib/brazil-cities")>()),
+  loadBrazilianCities: vi.fn(),
+}));
 vi.mock("../lib/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../lib/api")>()),
   api: mocks.api,
@@ -69,6 +74,11 @@ function makeRow(id = "row", number = 2): EventImportRow {
 let batch: EventImportBatch;
 let rejectSettings = false;
 beforeEach(() => {
+  vi.mocked(loadBrazilianCities)
+    .mockReset()
+    .mockResolvedValue([
+      { label: "Loanda - PR", search: normalizeCitySearch("Loanda - PR") },
+    ]);
   rejectSettings = false;
   batch = {
     id: "batch",
@@ -168,13 +178,22 @@ beforeEach(() => {
           if (batch.step >= 3) batch.state = "REVIEW";
           return structuredClone(batch);
         }
-        if (path === `${base}/batch/rows/row2`) {
-          const row = batch.rows[1];
+        if (
+          path === `${base}/batch/rows/row2` ||
+          path === `${base}/batch/rows/row`
+        ) {
+          const row = batch.rows.find((item) =>
+            path.endsWith(`/rows/${item.id}`),
+          )!;
           row.overrides = options!.body.overrides;
           row.decision = options!.body.decision;
           row.reviewed = true;
           row.revision++;
-          row.payload.phone = options!.body.overrides.phone;
+          row.payload.phone =
+            options!.body.overrides.phone ?? row.payload.phone;
+          if (options!.body.overrides["question:cidade"])
+            row.payload.answers!.cidade =
+              options!.body.overrides["question:cidade"];
           row.errors = [];
           batch.revision++;
           return structuredClone(batch);
@@ -228,6 +247,46 @@ function view(initialBatchId?: string, meta = metadata) {
 }
 
 describe("Assistente de candidaturas importadas", () => {
+  it("usa a lista de cidades na revisão e envia a escolha com UF sem alterar o original", async () => {
+    batch.step = 4;
+    batch.state = "REVIEW";
+    batch.headers.push("Cidade");
+    batch.catalog.push({
+      id: "question:cidade",
+      label: "Cidade onde mora",
+      type: "text",
+    });
+    batch.mapping.push({
+      column: 5,
+      target: "question:cidade",
+      confirmed: true,
+    });
+    batch.rows[0].payload.answers!.cidade = "Loanda";
+    batch.rows[0].original.headers.push("Cidade");
+    batch.rows[0].original.cells.push("Loanda");
+    view("batch");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Revisar linha 2" }),
+    );
+    const city = screen.getByRole("combobox", { name: "Cidade onde mora" });
+    expect(city).toHaveValue("Loanda");
+    fireEvent.focus(city);
+    fireEvent.click(await screen.findByRole("option", { name: "Loanda - PR" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Salvar revisão da candidatura" }),
+    );
+    await waitFor(() =>
+      expect(mocks.api).toHaveBeenCalledWith(
+        `${base}/batch/rows/row`,
+        expect.objectContaining({
+          body: expect.objectContaining({
+            overrides: { "question:cidade": "Loanda - PR" },
+          }),
+        }),
+      ),
+    );
+    expect(batch.rows[0].original.cells[5]).toBe("Loanda");
+  });
   it("salva CSV, exige conferir todas as colunas, normaliza e confirma só as linhas escolhidas", async () => {
     view();
     fireEvent.change(screen.getByLabelText(/Evento e campanha/), {

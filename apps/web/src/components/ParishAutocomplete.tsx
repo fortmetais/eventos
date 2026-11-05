@@ -11,6 +11,7 @@ export function ParishAutocomplete({
   required,
   invalid,
   name,
+  disabled = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -18,6 +19,7 @@ export function ParishAutocomplete({
   required?: boolean;
   invalid?: boolean;
   name: string;
+  disabled?: boolean;
 }) {
   const id = useId();
   const listId = `${id}-parishes`;
@@ -52,7 +54,14 @@ export function ParishAutocomplete({
   const matches = filtered.slice(0, 20);
 
   useEffect(() => {
-    if (!open || parishes) return;
+    if (disabled) {
+      setOpen(false);
+      setActive(-1);
+    }
+  }, [disabled]);
+
+  useEffect(() => {
+    if (!open || parishes || disabled) return;
     let cancelled = false;
     setLoading(true);
     setFailed(false);
@@ -69,7 +78,7 @@ export function ParishAutocomplete({
     return () => {
       cancelled = true;
     };
-  }, [open, parishes, retry]);
+  }, [open, parishes, retry, disabled]);
 
   useEffect(() => {
     if (open && active >= 0)
@@ -96,6 +105,7 @@ export function ParishAutocomplete({
       <input
         ref={inputRef}
         name={name}
+        disabled={disabled}
         role="combobox"
         aria-label={label}
         aria-autocomplete="list"
@@ -143,7 +153,7 @@ export function ParishAutocomplete({
           }
         }}
       />
-      {open && matches.length > 0 && (
+      {!disabled && open && matches.length > 0 && (
         <div className="city-suggestions">
           <ul
             ref={listRef}

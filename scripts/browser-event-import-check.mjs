@@ -110,6 +110,7 @@ const catalog = targets.map((id, index) => ({
       ? { options: options(["Feminino", "Masculino"]) }
       : id === "question:sacramentos"
         ? {
+            exclusiveOption: "Não possuo nenhum sacramento",
             options: options([
               "Batismo",
               "1ª Eucaristia",
@@ -353,6 +354,15 @@ try {
             },
           ],
         });
+      if (path === "/api/v1/public/parishes")
+        return json([
+          {
+            id: "parish-test",
+            name: "Paróquia dos testes",
+            city: "Loanda",
+            state: "PR",
+          },
+        ]);
       if (path === base) return json(metadata());
       if (path.includes("/previous-participants"))
         return json({ items: [], total: 0 });
@@ -392,6 +402,11 @@ try {
         const data = request.postDataJSON();
         assert.equal(data.revision, rows[1].revision);
         assert.equal(data.overrides.phone, "44988888888");
+        assert.equal(data.overrides["question:cidade"], "Loanda - PR");
+        assert.equal(
+          data.overrides["question:paroquia"],
+          "Paróquia dos testes — Loanda - PR",
+        );
         Object.assign(rows[1], {
           overrides: data.overrides,
           decision: data.decision,
@@ -402,6 +417,8 @@ try {
           revision: rows[1].revision + 1,
         });
         rows[1].payload.phone = data.overrides.phone;
+        rows[1].payload.answers.cidade = data.overrides["question:cidade"];
+        rows[1].payload.answers.paroquia = data.overrides["question:paroquia"];
         batch.revision++;
         return json(refresh());
       }
@@ -525,6 +542,27 @@ try {
       name: "Revisar candidatura da linha 3",
     });
     await editor.getByLabel("Celular", { exact: true }).fill("44988888888");
+    const city = editor.getByRole("combobox", { name: "Cidade", exact: true });
+    await city.fill("Loanda");
+    await page
+      .getByRole("option", { name: "Loanda - PR", exact: true })
+      .click();
+    const parish = editor.getByRole("combobox", {
+      name: "Paróquia",
+      exact: true,
+    });
+    await parish.fill("Paróquia dos testes");
+    await page
+      .getByRole("option", {
+        name: "Paróquia dos testes — Loanda - PR",
+        exact: true,
+      })
+      .click();
+    await editor.scrollIntoViewIfNeeded();
+    await page.screenshot({
+      path: `${screenshots}-standardized-fields.png`,
+      fullPage: true,
+    });
     await editor.getByLabel("Decisão para a candidatura").selectOption("KEEP");
     await editor
       .getByRole("button", { name: "Salvar revisão da candidatura" })
@@ -535,6 +573,7 @@ try {
       "123",
       "O original deve permanecer intacto após a correção.",
     );
+    assert.equal(rows[1].original.cells[6], "Loanda PR");
     assert.equal(
       rows[0].payload.answers.equipes_preferencia.length,
       4,

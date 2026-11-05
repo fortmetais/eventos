@@ -7,11 +7,11 @@ import type {
   EventImportMapping,
   EventImportRow,
   EventImportRule,
-  EventImportTarget,
   EventImportValue,
   ImportMetadata,
 } from "../lib/participant-imports";
 import { Field, Loading, Notice } from "./ui";
+import { ImportValueControl as ValueControl } from "./ImportValueControl";
 
 const steps = [
   "Destino e arquivo",
@@ -42,80 +42,6 @@ function effectiveValue(row: EventImportRow, target: string): EventImportValue {
     return row.payload.answers?.[target.slice(9)] ?? null;
   return (row.payload[target] as EventImportValue) ?? null;
 }
-function ValueControl({
-  target,
-  value,
-  onChange,
-  disabled = false,
-}: {
-  target: EventImportTarget;
-  value: EventImportValue;
-  onChange: (v: EventImportValue) => void;
-  disabled?: boolean;
-}) {
-  if (target.type === "boolean")
-    return (
-      <select
-        aria-label={target.label}
-        value={value === true ? "true" : value === false ? "false" : ""}
-        disabled={disabled}
-        onChange={(e) =>
-          onChange(e.target.value === "" ? null : e.target.value === "true")
-        }
-      >
-        <option value="">Não informado</option>
-        <option value="true">Sim</option>
-        <option value="false">Não</option>
-      </select>
-    );
-  if (target.options?.length) {
-    const optionValue = (v: string) =>
-      target.options!.find((option) => option.value === v || option.label === v)
-        ?.value ?? v;
-    return (
-      <select
-        aria-label={target.label}
-        multiple={target.type === "multiple"}
-        size={
-          target.type === "multiple"
-            ? Math.min(6, target.options.length)
-            : undefined
-        }
-        value={
-          target.type === "multiple"
-            ? Array.isArray(value)
-              ? value.map(optionValue)
-              : []
-            : optionValue(show(value))
-        }
-        disabled={disabled}
-        onChange={(e) =>
-          onChange(
-            target.type === "multiple"
-              ? Array.from(e.target.selectedOptions, (o) => o.value)
-              : e.target.value || null,
-          )
-        }
-      >
-        {target.type !== "multiple" && <option value="">Não informado</option>}
-        {target.options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    );
-  }
-  return (
-    <input
-      aria-label={target.label}
-      value={show(value)}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value)}
-    />
-  );
-}
-
 export function EventParticipantImportWizard({
   organizationId,
   metadata,
@@ -1058,6 +984,13 @@ export function EventParticipantImportWizard({
                             <Field
                               key={target.id}
                               label={target.label}
+                              group={
+                                target.type === "multiple" ||
+                                [
+                                  "question:cidade",
+                                  "question:paroquia",
+                                ].includes(target.id)
+                              }
                               hint={
                                 target.hidden
                                   ? "Oculto na ficha atual; a resposta original será preservada."

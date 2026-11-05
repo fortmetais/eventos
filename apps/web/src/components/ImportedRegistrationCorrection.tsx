@@ -5,6 +5,7 @@ import { formatBrazilianPhone } from "../lib/phone";
 import type { EventImportValue } from "../lib/participant-imports";
 import type { Question, Registration } from "../lib/types";
 import { Field, Notice } from "./ui";
+import { ImportValueControl } from "./ImportValueControl";
 
 function QuestionCorrection({
   question,
@@ -17,81 +18,21 @@ function QuestionCorrection({
   onChange: (value: EventImportValue) => void;
   disabled: boolean;
 }) {
-  if (question.type === "single" || question.type === "multiple")
-    return (
-      <select
-        aria-label={question.label}
-        multiple={question.type === "multiple"}
-        size={
-          question.type === "multiple"
-            ? Math.min(6, question.options.length)
-            : undefined
-        }
-        value={
-          question.type === "multiple"
-            ? Array.isArray(value)
-              ? value
-              : []
-            : String(value ?? "")
-        }
-        disabled={disabled}
-        onChange={(event) =>
-          onChange(
-            question.type === "multiple"
-              ? Array.from(
-                  event.target.selectedOptions,
-                  (option) => option.value,
-                )
-              : event.target.value || null,
-          )
-        }
-      >
-        {question.type === "single" && <option value="">Não informado</option>}
-        {question.options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    );
-  if (question.type === "boolean")
-    return (
-      <select
-        aria-label={question.label}
-        value={value === true ? "true" : value === false ? "false" : ""}
-        disabled={disabled}
-        onChange={(event) =>
-          onChange(
-            event.target.value === "" ? null : event.target.value === "true",
-          )
-        }
-      >
-        <option value="">Não informado</option>
-        <option value="true">Sim</option>
-        <option value="false">Não</option>
-      </select>
-    );
   return (
-    <input
-      aria-label={question.label}
-      type={
-        question.type === "date"
-          ? "date"
-          : question.type === "number"
-            ? "number"
-            : "text"
-      }
-      value={String(value ?? "")}
+    <ImportValueControl
+      target={{
+        id: `question:${question.id}`,
+        label: question.label,
+        type: question.type,
+        options: question.options.map((option) => ({
+          value: option,
+          label: option,
+        })),
+        exclusiveOption: question.exclusiveOption,
+      }}
+      value={value}
       disabled={disabled}
-      onChange={(event) =>
-        onChange(
-          question.type === "number"
-            ? event.target.value === ""
-              ? null
-              : Number(event.target.value)
-            : event.target.value,
-        )
-      }
+      onChange={onChange}
     />
   );
 }
@@ -243,6 +184,10 @@ export function ImportedRegistrationCorrection({
               <Field
                 key={question.id}
                 label={question.label}
+                group={
+                  question.type === "multiple" ||
+                  ["cidade", "paroquia"].includes(question.id)
+                }
                 hint={
                   question.id === "equipes_preferencia"
                     ? "Preferências importadas podem conter mais de três equipes. Esta correção não altera a alocação."
