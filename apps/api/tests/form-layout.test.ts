@@ -43,6 +43,35 @@ function minimal(kind: "VOLUNTEER" | "CAMPER" = "VOLUNTEER") {
 }
 describe("Layout versionado das fichas", () => {
   it.each(["VOLUNTEER", "CAMPER"] as const)(
+    "aceita G1 a G4 na camiseta da ficha de %s e rejeita tamanho desconhecido",
+    (kind) => {
+      const form = minimal(kind);
+      form
+        .layout!.steps.flatMap((group) => group.fields)
+        .find((field) => field.key === "base:shirt")!.hidden = false;
+      const configured = formSchema.parse(form);
+      for (const shirt of ["G1", "G2", "G3", "G4"])
+        expect(
+          validateSubmission(
+            { ...identity, shirt },
+            {},
+            configured,
+            eventDate,
+            kind,
+          ).payload.shirt,
+        ).toBe(shirt);
+      expect(() =>
+        validateSubmission(
+          { ...identity, shirt: "G5" },
+          {},
+          configured,
+          eventDate,
+          kind,
+        ),
+      ).toThrow("Tamanho de camiseta inválido.");
+    },
+  );
+  it.each(["VOLUNTEER", "CAMPER"] as const)(
     "permite enviar %s sem os campos ocultos e descarta suas respostas",
     (kind) => {
       const form = minimal(kind);

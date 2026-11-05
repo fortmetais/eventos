@@ -1,5 +1,5 @@
 import { TextDecoder } from "node:util";
-import { fieldVisible, healthFields } from "@fac/form-layout";
+import { fieldVisible, healthFields, shirtSizes } from "@fac/form-layout";
 import { assert } from "../../core/errors.js";
 import type { FormConfig } from "../events/events.validation.js";
 import { ageAt } from "../registrations/registrations.validation.js";
@@ -225,7 +225,7 @@ export function eventImportCatalog(
       id: "shirt",
       label: "Tamanho da camiseta",
       type: "single",
-      options: ["PP", "P", "M", "G", "GG", "XG", "XGG", "ESP"].map((value) => ({
+      options: shirtSizes.map((value) => ({
         value,
         label: value,
       })),

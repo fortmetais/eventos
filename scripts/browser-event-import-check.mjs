@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { chromium, expect } from "@playwright/test";
+import { shirtSizes } from "@fac/form-layout";
 
 // React real, API e autenticação simuladas. Não usa dados ou serviços de produção.
 const target = process.env.PREVIEW_URL ?? "http://127.0.0.1:5174";
@@ -104,7 +105,7 @@ const catalog = targets.map((id, index) => ({
           : "text",
   historical: id.startsWith("metadata:") || id.startsWith("historical:"),
   ...(id === "shirt"
-    ? { options: options(["PP", "P", "M", "G", "GG", "XG", "XGG", "ESP"]) }
+    ? { options: options(shirtSizes) }
     : id === "question:sexo"
       ? { options: options(["Feminino", "Masculino"]) }
       : id === "question:sacramentos"
@@ -449,15 +450,13 @@ try {
     await page
       .getByLabel(/Evento e campanha de servos/)
       .selectOption(campaignId);
-    await page
-      .getByLabel(/^Arquivo de candidaturas/)
-      .setInputFiles({
-        name: "servos-teste.csv",
-        mimeType: "text/csv",
-        buffer: Buffer.from(
-          "Nome,Nascimento,Celular\nMaria Exemplo,2000-01-01,44999999999",
-        ),
-      });
+    await page.getByLabel(/^Arquivo de candidaturas/).setInputFiles({
+      name: "servos-teste.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from(
+        "Nome,Nascimento,Celular\nMaria Exemplo,2000-01-01,44999999999",
+      ),
+    });
     await page
       .getByRole("button", { name: "Salvar arquivo e associar colunas" })
       .click();

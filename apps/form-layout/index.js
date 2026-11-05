@@ -1,4 +1,18 @@
 export const stepIds = ["identification", "photo", "about", "care", "review"];
+export const shirtSizes = Object.freeze([
+  "PP",
+  "P",
+  "M",
+  "G",
+  "GG",
+  "XG",
+  "XGG",
+  "G1",
+  "G2",
+  "G3",
+  "G4",
+  "ESP",
+]);
 export const guardianRelationships = Object.freeze([
   "Pai",
   "Mãe",

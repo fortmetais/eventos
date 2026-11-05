@@ -28,6 +28,7 @@ import {
   fieldVisible,
   sanitizeHidden,
   stepIds,
+  shirtSizes,
 } from "@fac/form-layout";
 import { RegistrationFields } from "../components/RegistrationFields";
 import {
@@ -994,11 +995,9 @@ export function Registration() {
                     onChange={(e) => update("shirt", e.target.value)}
                   >
                     <option value="">Selecione</option>
-                    {["PP", "P", "M", "G", "GG", "XG", "XGG", "ESP"].map(
-                      (s) => (
-                        <option key={s}>{s}</option>
-                      ),
-                    )}
+                    {shirtSizes.map((s) => (
+                      <option key={s}>{s}</option>
+                    ))}
                   </select>
                 </Field>
                 <ShirtSizeGuide />

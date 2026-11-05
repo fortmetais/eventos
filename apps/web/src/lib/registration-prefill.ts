@@ -1,4 +1,4 @@
-import { fieldVisible } from "@fac/form-layout";
+import { fieldVisible, shirtSizes } from "@fac/form-layout";
 import type { Payload, PublicCampaign } from "./types";
 
 export function prefillIdentity(payload: Payload) {
@@ -31,7 +31,7 @@ export function mergePrefill(
   if (
     !payload.shirt &&
     typeof suggested.shirt === "string" &&
-    ["PP", "P", "M", "G", "GG", "XG", "XGG", "ESP"].includes(suggested.shirt) &&
+    shirtSizes.includes(suggested.shirt) &&
     fieldVisible(config, kind, "base:shirt")
   ) {
     next.shirt = suggested.shirt;

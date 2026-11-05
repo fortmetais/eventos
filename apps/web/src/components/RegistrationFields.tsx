@@ -4,6 +4,7 @@ import {
   healthFields,
   stepIds,
   stepLabels,
+  shirtSizes,
   type FormKind,
   type StepId,
 } from "@fac/form-layout";
@@ -207,9 +208,7 @@ export function RegistrationFields({
                   {key === "shirt" ? "Selecione" : "Sem preferência"}
                 </option>
                 {key === "shirt"
-                  ? ["PP", "P", "M", "G", "GG", "XG", "XGG", "ESP"].map(
-                      (size) => <option key={size}>{size}</option>,
-                    )
+                  ? shirtSizes.map((size) => <option key={size}>{size}</option>)
                   : teams.map((team) => (
                       <option key={team.id} value={team.id}>
                         {team.name}

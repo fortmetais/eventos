@@ -72,7 +72,9 @@ describe("Leitura e identificação dos cadastros anteriores", () => {
     expect(normalizeBirth("29/02/2000")).toBe("2000-02-29");
     expect(normalizeBirth("2000-02-30")).toBe("");
     expect(normalizeShirt(" Tamanho (g) ")).toBe("G");
-    expect(normalizeShirt("G1")).toBe("");
+    for (const size of ["G1", "G2", "G3", "G4"])
+      expect(normalizeShirt(`Tamanho (${size.toLowerCase()})`)).toBe(size);
+    expect(normalizeShirt("G5")).toBe("");
     expect(normalizeShirt("72/56")).toBe("");
   });
   it("lê datas, abas, colunas não mapeadas e resultados já salvos sem executar fórmulas", async () => {
@@ -139,7 +141,7 @@ describe("Leitura e identificação dos cadastros anteriores", () => {
       phone: "44999999999",
       city: "Loanda",
       sex: "Feminino",
-      shirt: "G1",
+      shirt: "G5",
     };
     const row = (id: string, rowNumber: number, v = values) => ({
       id,

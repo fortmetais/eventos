@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { fieldVisible } from "@fac/form-layout";
+import { fieldVisible, shirtSizes } from "@fac/form-layout";
 import { api, ApiError } from "../lib/api";
 import { formatBrazilianPhone } from "../lib/phone";
 import type { EventImportValue } from "../lib/participant-imports";
@@ -231,13 +231,11 @@ export function ImportedRegistrationCorrection({
                   }
                 >
                   <option value="">Não informado</option>
-                  {["PP", "P", "M", "G", "GG", "XG", "XGG", "ESP"].map(
-                    (size) => (
-                      <option key={size} value={size}>
-                        {size}
-                      </option>
-                    ),
-                  )}
+                  {shirtSizes.map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
                 </select>
               </Field>
             )}

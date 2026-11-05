@@ -9,6 +9,7 @@ import {
   sanitizeHidden,
   healthFields,
   emergencyRelationships,
+  shirtSizes,
 } from "@fac/form-layout";
 
 export function validateEmergencyRelationship(
@@ -175,7 +176,7 @@ export function validateSubmission(
   if (!form.askShirt) data.shirt = undefined;
   if (data.shirt)
     assert(
-      ["PP", "P", "M", "G", "GG", "XG", "XGG", "ESP"].includes(data.shirt),
+      shirtSizes.includes(data.shirt),
       422,
       "Tamanho de camiseta inválido.",
     );

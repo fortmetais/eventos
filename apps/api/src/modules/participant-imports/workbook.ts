@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { shirtSizes } from "@fac/form-layout";
 import { z } from "zod";
 import { assert, AppError } from "../../core/errors.js";
 
@@ -72,9 +73,7 @@ export function normalizeShirt(value: string) {
     .replace(/^TAMANHO\s*/, "")
     .replace(/[()]/g, "")
     .trim();
-  return ["PP", "P", "M", "G", "GG", "XG", "XGG", "ESP"].includes(shirt)
-    ? shirt
-    : "";
+  return shirtSizes.includes(shirt) ? shirt : "";
 }
 export function normalized(values: Values) {
   const name = values.name.trim().replace(/\s+/g, " ");

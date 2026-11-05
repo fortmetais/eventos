@@ -189,6 +189,23 @@ describe("Leitura dos arquivos para candidaturas", () => {
 });
 
 describe("Associação e normalização das candidaturas", () => {
+  it.each(["G1", "G2", "G3", "G4"])(
+    "importa a camiseta %s sem pendência de tamanho",
+    (shirt) => {
+      const original = cells();
+      original[14] = shirt.toLowerCase();
+      const result = normalizeEventRow(
+        { headers, cells: original },
+        mapping(),
+        [],
+        form(),
+        departments,
+        "2027-02-05",
+      );
+      expect(result.payload.shirt).toBe(shirt);
+      expect(result.pending).not.toContain("Informar o tamanho da camiseta.");
+    },
+  );
   it("identifica as 18 colunas sem transformar concordâncias antigas em aceites atuais", () => {
     const associations = mapping();
     expect(associations.map((entry) => entry.target)).toEqual([

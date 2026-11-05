@@ -23,6 +23,7 @@ export interface FormField {
   detail?: string;
 }
 export const stepIds: StepId[];
+export const shirtSizes: readonly string[];
 export const guardianRelationships: readonly string[];
 export const emergencyRelationships: readonly string[];
 export const stepLabels: string[];

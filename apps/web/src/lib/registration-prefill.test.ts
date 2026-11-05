@@ -15,6 +15,15 @@ const form = {
   ],
 } as unknown as PublicCampaign["form"]["config"];
 describe("Sugestões limitadas de dados anteriores", () => {
+  it.each(["G1", "G2", "G3", "G4"])(
+    "recupera o tamanho %s para a camiseta visível",
+    (shirt) => {
+      expect(mergePrefill({}, { shirt }, form, "VOLUNTEER")).toEqual({
+        changed: true,
+        payload: { shirt, answers: {} },
+      });
+    },
+  );
   it("consulta somente com os três dados preenchidos e diferencia a identificação atual", () => {
     expect(
       prefillIdentity({ name: "Maria Teste", birthDate: "2000-01-01" }),
@@ -91,7 +100,7 @@ describe("Sugestões limitadas de dados anteriores", () => {
     expect(
       mergePrefill(
         {},
-        { shirt: "G1", answers: { sexo: "Opção inexistente" } },
+        { shirt: "G5", answers: { sexo: "Opção inexistente" } },
         form,
         "VOLUNTEER",
       ).changed,

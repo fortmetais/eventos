@@ -120,6 +120,13 @@ describe("Correção de candidatura importada", () => {
     fireEvent.change(screen.getByLabelText("Nome completo"), {
       target: { value: "Maria Exemplo Corrigida" },
     });
+    for (const size of ["G1", "G2", "G3", "G4"])
+      expect(
+        screen.getByRole("option", { name: size }),
+      ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Tamanho da camiseta"), {
+      target: { value: "G4" },
+    });
     fireEvent.change(screen.getByLabelText(/Motivo da correção/), {
       target: { value: "Nome conferido com a participante" },
     });
@@ -137,7 +144,7 @@ describe("Correção de candidatura importada", () => {
         method: "PATCH",
         body: {
           updatedAt: "2026-11-05T12:00:00.000Z",
-          overrides: { name: "Maria Exemplo Corrigida" },
+          overrides: { name: "Maria Exemplo Corrigida", shirt: "G4" },
           reason: "Nome conferido com a participante",
         },
       },
