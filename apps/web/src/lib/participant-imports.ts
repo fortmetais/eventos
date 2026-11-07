@@ -113,14 +113,30 @@ export type EventImportRow = {
   warnings: string[];
   pending: string[];
   duplicateRows: number[];
+  relatedRows?: {
+    id: string;
+    rowNumber: number;
+    payload: EventImportRow["payload"];
+    executionState: EventImportRow["executionState"];
+    registrationId?: string | null;
+    distinctReason?: string | null;
+  }[];
   candidates: {
     id: string;
+    protocol?: string;
     name: string;
     birthDate: string;
     phone: string;
     status: string;
     origin: string;
     same: boolean;
+    sources?: {
+      batchId: string;
+      rowId: string;
+      rowNumber: number;
+      fileName: string;
+      sheet: string;
+    }[];
   }[];
   replaceId: string | null;
   registrationId?: string | null;
@@ -161,6 +177,9 @@ export type EventImportBatch = {
   rows: EventImportRow[];
   page: number;
   pageSize: number;
+  view?: "all" | "duplicates";
+  filteredTotal?: number;
+  duplicateCount?: number;
 };
 export type ImportMetadata = {
   ready: boolean;

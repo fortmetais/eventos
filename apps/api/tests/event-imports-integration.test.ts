@@ -608,6 +608,182 @@ const url = process.env.TEST_EVENT_IMPORT_DATABASE_URL;
       });
       expect(row.registrationId).toBe(native.id);
     });
+    it("consulta duplicidades de todo o lote, preserva incorporadas e localiza origens entre páginas e lotes", async () => {
+      const originals = [
+        sourceRow("Homônima Conferida", "44999990001"),
+        ...Array.from({ length: 50 }, (_, n) =>
+          sourceRow(`Pessoa Única ${n}`, "44999990002"),
+        ),
+        sourceRow("Homônima Conferida", "44999990003"),
+      ];
+      let b = (await upload(csv(originals)).expect(200)).body;
+      b = await settings(b, { mapping: mapping(), step: 4 });
+      const lookup = (query: string, who = "organizer") =>
+        request(app).get(`${base}/${b.id}?${query}`).set(auth(who));
+      let duplicates = (await lookup("view=duplicates&pageSize=1").expect(200))
+        .body;
+      expect(duplicates).toMatchObject({
+        duplicateCount: 2,
+        filteredTotal: 2,
+        summary: { total: 52 },
+      });
+      expect(duplicates.rows[0].duplicateRows).toEqual([53]);
+      expect(duplicates.rows[0].relatedRows[0]).toMatchObject({
+        rowNumber: 53,
+        payload: { phone: "44999990003" },
+      });
+      const second = (
+        await lookup("view=duplicates&pageSize=1&page=2").expect(200)
+      ).body.rows[0];
+      expect(second.rowNumber).toBe(53);
+      const last = (await lookup(`rowId=${second.id}&pageSize=50`).expect(200))
+        .body;
+      expect(last.page).toBe(2);
+      expect(last.rows.some((row: any) => row.id === second.id)).toBe(true);
+      await lookup(`rowId=${randomUUID()}`).expect(404);
+      await lookup("view=duplicates", "secretary").expect(403);
+      await request(app)
+        .get(
+          `/api/v1/organizations/${otherOrg}/participant-imports/${b.id}?view=duplicates`,
+        )
+        .set(auth("other"))
+        .expect(404);
+      const first = b.rows[0];
+      b = await revise(b, first); // No justification: confirmation must remain blocked.
+      await request(app)
+        .post(`${base}/${b.id}/confirm`)
+        .set(auth())
+        .send({ revision: b.revision, rowIds: [first.id] })
+        .expect(422);
+      b = await revise(b, b.rows[0], {
+        distinctReason: "Pessoas distintas conferidas, telefones diferentes",
+      });
+      b = (
+        await request(app)
+          .post(`${base}/${b.id}/confirm`)
+          .set(auth())
+          .send({ revision: b.revision, rowIds: [first.id] })
+          .expect(200)
+      ).body;
+      duplicates = (await lookup("view=duplicates").expect(200)).body;
+      expect(
+        duplicates.rows.find((r: any) => r.id === first.id).executionState,
+      ).toBe("IMPORTED");
+      const pending = duplicates.rows.find((r: any) => r.id === second.id);
+      expect(pending.duplicateRows).toEqual([2]);
+      expect(pending.candidates[0]).toMatchObject({
+        protocol: expect.stringMatching(/^INS-/),
+        sources: [
+          expect.objectContaining({
+            batchId: b.id,
+            rowNumber: 2,
+            rowId: first.id,
+          }),
+        ],
+      });
+      b = await revise(b, pending, {
+        distinctReason: "Segunda pessoa distinta conferida",
+      });
+      b = (
+        await request(app)
+          .post(`${base}/${b.id}/confirm`)
+          .set(auth())
+          .send({ revision: b.revision, rowIds: [second.id] })
+          .expect(200)
+      ).body;
+      duplicates = (await lookup("view=duplicates").expect(200)).body;
+      expect(duplicates.rows).toHaveLength(2);
+      expect(
+        duplicates.rows.every(
+          (r: any) => r.executionState === "IMPORTED" && r.distinctReason,
+        ),
+      ).toBe(true);
+
+      // A new file associated to the same candidature is an additional source, not a second person.
+      let associated = (
+        await upload(
+          csv([
+            sourceRow(
+              "Homônima Conferida",
+              "44999990001",
+              "Arquivo atualizado",
+            ),
+          ]),
+        ).expect(200)
+      ).body;
+      associated = await settings(associated, { mapping: mapping(), step: 4 });
+      const candidateId = duplicates.rows.find(
+        (r: any) => r.id === first.id,
+      ).registrationId;
+      associated = await revise(associated, associated.rows[0], {
+        decision: "REPLACE",
+        replaceId: candidateId,
+      });
+      associated = (
+        await request(app)
+          .post(`${base}/${associated.id}/confirm`)
+          .set(auth())
+          .send({
+            revision: associated.revision,
+            rowIds: [associated.rows[0].id],
+          })
+          .expect(200)
+      ).body;
+      expect(associated.state).toBe("CONFIRMED");
+      const after = (await lookup("view=duplicates").expect(200)).body;
+      const reference = after.rows
+        .find((r: any) => r.id === second.id)
+        .candidates.find((c: any) => c.id === candidateId);
+      expect(reference.sources).toHaveLength(2);
+      const confirmedView = await request(app)
+        .get(`${base}/${associated.id}?view=duplicates`)
+        .set(auth())
+        .expect(200);
+      expect(
+        confirmedView.body.rows[0].candidates.every(
+          (c: any) => c.id !== candidateId,
+        ),
+      ).toBe(true);
+
+      let samePerson = (
+        await upload(
+          csv([
+            sourceRow("Carlos Nativo", "44555555555", "Primeira origem"),
+            sourceRow("Carlos Nativo", "44555555555", "Segunda origem"),
+          ]),
+        ).expect(200)
+      ).body;
+      samePerson = await settings(samePerson, { mapping: mapping(), step: 4 });
+      const nativeId = samePerson.rows[0].candidates[0].id;
+      for (let index = 0; index < 2; index++) {
+        samePerson = await revise(samePerson, samePerson.rows[index], {
+          decision: "REPLACE",
+          replaceId: nativeId,
+        });
+        samePerson = (
+          await request(app)
+            .post(`${base}/${samePerson.id}/confirm`)
+            .set(auth())
+            .send({
+              revision: samePerson.revision,
+              rowIds: [samePerson.rows[index].id],
+            })
+            .expect(200)
+        ).body;
+      }
+      const noDuplicate = (
+        await request(app)
+          .get(`${base}/${samePerson.id}?view=duplicates`)
+          .set(auth())
+          .expect(200)
+      ).body;
+      expect(noDuplicate).toMatchObject({
+        state: "CONFIRMED",
+        duplicateCount: 0,
+        filteredTotal: 0,
+        rows: [],
+      });
+    });
     it("permite o mesmo arquivo em outra campanha e exige revalidar departamento removido", async () => {
       const event = await db.event.findUniqueOrThrow({
         where: { id: eventId },

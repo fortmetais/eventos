@@ -490,7 +490,10 @@ export class EventImportsService {
           (o) =>
             o.row.id !== row.id &&
             o.row.decision !== "DISCARD" &&
-            o.row.executionState === "PENDING" &&
+            o.row.executionState !== "DISCARDED" &&
+            !(
+              row.registrationId && o.row.registrationId === row.registrationId
+            ) &&
             !o.result.errors.length &&
             o.result.nameBirth === result.nameBirth,
         )
@@ -517,6 +520,7 @@ export class EventImportsService {
         duplicateRows,
         candidates: matches.map((c) => ({
           id: c.id,
+          protocol: c.protocol,
           name: c.person.name,
           birthDate: c.person.birthDate.toISOString().slice(0, 10),
           phone: c.person.phone,
@@ -534,10 +538,47 @@ export class EventImportsService {
     importId: string,
     page = 1,
     pageSize = 50,
+    view: "all" | "duplicates" = "all",
+    rowId?: string,
   ) {
     await this.requireReady();
     const batch = await this.load(this.db, organizationId, importId);
     const rows = await this.reports(this.db, batch);
+    // Filter the whole batch before pagination, including frozen/imported rows.
+    const duplicateRows = rows.filter(
+      (r) =>
+        r.decision !== "DISCARD" &&
+        r.executionState !== "DISCARDED" &&
+        (r.duplicateRows.length > 0 || r.candidates.length > 0),
+    );
+    const visibleRows = view === "duplicates" ? duplicateRows : rows;
+    if (rowId) {
+      const index = visibleRows.findIndex((row) => row.id === rowId);
+      assert(index >= 0, 404, "Linha não encontrada neste lote e filtro.");
+      page = Math.floor(index / pageSize) + 1;
+    }
+    const pageRows = visibleRows.slice((page - 1) * pageSize, page * pageSize);
+    const candidateIds = [
+      ...new Set(pageRows.flatMap((r) => r.candidates.map((c) => c.id))),
+    ];
+    const sources = candidateIds.length
+      ? await this.db.participantImportRow.findMany({
+          where: {
+            organizationId,
+            registrationId: { in: candidateIds },
+            executionState: "IMPORTED",
+            batch: { mode: "EVENT", campaignId: batch.campaignId },
+          },
+          select: {
+            id: true,
+            rowNumber: true,
+            importId: true,
+            registrationId: true,
+            batch: { select: { fileName: true, sheet: true } },
+          },
+          orderBy: { rowNumber: "asc" },
+        })
+      : [];
     const headers = batch.rows.length ? originalOf(batch.rows[0]).headers : [];
     const columns = headers.map((_, column) => {
       const values = new Map<string, number>();
@@ -595,7 +636,38 @@ export class EventImportsService {
       },
       page,
       pageSize,
-      rows: rows.slice((page - 1) * pageSize, page * pageSize),
+      view,
+      filteredTotal: visibleRows.length,
+      duplicateCount: duplicateRows.length,
+      rows: pageRows.map((row) => ({
+        ...row,
+        relatedRows: rows
+          .filter((other) => row.duplicateRows.includes(other.rowNumber))
+          .map((other) => ({
+            id: other.id,
+            rowNumber: other.rowNumber,
+            payload: {
+              name: other.payload.name,
+              birthDate: other.payload.birthDate,
+              phone: other.payload.phone,
+            },
+            executionState: other.executionState,
+            registrationId: other.registrationId,
+            distinctReason: other.distinctReason,
+          })),
+        candidates: row.candidates.map((candidate) => ({
+          ...candidate,
+          sources: sources
+            .filter((source) => source.registrationId === candidate.id)
+            .map((source) => ({
+              batchId: source.importId,
+              rowId: source.id,
+              rowNumber: source.rowNumber,
+              fileName: source.batch.fileName,
+              sheet: source.batch.sheet,
+            })),
+        })),
+      })),
     };
   }
   async settings(

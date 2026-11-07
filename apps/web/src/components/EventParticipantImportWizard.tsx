@@ -12,6 +12,7 @@ import type {
 } from "../lib/participant-imports";
 import { Field, Loading, Notice } from "./ui";
 import { ImportValueControl as ValueControl } from "./ImportValueControl";
+import { ImportDuplicateReferences } from "./ImportDuplicateReferences";
 
 const steps = [
   "Destino e arquivo",
@@ -20,6 +21,7 @@ const steps = [
   "Conferir pessoas",
   "Confirmar importação",
   "Resultado",
+  "Possíveis duplicidades",
 ];
 const stateLabels: Record<string, string> = {
   MAPPING: "Associar colunas",
@@ -54,7 +56,7 @@ export function EventParticipantImportWizard({
   onRefresh: () => Promise<void>;
 }) {
   const base = `/organizations/${organizationId}/participant-imports`;
-  const [, setParams] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const [batch, setBatch] = useState<EventImportBatch | null>(null);
   const [loading, setLoading] = useState(!!initialBatchId);
   const [busy, setBusy] = useState(false);
@@ -78,6 +80,7 @@ export function EventParticipantImportWizard({
   const [comparisonError, setComparisonError] = useState("");
   const [comparisonLoading, setComparisonLoading] = useState(false);
   const [cancelCheck, setCancelCheck] = useState(false);
+  const [consultingRow, setConsultingRow] = useState(false);
   const destination = metadata.destinations?.find(
     (d) => d.campaignId === campaignId,
   );
@@ -88,7 +91,14 @@ export function EventParticipantImportWizard({
         candidate.id === editing.replaceId && candidate.origin !== "IMPORT",
     );
   const frozen = batch?.state === "CONFIRMED" || batch?.state === "CANCELLED";
-  const step = batch ? Math.max(2, Math.min(6, batch.step)) : 1;
+  const step =
+    batch?.view === "duplicates"
+      ? 7
+      : consultingRow
+        ? 4
+        : batch
+          ? Math.max(2, Math.min(6, batch.step))
+          : 1;
   const allMapped =
     !!batch &&
     batch.headers.every((_, column) =>
@@ -107,7 +117,7 @@ export function EventParticipantImportWizard({
           row.decision === "REPLACE" ||
           row.reviewed)));
 
-  function adopt(value: EventImportBatch) {
+  function adopt(value: EventImportBatch, rowId?: string) {
     setBatch(value);
     setMapping(value.mapping ?? []);
     setRules(value.rules ?? []);
@@ -117,9 +127,20 @@ export function EventParticipantImportWizard({
           (t) => !t.historical && value.mapping.some((m) => m.target === t.id),
         )?.id ?? "",
       );
-    setEditing(null);
+    const openedRow = rowId ? value.rows.find((row) => row.id === rowId) : null;
+    setEditing(openedRow ? structuredClone(openedRow) : null);
+    setDistinctReason(openedRow?.distinctReason ?? "");
+    setConsultingRow(!!openedRow);
     setCampaignId(value.campaign.id);
-    setParams({ modo: "evento", lote: value.id }, { replace: true });
+    setParams(
+      {
+        modo: "evento",
+        lote: value.id,
+        ...(value.view === "duplicates" ? { etapa: "7" } : {}),
+        ...(rowId ? { linha: rowId } : {}),
+      },
+      { replace: true },
+    );
     setSelected((current) =>
       batch && batch.id !== value.id
         ? []
@@ -129,11 +150,19 @@ export function EventParticipantImportWizard({
           }),
     );
   }
-  async function openBatch(id: string, page = 1) {
+  async function openBatch(
+    id: string,
+    page = 1,
+    view: "all" | "duplicates" = "all",
+    rowId?: string,
+  ) {
     const value = await api<EventImportBatch>(
-      `${base}/${id}?page=${page}&pageSize=50`,
+      `${base}/${id}?page=${page}&pageSize=50${view === "duplicates" ? "&view=duplicates" : ""}${rowId ? `&rowId=${rowId}` : ""}`,
     );
-    adopt(value);
+    adopt(value, rowId);
+  }
+  function openRelatedRow(rowId: string, batchId = batch!.id) {
+    void run(() => openBatch(batchId, 1, "all", rowId));
   }
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -169,9 +198,13 @@ export function EventParticipantImportWizard({
     if (!initialBatchId) return;
     let active = true;
     setLoading(true);
-    void api<EventImportBatch>(`${base}/${initialBatchId}?page=1&pageSize=50`)
+    const initialRow = params.get("linha") ?? undefined;
+    const duplicateView = params.get("etapa") === "7";
+    void api<EventImportBatch>(
+      `${base}/${initialBatchId}?page=1&pageSize=50${duplicateView ? "&view=duplicates" : ""}${initialRow ? `&rowId=${initialRow}` : ""}`,
+    )
       .then((value) => {
-        if (active) adopt(value);
+        if (active) adopt(value, initialRow);
       })
       .catch((e) => {
         if (active) setError(e.message);
@@ -469,9 +502,30 @@ export function EventParticipantImportWizard({
               <button
                 className="text-button"
                 disabled={busy}
-                onClick={() => void run(() => openBatch(batch.id, batch.page))}
+                onClick={() =>
+                  void run(() =>
+                    openBatch(
+                      batch.id,
+                      batch.page,
+                      batch.view,
+                      consultingRow ? editing?.id : undefined,
+                    ),
+                  )
+                }
               >
                 Recarregar lote
+              </button>
+              <button
+                className="button outline"
+                disabled={busy}
+                onClick={() =>
+                  void run(() => openBatch(batch.id, 1, "duplicates"))
+                }
+              >
+                7. Conferir possíveis duplicidades
+                {batch.duplicateCount !== undefined
+                  ? ` (${batch.duplicateCount})`
+                  : ""}
               </button>
               {!frozen && batch.summary.imported === 0 && (
                 <button
@@ -972,6 +1026,16 @@ export function EventParticipantImportWizard({
                       aria-label={`Revisar candidatura da linha ${editing.rowNumber}`}
                     >
                       <h3>Linha {editing.rowNumber}</h3>
+                      {(editing.duplicateRows.length > 0 ||
+                        editing.candidates.length > 0) && (
+                        <ImportDuplicateReferences
+                          row={editing}
+                          organizationId={organizationId}
+                          eventId={batch.campaign.event.id}
+                          busy={busy}
+                          onOpenRow={openRelatedRow}
+                        />
+                      )}
                       <div className="form-grid">
                         {batch.catalog
                           .filter(
@@ -1306,7 +1370,102 @@ export function EventParticipantImportWizard({
                   </div>
                 </section>
               )}
-              {(step === 6 || batch.state === "CONFIRMED") && (
+              {step === 7 && (
+                <section
+                  className="panel"
+                  aria-label="Conferência de possíveis duplicidades"
+                >
+                  <h2>7. Possíveis duplicidades</h2>
+                  <Notice kind="info">
+                    Esta conferência inclui linhas já incorporadas e
+                    candidaturas existentes na campanha. Criar uma candidatura
+                    como pessoa distinta mantém a coincidência visível com sua
+                    justificativa. Confira antes de alterar uma candidatura na
+                    gestão de inscrições.
+                  </Notice>
+                  <p>
+                    {batch.duplicateCount ?? batch.filteredTotal ?? 0} respostas
+                    com possíveis duplicidades neste lote.
+                  </p>
+                  {batch.rows.map((row) => (
+                    <section
+                      className="previous-review"
+                      key={row.id}
+                      aria-label={`Duplicidades da linha ${row.rowNumber}`}
+                    >
+                      <h3>
+                        Linha {row.rowNumber} ·{" "}
+                        {row.executionState === "IMPORTED"
+                          ? "Já incorporada"
+                          : "Ainda não incorporada"}
+                      </h3>
+                      <ImportDuplicateReferences
+                        row={row}
+                        organizationId={organizationId}
+                        eventId={batch.campaign.event.id}
+                        busy={busy}
+                        onOpenRow={openRelatedRow}
+                      />
+                      <button
+                        className="button outline"
+                        disabled={busy}
+                        onClick={() => openRelatedRow(row.id)}
+                      >
+                        {row.executionState === "IMPORTED"
+                          ? "Consultar"
+                          : "Revisar"}{" "}
+                        linha {row.rowNumber}
+                      </button>
+                    </section>
+                  ))}
+                  {!batch.rows.length && (
+                    <p>Nenhuma possível duplicidade encontrada neste lote.</p>
+                  )}
+                  <div className="previous-actions">
+                    <button
+                      className="button outline"
+                      disabled={busy || batch.page <= 1}
+                      onClick={() =>
+                        void run(() =>
+                          openBatch(batch.id, batch.page - 1, "duplicates"),
+                        )
+                      }
+                    >
+                      Duplicidades anteriores
+                    </button>
+                    <span>
+                      Página {batch.page} de{" "}
+                      {Math.max(
+                        1,
+                        Math.ceil((batch.filteredTotal ?? 0) / batch.pageSize),
+                      )}
+                    </span>
+                    <button
+                      className="button outline"
+                      disabled={
+                        busy ||
+                        batch.page * batch.pageSize >=
+                          (batch.filteredTotal ?? 0)
+                      }
+                      onClick={() =>
+                        void run(() =>
+                          openBatch(batch.id, batch.page + 1, "duplicates"),
+                        )
+                      }
+                    >
+                      Próximas duplicidades
+                    </button>
+                    <button
+                      className="text-button"
+                      disabled={busy}
+                      onClick={() => void run(() => openBatch(batch.id))}
+                    >
+                      Voltar ao lote
+                    </button>
+                  </div>
+                </section>
+              )}
+              {step === 6 && (
                 <section className="panel">
                   <h2>6. Resultado da importação</h2>
                   <p>
@@ -1327,6 +1486,15 @@ export function EventParticipantImportWizard({
                     resolver as informações obrigatórias pendentes.
                   </Notice>
                   <div className="previous-actions">
+                    <button
+                      className="button outline"
+                      disabled={busy}
+                      onClick={() =>
+                        void run(() => openBatch(batch.id, 1, "duplicates"))
+                      }
+                    >
+                      Continuar para etapa 7
+                    </button>
                     <Link
                       className="button primary"
                       to={`/organizacao/${organizationId}/inscricoes?evento=${batch.campaign.event.id}`}

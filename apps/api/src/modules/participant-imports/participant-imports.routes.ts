@@ -134,6 +134,10 @@ export function participantImportsRoutes(
           param(req, "importId"),
           page,
           pageSize,
+          z.enum(["all", "duplicates"]).parse(req.query.view ?? "all"),
+          req.query.rowId === undefined
+            ? undefined
+            : z.uuid().parse(req.query.rowId),
         ),
       );
       return;

@@ -16,6 +16,9 @@ O código permite rascunho nulo somente na origem IMPORT, mantendo as candidatur
 4. Conferir linhas, respostas originais, possíveis duplicidades e candidaturas existentes. Identidade inválida impede incorporação; informações complementares incompletas ficam como pendências. Nome/nascimento/telefone localizam correspondências, sem comprovar titularidade de conta.
 5. Confirmar as linhas prontas escolhidas. A operação é transacional e repetível; o restante continua em revisão. Linhas incorporadas ficam congeladas. Uma edição simultânea exige recarregar a versão atual, evitando sobrescrita silenciosa.
 6. Acessar o resultado e a gestão de inscrições. Cancelamento de lote não incorporado não remove cadastros. Depois da incorporação, usar as ações auditadas de candidatura, sem exclusão automática do lote.
+7. Conferir possíveis duplicidades de todo o lote, inclusive respostas já incorporadas. A etapa pode ser aberta também durante a revisão e retomada pela URL. A filtragem ocorre antes da paginação. Cada resposta mostra as linhas relacionadas, nome, nascimento, telefone, protocolo/situação da candidatura e arquivo/aba/linha de origem, com acesso à linha e à candidatura. A justificativa para pessoas distintas continua visível depois da criação. Linhas associadas à mesma candidatura não são contadas como duas pessoas. Ajustes após incorporação seguem a gestão auditada de inscrições.
+
+A correspondência automática atual usa nome normalizado e nascimento, incluindo identidades anteriores registradas nas candidaturas importadas. O telefone é exibido para conferência; a coincidência não comprova que se trata da mesma pessoa. A revisão individual mostra as referências mesmo quando a decisão é **Criar candidatura**, antes da justificativa. A etapa 7 é uma consulta, sem união, exclusão ou cancelamento automático.
 
 Reenvio de arquivo atualizado ou reordenado deve ser comparado com a campanha existente. Número de linha e nome do arquivo não identificam a pessoa. Atualizar exige escolher a candidatura correspondente; aprovação, departamento, conta e alterações posteriores são preservados. O original e as informações de origem permanecem disponíveis no painel autorizado.
 
@@ -43,21 +46,26 @@ O novo modo não alimenta a consulta pública de autopreenchimento. A segunda en
 
 Todos os caminhos ficam sob `/api/v1`, exigem sessão e organizador da organização. O prefixo do assistente é `/organizations/:organizationId/participant-imports`.
 
-| Operação                            | Corpo/resultado                                                                                   |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `POST .../inspect`                  | Multipart `file`; inspeciona abas CSV/XLSX                                                        |
-| `POST .../event`                    | Multipart `file`, `campaignId`, `formVersionId`, `sheet` opcional; salva o lote e devolve revisão |
-| `GET .../:importId?page=&pageSize=` | Contexto, catálogo, associações, equivalências, contagens e linhas paginadas                      |
-| `PUT .../:importId/settings`        | `revision`, `mapping`/`rules`/`step`; devolve lote atualizado                                     |
-| `PUT .../:importId/rows/:rowId`     | `revision` da linha, `decision`, `overrides`, `replaceId` e `distinctReason` quando aplicáveis    |
-| `POST .../:importId/review`         | `revision` do lote e `rowIds`; confirma conferência explícita das linhas sem conflitos            |
-| `POST .../:importId/confirm`        | `revision` do lote e `rowIds`; confirmação parcial transacional                                   |
-| `POST .../:importId/cancel`         | `revision`; apenas lote não incorporado                                                           |
+| Operação                                            | Corpo/resultado                                                                                                                  |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `POST .../inspect`                                  | Multipart `file`; inspeciona abas CSV/XLSX                                                                                       |
+| `POST .../event`                                    | Multipart `file`, `campaignId`, `formVersionId`, `sheet` opcional; salva o lote e devolve revisão                                |
+| `GET .../:importId?page=&pageSize=`                 | Contexto, catálogo, associações, equivalências, contagens e linhas paginadas                                                     |
+| `GET .../:importId?view=duplicates&page=&pageSize=` | Etapa 7, com `duplicateCount`, `filteredTotal`, referências de linhas e origens das candidaturas; disponível em lotes encerrados |
+| `PUT .../:importId/settings`                        | `revision`, `mapping`/`rules`/`step`; devolve lote atualizado                                                                    |
+| `PUT .../:importId/rows/:rowId`                     | `revision` da linha, `decision`, `overrides`, `replaceId` e `distinctReason` quando aplicáveis                                   |
+| `POST .../:importId/review`                         | `revision` do lote e `rowIds`; confirma conferência explícita das linhas sem conflitos                                           |
+| `POST .../:importId/confirm`                        | `revision` do lote e `rowIds`; confirmação parcial transacional                                                                  |
+| `POST .../:importId/cancel`                         | `revision`; apenas lote não incorporado                                                                                          |
 
 `mapping` contém `{ column, target, confirmed }`; `rules` contém `{ target, from, to }`. Índices de coluna começam em zero. Valores dos destinos `question:<id>` são tipados; preferências usam IDs dos departamentos. `overrides` é um objeto de destinos e valores explícitos. Revisões desatualizadas devolvem 409. `KEEP`, `DISCARD`, `REPLACE` e `PENDING` mantêm os significados de conservar, descartar, atualizar/associar explicitamente e deixar pendente.
 
 `PATCH /organizations/:organizationId/registrations/:registrationId/imported-data` recebe `{ updatedAt, overrides, reason }`, somente para importadas. `GET .../registrations` aceita `origin=IMPORT|PUBLIC_FORM` e `completeness=PENDING|COMPLETE` além dos filtros atuais.
 
+O GET do lote aceita `rowId` para localizar diretamente a página de uma linha desse lote e filtro; não permite consultar linhas de outra organização. O painel de inscrições aceita `inscricao` na URL para abrir o detalhe autorizado da candidatura. A etapa 7 usa `view=duplicates` sem mudar a etapa gravada ou a revisão do lote, dispensando migração.
+
 ## Verificação
 
 `npm run test:database` prepara PostgreSQL descartável e ensaia tanto a migration completa quanto o SQL aditivo e sua reaplicação. Os testes usam dados sintéticos; não versionar o CSV real nem respostas pessoais em fixtures. Testar confirmação parcial, reenvio, concorrência, isolamento, diferenças com candidaturas existentes, capacidade e bloqueio de confirmação. A prévia do arquivo real deve ser feita sem confirmar linhas nem enviar mensagens.
+
+Na etapa 7, testar duas linhas coincidentes separadas por mais de 50 respostas, acesso direto à linha, duplicidade com candidatura nativa/importada de outro lote, falta de justificativa bloqueando a confirmação, preservação das referências/justificativas após incorporação, lote encerrado, ausência de coincidências, paginação do filtro e isolamento por organização. No navegador de computador e celular, abrir o resultado, ir à etapa 7, recarregar e consultar uma linha incorporada; conferir links das candidaturas e ausência de nova confirmação.

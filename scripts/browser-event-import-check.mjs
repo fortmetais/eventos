@@ -372,7 +372,21 @@ try {
         created = true;
         return json(refresh());
       }
-      if (path === `${base}/${batchId}`) return json(refresh());
+      if (path === `${base}/${batchId}`) {
+        const duplicates = rows.filter(
+          (row) => row.duplicateRows.length || row.candidates.length,
+        );
+        const view =
+          url.searchParams.get("view") === "duplicates" ? "duplicates" : "all";
+        return json({
+          ...refresh(),
+          view,
+          duplicateCount: duplicates.length,
+          filteredTotal:
+            view === "duplicates" ? duplicates.length : rows.length,
+          rows: view === "duplicates" ? duplicates : rows,
+        });
+      }
       if (path === `${base}/${batchId}/settings`) {
         const data = request.postDataJSON();
         assert.equal(data.revision, batch.revision);
@@ -605,6 +619,88 @@ try {
       .scrollIntoViewIfNeeded();
     await fits();
     await page.screenshot({ path: `${screenshots}-result.png` });
+    // A possible duplicate remains consultable even after both candidatures exist.
+    for (const [index, row] of rows.entries()) {
+      const other = rows[1 - index];
+      row.duplicateRows = [other.rowNumber];
+      row.distinctReason = "Homônimos conferidos pela organização";
+      row.relatedRows = [
+        {
+          id: other.id,
+          rowNumber: other.rowNumber,
+          payload: other.payload,
+          executionState: other.executionState,
+          registrationId: other.registrationId,
+        },
+      ];
+      row.candidates = [
+        {
+          id: other.registrationId,
+          protocol: `INS-TESTE-${other.rowNumber}`,
+          name: other.payload.name,
+          birthDate: other.payload.birthDate,
+          phone: other.payload.phone,
+          status: "RECEIVED",
+          origin: "IMPORT",
+          same: false,
+          sources: [
+            {
+              batchId,
+              rowId: other.id,
+              rowNumber: other.rowNumber,
+              fileName: batch.fileName,
+              sheet: batch.sheet,
+            },
+          ],
+        },
+      ];
+    }
+    await page.getByRole("button", { name: "Continuar para etapa 7" }).click();
+    await expect(
+      page.getByRole("heading", { name: "7. Possíveis duplicidades" }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("2 respostas com possíveis duplicidades neste lote."),
+    ).toBeVisible();
+    const duplicate = page.getByRole("region", {
+      name: "Duplicidades da linha 2",
+      exact: true,
+    });
+    await expect(
+      duplicate.getByText(/Justificativa registrada: Homônimos/),
+    ).toBeVisible();
+    await expect(
+      duplicate.getByRole("link", { name: "Abrir candidatura INS-TESTE-3" }),
+    ).toHaveAttribute(
+      "href",
+      `/organizacao/${orgId}/inscricoes?evento=${eventId}&inscricao=registration-3`,
+    );
+    await duplicate.scrollIntoViewIfNeeded();
+    await fits();
+    await page.screenshot({
+      path: `${screenshots}-duplicates.png`,
+      fullPage: true,
+    });
+    await page.reload();
+    await expect(
+      page.getByRole("heading", { name: "7. Possíveis duplicidades" }),
+    ).toBeVisible();
+    await page
+      .getByRole("region", { name: "Duplicidades da linha 2", exact: true })
+      .getByRole("button", { name: "Conferir linha 3", exact: true })
+      .click();
+    const consulted = page.getByRole("region", {
+      name: "Revisar candidatura da linha 3",
+    });
+    await expect(consulted).toBeVisible();
+    await expect(
+      consulted.getByLabel("Celular", { exact: true }),
+    ).toBeDisabled();
+    assert.equal(
+      confirmations,
+      2,
+      "Consultar duplicidades não deve criar candidaturas.",
+    );
     assert.deepEqual(errors, []);
     assert.deepEqual(unexpected, []);
     await context.close();

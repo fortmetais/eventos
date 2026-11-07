@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { DepartmentCapacity } from "../components/DepartmentCapacity";
 import { ClipboardList, Plus } from "lucide-react";
@@ -47,7 +47,9 @@ export function ReviewRegistrations() {
   const [origin, setOrigin] = useState("");
   const [completeness, setCompleteness] = useState("");
   const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(
+    search.get("inscricao"),
+  );
   const [error, setError] = useState("");
   const [teamName, setTeamName] = useState("");
   const [teamCapacity, setTeamCapacity] = useState("");
@@ -75,8 +77,32 @@ export function ReviewRegistrations() {
   const [linkEmail, setLinkEmail] = useState("");
   const [linkReason, setLinkReason] = useState("");
   const [info, setInfo] = useState("");
+  useEffect(() => {
+    setPhoto("");
+    if (
+      !selected ||
+      detail.data?.id !== selected ||
+      !detail.data.snapshot.photoAssetId
+    )
+      return;
+    const controller = new AbortController();
+    void api<{ url: string }>(
+      `/organizations/${organizationId}/registrations/${selected}/photo`,
+      { signal: controller.signal },
+    )
+      .then((result) => {
+        if (!controller.signal.aborted) setPhoto(result.url);
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [
+    organizationId,
+    selected,
+    detail.data?.id,
+    detail.data?.snapshot.photoAssetId,
+  ]);
   const canDecide = auth.eventsEnabled || membership.role === "ORGANIZER";
-  async function choose(id: string) {
+  function choose(id: string) {
     setLinkEmail("");
     setLinkReason("");
     setInfo("");
@@ -86,14 +112,6 @@ export function ReviewRegistrations() {
     setNextStatus(" ");
     setPhoto("");
     setTeamId("");
-    if (!list.data?.items.find((item) => item.id === id)?.snapshot.photoAssetId)
-      return;
-    try {
-      const result = await api<{ url: string }>(
-        `/organizations/${organizationId}/registrations/${id}/photo`,
-      );
-      setPhoto(result.url);
-    } catch {}
   }
   async function change(e: FormEvent) {
     e.preventDefault();

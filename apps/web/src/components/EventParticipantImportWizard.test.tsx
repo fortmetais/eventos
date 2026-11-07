@@ -164,7 +164,21 @@ beforeEach(() => {
               answers: { sexo: "Feminino" },
             },
           };
-        if (path.startsWith(`${base}/batch?`)) return structuredClone(batch);
+        if (path.startsWith(`${base}/batch?`)) {
+          const query = new URL(path, "http://test").searchParams;
+          const value = structuredClone(batch);
+          value.view =
+            query.get("view") === "duplicates" ? "duplicates" : "all";
+          value.duplicateCount = value.rows.filter(
+            (r) => r.duplicateRows.length || r.candidates.length,
+          ).length;
+          if (value.view === "duplicates")
+            value.rows = value.rows.filter(
+              (r) => r.duplicateRows.length || r.candidates.length,
+            );
+          value.filteredTotal = value.rows.length;
+          return value;
+        }
         if (path === `${base}/batch/settings`) {
           if (rejectSettings)
             throw new ApiError(
@@ -247,6 +261,121 @@ function view(initialBatchId?: string, meta = metadata) {
 }
 
 describe("Assistente de candidaturas importadas", () => {
+  it("mostra a linha correspondente e a candidatura mesmo ao escolher criar uma pessoa distinta", async () => {
+    batch.step = 4;
+    batch.state = "REVIEW";
+    batch.rows[0].duplicateRows = [3];
+    batch.rows[0].relatedRows = [
+      {
+        id: "row2",
+        rowNumber: 3,
+        payload: {
+          name: "Maria Teste",
+          birthDate: "2000-01-01",
+          phone: "44988888888",
+        },
+        executionState: "IMPORTED",
+        registrationId: "existing",
+      },
+    ];
+    batch.rows[0].candidates = [
+      {
+        id: "existing",
+        protocol: "INS-EXISTENTE",
+        name: "Maria Teste",
+        birthDate: "2000-01-01",
+        phone: "44988888888",
+        origin: "IMPORT",
+        status: "APPROVED",
+        same: false,
+        sources: [
+          {
+            batchId: "batch",
+            rowId: "row2",
+            rowNumber: 3,
+            fileName: "respostas.csv",
+            sheet: "CSV",
+          },
+        ],
+      },
+    ];
+    view("batch");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Revisar linha 2" }),
+    );
+    const comparison = screen.getByRole("region", {
+      name: "Possíveis duplicidades da linha 2",
+    });
+    expect(within(comparison).getByText(/Linha 3 deste arquivo/)).toBeVisible();
+    expect(
+      within(comparison).getByRole("link", {
+        name: "Abrir candidatura INS-EXISTENTE",
+      }),
+    ).toHaveAttribute(
+      "href",
+      "/organizacao/org/inscricoes?evento=event&inscricao=existing",
+    );
+    expect(
+      screen.getByLabelText(/Justificativa para manter pessoa distinta/),
+    ).toBeVisible();
+    fireEvent.click(
+      within(comparison).getByRole("button", { name: "Conferir linha 3" }),
+    );
+    expect(
+      await screen.findByRole("region", {
+        name: "Revisar candidatura da linha 3",
+      }),
+    ).toBeVisible();
+    expect(mocks.api).toHaveBeenCalledWith(
+      `${base}/batch?page=1&pageSize=50&rowId=row2`,
+    );
+  });
+  it("consulta a etapa 7 depois da incorporação sem alterar ou confirmar o lote", async () => {
+    batch.state = "CONFIRMED";
+    batch.step = 6;
+    batch.rows[0].executionState = "IMPORTED";
+    batch.rows[0].registrationId = "imported";
+    batch.rows[0].distinctReason = "Homônimos conferidos pela organização";
+    batch.rows[0].duplicateRows = [3];
+    view("batch");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Continuar para etapa 7" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "7. Possíveis duplicidades" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Justificativa registrada: Homônimos/),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Abrir candidatura desta linha" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "6. Resultado da importação" }),
+    ).not.toBeInTheDocument();
+    expect(mocks.api.mock.calls.every(([, options]) => !options?.method)).toBe(
+      true,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Voltar ao lote" }));
+    expect(
+      await screen.findByRole("heading", {
+        name: "6. Resultado da importação",
+      }),
+    ).toBeVisible();
+  });
+  it("informa quando a etapa 7 não encontra duplicidades", async () => {
+    view("batch");
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: /7. Conferir possíveis duplicidades/,
+      }),
+    );
+    expect(
+      await screen.findByText(
+        "Nenhuma possível duplicidade encontrada neste lote.",
+      ),
+    ).toBeVisible();
+  });
   it("usa a lista de cidades na revisão e envia a escolha com UF sem alterar o original", async () => {
     batch.step = 4;
     batch.state = "REVIEW";
