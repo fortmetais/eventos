@@ -1,9 +1,14 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ReviewRegistrations } from "./ReviewRegistrations";
 
-const mocks = vi.hoisted(() => ({ api: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  api: vi.fn(),
+  noticeOpened: vi.fn(),
+  status: "RECEIVED",
+  team: null as { id: string; name: string } | null,
+}));
 vi.mock("../lib/api", () => ({ api: mocks.api }));
 vi.mock("../lib/auth", () => ({ useAuth: () => ({ eventsEnabled: true }) }));
 vi.mock("./Organization", () => ({
@@ -13,6 +18,17 @@ vi.mock("./Organization", () => ({
   }),
 }));
 vi.mock("../components/GuardianNotice", () => ({ GuardianNotice: () => null }));
+vi.mock("../components/DecisionNotice", async () => {
+  const { useEffect } = await import("react");
+  return {
+    DecisionNotice: () => {
+      useEffect(() => {
+        mocks.noticeOpened();
+      }, []);
+      return null;
+    },
+  };
+});
 vi.mock("../lib/hooks", () => ({
   useRemote: (path: string | null) => ({
     loading: false,
@@ -26,7 +42,8 @@ vi.mock("../lib/hooks", () => ({
           : {
               id: "existing",
               protocol: "INS-EXISTENTE",
-              status: "RECEIVED",
+              status: mocks.status,
+              team: mocks.team,
               origin: "PUBLIC_FORM",
               snapshot: {
                 name: "Maria Teste",
@@ -43,7 +60,34 @@ vi.mock("../lib/hooks", () => ({
   }),
 }));
 afterEach(cleanup);
+beforeEach(() => {
+  mocks.api.mockResolvedValue({ url: "https://example.test/photo.webp" });
+  mocks.status = "RECEIVED";
+  mocks.team = null;
+  mocks.noticeOpened.mockClear();
+});
 describe("Link para candidatura correspondente", () => {
+  it("recarrega o aviso ao mudar de departamento, mesmo mantendo a situação da candidatura", () => {
+    mocks.status = "APPROVED";
+    mocks.team = { id: "secretaria", name: "SECRETARIA" };
+    const content = () => (
+      <MemoryRouter
+        initialEntries={["/organizacao/org/inscricoes?inscricao=existing"]}
+      >
+        <ReviewRegistrations />
+      </MemoryRouter>
+    );
+    const view = render(content());
+    expect(mocks.noticeOpened).toHaveBeenCalledTimes(1);
+    view.rerender(content());
+    expect(mocks.noticeOpened).toHaveBeenCalledTimes(1);
+    mocks.team = { id: "anjos", name: "ANJOS" };
+    view.rerender(content());
+    expect(mocks.noticeOpened).toHaveBeenCalledTimes(2);
+    mocks.team = { id: "anjos", name: "ANJOS GUARDIÕES" };
+    view.rerender(content());
+    expect(mocks.noticeOpened).toHaveBeenCalledTimes(3);
+  });
   it("abre a ficha indicada na URL e carrega sua foto mesmo fora da página atual da lista", async () => {
     mocks.api.mockResolvedValue({ url: "https://example.test/photo.webp" });
     render(

@@ -18,6 +18,10 @@ A tabela guarda decisão de origem, autoria, prazo/revogação do link, tentativ
 
 **Aceite:** “Sua candidatura para servir no [evento] foi aceita!” seguido de organização, data e link de confirmação. O aviso informa que a organização finalizará a equipe e a participação.
 
+Quando o servo já está alocado, o texto de aceite inclui **Departamento alocado: [nome do departamento]** e informa que a organização finalizará a confirmação da participação. Usa somente a alocação efetiva, sem confundir preferências com departamento. O painel atualiza a mensagem ao salvar uma troca de departamento. Sem alocação, mantém o texto de equipe a definir. A recusa e os avisos de campistas mantêm seus textos próprios.
+
+WhatsApp e e-mail utilizam o mesmo texto. A mensagem preparada considera a alocação atual; mensagens já enviadas permanecem com o conteúdo do momento do envio. Alocar ou trocar um departamento não envia mensagens automaticamente nem renova o link ou declara envio de WhatsApp. Confira a mensagem no painel após alocar e antes de abrir a conversa.
+
 **Recusa:** “Não foi dessa vez!” seguido de agradecimento pela disponibilidade e convite acolhedor para uma próxima oportunidade. O link abre o resultado, sem botão de confirmar presença. O motivo interno da decisão, contatos de emergência e dados de saúde não são enviados na mensagem.
 
 No WhatsApp, o organizador precisa enviar a mensagem na conversa e depois clicar em **Marcar como enviado pelo WhatsApp**. Abrir a conversa sozinho não marca envio. Esse registro é uma declaração do organizador, não uma confirmação de entrega/leitura do WhatsApp. Não é necessária integração com WhatsApp Business para esta opção.

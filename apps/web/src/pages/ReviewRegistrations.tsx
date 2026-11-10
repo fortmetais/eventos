@@ -711,7 +711,7 @@ export function ReviewRegistrations() {
                       registration.status,
                     ) && (
                       <DecisionNotice
-                        key={`${registration.id}:${registration.status}`}
+                        key={`${registration.id}:${registration.status}:${registration.team?.id ?? ""}:${registration.team?.name ?? ""}`}
                         organizationId={organizationId}
                         registrationId={registration.id}
                       />

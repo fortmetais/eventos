@@ -208,6 +208,10 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       expect(messages[0].text).toContain(state.notice.link);
       expect(messages[0].text).not.toContain("Motivo interno");
       expect(messages[0].text).not.toContain("saúde");
+      expect(state.notice.message).not.toContain("Departamento alocado:");
+      expect(state.notice.message).toContain(
+        "A organização finalizará sua equipe",
+      );
       expect(state.notice.emailStatus).toBe("ENVIADA");
       const row = await db.decisionNotice.findUniqueOrThrow({
         where: { id: noticeId },
@@ -269,6 +273,83 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
         (await db.decisionNotice.findUniqueOrThrow({ where: { id: noticeId } }))
           .whatsappSentAt,
       ).not.toBeNull();
+    });
+    it("prepara WhatsApp com o departamento atual e mantém o link e o controle de envio ao realocar", async () => {
+      const id = await candidate();
+      delivery = "SEM_CONFIGURACAO";
+      expect((await status(id, "REVIEW")).status).toBe(200);
+      expect((await status(id, "APPROVED")).status).toBe(200);
+      const initial = (
+        await request(app)
+          .get(`${base(id)}/decision-notice`)
+          .set(auth())
+          .expect(200)
+      ).body.notice;
+      expect(initial.message).not.toContain("Departamento alocado:");
+      const teamA = await db.team.create({
+        data: { eventId, name: "SECRETARIA & ACOLHIDA", capacity: 2 },
+      });
+      const teamB = await db.team.create({
+        data: { eventId, name: "ANJOS", capacity: 2 },
+      });
+      const sentBeforeAllocation = messages.length;
+      await request(app)
+        .put(`${base(id)}/team`)
+        .set(auth())
+        .send({ teamId: teamA.id })
+        .expect(200);
+      let notice = (
+        await request(app)
+          .get(`${base(id)}/decision-notice`)
+          .set(auth())
+          .expect(200)
+      ).body.notice;
+      expect(notice.message).toContain(
+        "Departamento alocado: SECRETARIA & ACOLHIDA.",
+      );
+      expect(notice.message).not.toContain(
+        "A organização finalizará sua equipe",
+      );
+      expect(new URL(notice.whatsappLink).searchParams.get("text")).toBe(
+        notice.message,
+      );
+      expect(notice.link).toBe(initial.link);
+      expect(notice.whatsappSentAt).toBeNull();
+      expect(messages.length).toBe(sentBeforeAllocation);
+      delivery = "ENVIADA";
+      await request(app)
+        .post(`${base(id)}/decision-notice/email`)
+        .set(auth())
+        .expect(200);
+      expect(messages.at(-1)!.text).toContain(
+        "Departamento alocado: SECRETARIA & ACOLHIDA.",
+      );
+      const count = messages.length;
+      await request(app)
+        .put(`${base(id)}/team`)
+        .set(auth())
+        .send({ teamId: teamB.id })
+        .expect(200);
+      notice = (
+        await request(app)
+          .get(`${base(id)}/decision-notice`)
+          .set(auth())
+          .expect(200)
+      ).body.notice;
+      expect(notice.message).toContain("Departamento alocado: ANJOS.");
+      expect(notice.message).not.toContain("SECRETARIA & ACOLHIDA");
+      expect(notice.link).toBe(initial.link);
+      expect(notice.whatsappSentAt).toBeNull();
+      expect(messages.length).toBe(count);
+      expect((await status(id, "REJECTED")).status).toBe(200);
+      const refusal = (
+        await request(app)
+          .get(`${base(id)}/decision-notice`)
+          .set(auth())
+          .expect(200)
+      ).body.notice;
+      expect(refusal.message).toContain("Não foi dessa vez!");
+      expect(refusal.message).not.toContain("Departamento alocado:");
     });
     it("abrir o link não confirma; resposta é explícita, sem conta e idempotente", async () => {
       const response = await request(app)

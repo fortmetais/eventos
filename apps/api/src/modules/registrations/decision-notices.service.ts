@@ -8,6 +8,7 @@ const noticeInclude = {
   registration: {
     include: {
       person: true,
+      team: true,
       campaign: { include: { event: { include: { organization: true } } } },
     },
   },
@@ -129,12 +130,19 @@ export class DecisionNoticesService {
     }).format(notice.expiresAt);
     const name = registration.person.name;
     const camper = registration.campaign.kind === "CAMPER";
+    const department = registration.team?.name;
+    const departmentText = department
+      ? `Departamento alocado: ${department}.\n\n`
+      : "";
+    const volunteerConfirmation = department
+      ? "A organização finalizará a confirmação da sua participação."
+      : "A organização finalizará sua equipe e a confirmação da participação.";
     const text = camper
       ? notice.kind === "ACEITE"
         ? `Olá, ${name}! Sua inscrição como campista no ${event.name} foi aprovada!\n\n${event.organization.name} · Evento a partir de ${eventDate}.\n\nConfirme sua presença pelo link: ${link}\n\nO link é pessoal e válido até ${expiry} (horário de Brasília). A organização finalizará a confirmação conforme as vagas e, para menores, após a autorização do responsável.\n\nEsperamos você!`
         : `Olá, ${name}. Agradecemos seu interesse em participar do ${event.name}. Sua inscrição como campista não foi selecionada para esta edição. Esperamos receber você em uma próxima oportunidade!\n\nConfira o resultado: ${link}\n\n${event.organization.name}`
       : notice.kind === "ACEITE"
-        ? `Olá, ${name}! Sua candidatura para servir no ${event.name} foi aceita!\n\n${event.organization.name} · Evento a partir de ${eventDate}.\n\nConfirme sua presença pelo link: ${link}\n\nO link é pessoal e válido até ${expiry} (horário de Brasília). A organização finalizará sua equipe e a confirmação da participação.\n\nEsperamos você!`
+        ? `Olá, ${name}! Sua candidatura para servir no ${event.name} foi aceita!\n\n${event.organization.name} · Evento a partir de ${eventDate}.\n\n${departmentText}Confirme sua presença pelo link: ${link}\n\nO link é pessoal e válido até ${expiry} (horário de Brasília). ${volunteerConfirmation}\n\nEsperamos você!`
         : `Olá, ${name}. Não foi dessa vez!\n\nAgradecemos sua disponibilidade para servir no ${event.name}. Sua candidatura não foi selecionada para esta edição. Esperamos poder contar com você em uma próxima oportunidade!\n\nConfira o resultado: ${link}\n\n${event.organization.name}`;
     const snapshot = registration.snapshot as {
       email?: string;
