@@ -247,6 +247,7 @@ export function EventParticipantImportWizard({
       batch?.rows.filter(
         (row) =>
           filter === "ALL" ||
+          (filter === "NOT_IMPORTED" && row.executionState !== "IMPORTED") ||
           (filter === "READY" && canImport(row)) ||
           (filter === "PENDING" &&
             (row.errors.length > 0 ||
@@ -855,6 +856,7 @@ export function EventParticipantImportWizard({
                       onChange={(e) => setFilter(e.target.value)}
                     >
                       <option value="ALL">Todas</option>
+                      <option value="NOT_IMPORTED">Não incorporadas</option>
                       <option value="READY">Prontas para importar</option>
                       <option value="PENDING">Com pendências</option>
                       <option value="DUPLICATE">Possíveis duplicados</option>
