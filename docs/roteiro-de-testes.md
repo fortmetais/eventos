@@ -3,7 +3,7 @@
 ## Densidade da gestão no celular — 11/11/2026
 
 - Conferir cabeçalho, menu da organização e abas compactos; nomes de candidatos em 14 px e rótulos menores. O ícone de pendências fica depois do nome, com desenho de 16 px e área de toque ampliada no celular.
-- Cada cartão mantém departamento, decisão e convite, com Ficha, WhatsApp e cópia na mesma linha. O departamento selecionado não é repetido abaixo do dropdown. Os botões de compartilhamento usam ícones e nomes acessíveis.
+- Cada cartão mantém departamento, decisão e convite, com o ícone da ficha no canto superior direito. O nome e as pendências não podem se sobrepor ao botão, inclusive com nomes longos. WhatsApp e cópia permanecem juntos no rodapé. O departamento selecionado não é repetido abaixo do dropdown. Os botões usam ícones e nomes acessíveis.
 - Conferir controles com toque de 44 px, pesquisa nomeada para leitores de tela e sem rolagem horizontal. Campos editáveis preservam texto de 16 px. Filtros, ficha e mensagens também usam espaçamentos menores.
 
 Validação: compilação e 27 testes da página aprovados. O percurso no navegador passou em desktop e telas de 320, 390 e 430 px, verificando nome, altura dos cartões, alinhamento das ações e limites de toque. Capturas de densidade são feitas no topo da página para evitar deslocamento visual da busca fixa. Sem alteração de banco ou regras de decisão.

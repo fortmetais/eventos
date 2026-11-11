@@ -3858,6 +3858,9 @@ td strong {
     border-radius: 10px;
   }
   .registrations-workspace .review-registration-table td:first-child {
+    grid-row: 1;
+    min-height: 44px;
+    padding-right: 56px !important;
     padding-bottom: 5px !important;
   }
   .registrations-workspace .review-person > strong {
@@ -3908,8 +3911,14 @@ td strong {
     display: inline;
   }
   .registrations-workspace .review-registration-table td.review-cell-detail {
-    grid-column: 1;
-    grid-row: 4;
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    justify-self: end;
+    width: 44px !important;
+  }
+  .registrations-workspace .review-cell-detail .review-action-label {
+    display: none;
   }
   .registrations-workspace .review-registration-table td.review-cell-whatsapp {
     grid-column: 2;

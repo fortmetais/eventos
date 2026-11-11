@@ -587,13 +587,76 @@ try {
             action.width >= 44 && action.height >= 44 && action.height <= 48,
             "Ações compactas devem preservar área de toque de pelo menos 44 px.",
           );
-          assert(
-            Math.abs(action.y - actionBounds[0].y) <= 1,
-            "Ficha, WhatsApp e cópia devem ficar alinhados na mesma linha.",
-          );
         }
+        const [fichaBounds, whatsappBounds, copyBounds] = actionBounds;
+        const headingBounds = await firstCard
+          .locator(".review-person-heading")
+          .boundingBox();
+        assert(
+          fichaBounds.x > cardBounds.x + cardBounds.width / 2 &&
+            fichaBounds.y >= cardBounds.y &&
+            fichaBounds.y - cardBounds.y <= 16 &&
+            fichaBounds.x + fichaBounds.width <=
+              cardBounds.x + cardBounds.width,
+          "A ficha deve ficar no canto superior direito, dentro do cartão.",
+        );
+        assert(
+          headingBounds && Math.abs(headingBounds.y - fichaBounds.y) <= 5,
+          "O nome deve permanecer no cabeçalho, ao lado do ícone da ficha.",
+        );
+        assert(
+          Math.abs(whatsappBounds.y - copyBounds.y) <= 1 &&
+            whatsappBounds.y > fichaBounds.y + fichaBounds.height,
+          "WhatsApp e cópia devem ficar juntos no rodapé, separados da ficha.",
+        );
+        assert.equal(
+          await firstCard
+            .locator(".review-cell-detail .review-action-label")
+            .isVisible(),
+          false,
+          "A ficha no celular deve mostrar somente o ícone.",
+        );
+        const name = await firstCard
+          .locator(".review-person-heading strong")
+          .elementHandle();
+        const ficha = await firstCard
+          .getByRole("button", {
+            name: "Abrir ficha de Ágata Silva",
+            exact: true,
+          })
+          .elementHandle();
+        assert(name && ficha);
+        await name.evaluate((node) => {
+          node.textContent = "Adaiane Possidônio Brunieri de Oliveira Silva";
+        });
+        const longNameBounds = await name.boundingBox();
+        const longNameFicha = await ficha.boundingBox();
+        assert(
+          longNameBounds &&
+            longNameFicha &&
+            longNameBounds.x + longNameBounds.width <= longNameFicha.x,
+          "O nome longo deve quebrar a linha sem passar por baixo do ícone da ficha.",
+        );
+        await name.evaluate((node) => {
+          node.textContent = "Ágata Silva";
+        });
+        const importedName = await importedCandidate
+          .locator(".review-person-heading strong")
+          .boundingBox();
+        const pendingIcon = await importedCandidate
+          .getByRole("button", {
+            name: "Ver pendências de Bruno Souza",
+            exact: true,
+          })
+          .boundingBox();
+        assert(
+          importedName &&
+            pendingIcon &&
+            pendingIcon.x >= importedName.x + importedName.width,
+          "O ícone de pendências deve continuar depois do nome.",
+        );
         await page.screenshot({
-          path: `.local/screenshots/review-mobile-density-${screenLabel}.png`,
+          path: `.local/screenshots/review-ficha-top-${screenLabel}.png`,
           fullPage: true,
         });
       }
