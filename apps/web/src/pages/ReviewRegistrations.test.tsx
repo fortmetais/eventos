@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -132,6 +133,8 @@ const candidate = {
   decisionSummary: { ready: true, notice: null },
 } as Registration;
 let events: EventEdition[], items: Registration[], total: number;
+let mobileViewport = false;
+const mediaListeners = new Set<() => void>();
 
 function Location() {
   const location = useLocation();
@@ -161,6 +164,21 @@ function queries() {
 }
 
 beforeEach(() => {
+  mobileViewport = false;
+  mediaListeners.clear();
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: vi.fn((media: string) => ({
+      get matches() {
+        return mobileViewport;
+      },
+      media,
+      addEventListener: (_: string, listener: () => void) =>
+        mediaListeners.add(listener),
+      removeEventListener: (_: string, listener: () => void) =>
+        mediaListeners.delete(listener),
+    })),
+  });
   events = structuredClone([edition]);
   items = structuredClone([candidate]);
   total = 1;
@@ -198,6 +216,90 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Gestão de inscrições por evento", () => {
+  it("mantém busca e ações no celular e concentra filtros em uma única janela", async () => {
+    mobileViewport = true;
+    show(
+      "/organizacao/org/inscricoes?evento=event&q=Maria&origin=IMPORT&status=REVIEW",
+    );
+    await ready();
+    expect(screen.getByRole("searchbox")).toHaveValue("Maria");
+    expect(
+      screen.queryByRole("combobox", { name: "Ordenar" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: /Filtros e ordenação, 2 filtros ativos/,
+      }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Abrir ficha de Maria Teste" }),
+    ).toHaveTextContent("Ver ficha");
+    expect(
+      screen.getByRole("button", {
+        name: "Enviar convite por WhatsApp para Maria Teste",
+      }),
+    ).toHaveTextContent("WhatsApp");
+    expect(screen.getByText("Disponível após o aceite")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Filtros e ordenação/ }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Filtros e ordenação" }),
+    ).toBeVisible();
+    expect(screen.getAllByRole("combobox", { name: "Ordenar" })).toHaveLength(
+      1,
+    );
+    fireEvent.change(screen.getByRole("combobox", { name: "Ordenar" }), {
+      target: { value: "NAME_DESC" },
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        "sort=NAME_DESC",
+      ),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Limpar filtros" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).not.toHaveTextContent("origin=");
+      expect(screen.getByTestId("location")).not.toHaveTextContent("status=");
+    });
+    expect(screen.getByTestId("location")).toHaveTextContent("q=Maria");
+    fireEvent.click(screen.getByRole("button", { name: "Ver 1 inscrição" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("searchbox")).toHaveValue("Maria");
+    expect(
+      screen.getByRole("button", { name: "Filtros e ordenação" }),
+    ).toBeVisible();
+  });
+  it("preserva ordenação e remove a janela ao passar de celular para desktop", async () => {
+    mobileViewport = true;
+    show();
+    await ready();
+    fireEvent.click(
+      screen.getByRole("button", { name: /Filtros e ordenação/ }),
+    );
+    fireEvent.change(screen.getByRole("combobox", { name: "Ordenar" }), {
+      target: { value: "ACCEPTED_FIRST" },
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        "sort=ACCEPTED_FIRST",
+      ),
+    );
+    act(() => {
+      mobileViewport = false;
+      for (const listener of mediaListeners) listener();
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(screen.getAllByRole("combobox", { name: "Ordenar" })).toHaveLength(
+      1,
+    );
+    expect(screen.getByRole("combobox", { name: "Ordenar" })).toHaveValue(
+      "ACCEPTED_FIRST",
+    );
+    expect(screen.getByRole("button", { name: "Mais filtros" })).toBeVisible();
+  });
   it("protege alterações não salvas ao voltar no histórico e permite continuar editando", async () => {
     render(
       <MemoryRouter

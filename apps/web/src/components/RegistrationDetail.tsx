@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useState, type FormEvent } from "react";
 import { orderedFields, stepIds } from "@fac/form-layout";
 import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
@@ -62,7 +62,9 @@ export function RegistrationDetail({
   useEffect(() => {
     setTeamId(undefined);
   }, [registration?.team?.id, registrationId]);
-  useEffect(() => {
+  // The containing dialog must receive edits before the next native Escape or
+  // navigation event. A passive effect can leave its close handler briefly clean.
+  useLayoutEffect(() => {
     onDirtyChange?.(
       busy ||
         correctionDirty ||

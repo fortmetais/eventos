@@ -2,6 +2,12 @@
 
 ## Inscrições por evento — revisão de 11/11/2026
 
+Ajuste de usabilidade no celular: o menu da organização fica recolhido nesta página; busca permanece visível e os demais controles ficam em **Filtros e ordenação**, com aplicação imediata e retorno por **Ver inscrições**. O botão **Limpar filtros** preserva o texto da pesquisa. Os cartões têm ações nomeadas **Ficha** e **WhatsApp**, departamento completo em texto e orientação quando o envio não está disponível. Campos usam 16 px e alvos de toque de pelo menos 44 px; modais respeitam as áreas de segurança da tela.
+
+No teste de navegador, conferir larguras de 320, 390 e 430 px, além do desktop: primeiro departamento acessível na primeira tela, menu recolhível, filtros sem controles duplicados, ordem/filtros preservados ao fechar, pesquisa fixa durante a rolagem, nomes longos de departamento, ficha/convite, navegação sem rolagem horizontal e retorno de foco. Em aparelho físico, conferir o teclado e o seletor nativo de opções; a emulação automatizada não reproduz o teclado do iPhone.
+
+Validação do ajuste móvel: 266 testes da interface aprovados; verificação de tipos e compilação aprovadas. O percurso completo de inscrições passou em desktop e nas três larguras móveis, incluindo a pesquisa fixa durante rolagem e a proteção de alterações ao fechar a ficha. A primeira seleção de departamento fica acessível na primeira tela nos tamanhos testados. Nenhuma alteração no banco ou nas regras de negócio.
+
 Esta revisão organiza a gestão por cards de evento e abas. Não exige SQL novo. Os itens históricos abaixo mantêm as datas de suas entregas; não representam comprovação da versão atualmente publicada.
 
 | Percurso | Resultado esperado |

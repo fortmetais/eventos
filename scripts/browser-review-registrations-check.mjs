@@ -62,11 +62,20 @@ const browser = await chromium.launch({
 });
 mkdirSync(".local/screenshots", { recursive: true });
 try {
-  for (const mobile of [false, true]) {
+  for (const viewport of [
+    { width: 1536, height: 1000 },
+    { width: 390, height: 844 },
+    { width: 320, height: 740 },
+    { width: 430, height: 932 },
+  ]) {
+    const mobile = viewport.width <= 800;
+    const screenLabel = mobile
+      ? viewport.width === 390
+        ? "mobile"
+        : `mobile-${viewport.width}`
+      : "desktop";
     const context = await browser.newContext({
-      viewport: mobile
-        ? { width: 390, height: 844 }
-        : { width: 1536, height: 1000 },
+      viewport,
       isMobile: mobile,
       hasTouch: mobile,
     });
@@ -357,8 +366,21 @@ try {
       await expect(
         page.getByText(event.name, { exact: true }).first(),
       ).toBeVisible();
+      if (mobile) {
+        const menu = page.getByRole("button", {
+          name: "Menu da organização",
+          exact: true,
+        });
+        await expect(menu).toHaveAttribute("aria-expanded", "false");
+        await menu.tap();
+        await expect(
+          page.getByRole("navigation", { name: "Organização", exact: true }),
+        ).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(menu).toHaveAttribute("aria-expanded", "false");
+      }
       await page.screenshot({
-        path: `.local/screenshots/review-events-${mobile ? "mobile" : "desktop"}.png`,
+        path: `.local/screenshots/review-events-${screenLabel}.png`,
         fullPage: true,
       });
       await page.getByText(event.name, { exact: true }).first().click();
@@ -381,6 +403,27 @@ try {
         0,
         "A tabela não deve carregar ficha individual por linha.",
       );
+      if (mobile) {
+        const firstDepartment = page.getByRole("combobox", {
+          name: "Departamento de Ágata Silva",
+          exact: true,
+        });
+        const bounds = await firstDepartment.boundingBox();
+        assert(
+          bounds && bounds.y + bounds.height < viewport.height,
+          "O primeiro departamento deve estar acessível na primeira tela.",
+        );
+        assert.equal(
+          await firstDepartment.evaluate(
+            (node) => getComputedStyle(node).fontSize,
+          ),
+          "16px",
+        );
+        assert(
+          bounds.height >= 44,
+          "Campos precisam de área adequada ao toque.",
+        );
+      }
       await page.getByRole("tab", { name: "Departamentos e vagas" }).click();
       await expect(
         page.getByRole("button", { name: "Criar departamento" }),
@@ -398,29 +441,49 @@ try {
       await expect(
         page.getByText("Bruno Souza", { exact: true }),
       ).toBeVisible();
+      const openFilters = async () => {
+        if (mobile)
+          await page
+            .getByRole("button", { name: /^Filtros e ordenação/ })
+            .tap();
+      };
+      const closeFilters = async () => {
+        if (mobile)
+          await page.getByRole("button", { name: /^Ver .*inscri/ }).tap();
+      };
       const ordering = page.getByRole("combobox", { name: /^Ordenar/ });
+      await openFilters();
       await ordering.selectOption("NAME_DESC");
+      await closeFilters();
       await expect(
         page.locator("tbody tr .review-person strong").first(),
       ).toHaveText("Daniel Lima");
+      await openFilters();
       await page
         .getByRole("button", { name: /Recusadas e canceladas ocultas/i })
         .click();
+      await closeFilters();
       await expect(
         page.getByText("Carla Oliveira", { exact: true }),
       ).toBeVisible();
+      await openFilters();
       await ordering.selectOption("ACCEPTED_FIRST");
+      await closeFilters();
       await expect(
         page.locator("tbody tr .review-person strong").first(),
       ).toHaveText("Bruno Souza");
+      await openFilters();
       await ordering.selectOption("RECEIVED_ASC");
+      await closeFilters();
       await expect(
         page.locator("tbody tr .review-person strong").first(),
       ).toHaveText("Ágata Silva");
+      await openFilters();
       await ordering.selectOption("NAME_ASC");
       await page
         .getByRole("button", { name: /Recusadas e canceladas visíveis/i })
         .click();
+      await closeFilters();
       await expect(
         page.getByText("Carla Oliveira", { exact: true }),
       ).toHaveCount(0);
@@ -439,16 +502,21 @@ try {
       assert.equal(emails, 0, "Aceitar não envia e-mail.");
       assert(changes.includes("APPROVED") && changes.includes("team"));
       await page.screenshot({
-        path: `.local/screenshots/review-registrations-${mobile ? "mobile" : "desktop"}.png`,
+        path: `.local/screenshots/review-registrations-${screenLabel}.png`,
         fullPage: true,
       });
+      if (mobile) {
+        await page.getByText("Daniel Lima", { exact: true }).scrollIntoViewIfNeeded();
+        await expect(search).toBeInViewport();
+        await expect(page.getByRole("button", { name: /^Filtros e ordenação/ })).toBeInViewport();
+      }
       await candidate.getByRole("button", { name: /ficha/i }).click();
       const dialog = page.getByRole("dialog");
       await expect(
         dialog.getByRole("heading", { name: "Ágata Silva" }),
       ).toBeVisible();
       await page.screenshot({
-        path: `.local/screenshots/review-detail-${mobile ? "mobile" : "desktop"}.png`,
+        path: `.local/screenshots/review-detail-${screenLabel}.png`,
         fullPage: true,
       });
       await dialog
@@ -484,12 +552,14 @@ try {
       await page.keyboard.press("Escape");
       await expect(candidate).toContainText("Aguardando confirmação");
       notices.get(rows[0].id).confirmedAt = new Date().toISOString();
+      await openFilters();
       await page
         .getByRole("button", { name: /atualizar (lista|inscri)/i })
         .click();
+      await closeFilters();
       await expect(candidate).toContainText("Presença confirmada");
       await page.screenshot({
-        path: `.local/screenshots/review-presence-${mobile ? "mobile" : "desktop"}.png`,
+        path: `.local/screenshots/review-presence-${screenLabel}.png`,
         fullPage: true,
       });
       await page.goto(
@@ -507,11 +577,11 @@ try {
       );
       assert.deepEqual(errors, []);
       console.log(
-        `Inscrições ${mobile ? "celular" : "desktop"}: cards, abas, pesquisa/URL, indicação, aprovação, modal, convite manual, presença e link antigo aprovados.`,
+        `Inscrições ${screenLabel}: cards, abas, pesquisa/URL, indicação, aprovação, modal, convite manual, presença e link antigo aprovados.`,
       );
     } catch (error) {
       await page.screenshot({
-        path: `.local/screenshots/review-error-${mobile ? "mobile" : "desktop"}.png`,
+        path: `.local/screenshots/review-error-${screenLabel}.png`,
         fullPage: true,
       });
       throw error;

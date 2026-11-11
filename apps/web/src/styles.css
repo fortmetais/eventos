@@ -3398,3 +3398,373 @@ td strong {
     width: 100%;
   }
 }
+
+/* Compact mobile workspace: scoped to registrations until other screens are reviewed. */
+.organization-mobile-toggle,
+.review-action-label,
+.review-current-department,
+.review-whatsapp-hint {
+  display: none;
+}
+
+@media (max-width: 850px) {
+  .admin-shell--registrations {
+    padding: 12px 12px 32px;
+  }
+  .admin-shell--registrations .sidebar {
+    padding: 0;
+    margin-bottom: 12px;
+    border-radius: 12px;
+  }
+  .admin-shell--registrations .sidebar-org {
+    display: none;
+  }
+  .admin-shell--registrations .organization-mobile-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 52px;
+    padding: 9px 12px;
+    border: 0;
+    border-radius: 12px;
+    background: white;
+    color: var(--purple);
+    text-align: left;
+  }
+  .organization-mobile-toggle-copy {
+    flex: 1;
+    min-width: 0;
+  }
+  .organization-mobile-toggle-copy small,
+  .organization-mobile-toggle-copy strong {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .organization-mobile-toggle-copy small {
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .organization-mobile-toggle-copy strong {
+    color: #283346;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+  .organization-mobile-chevron {
+    transition: transform 0.15s;
+  }
+  .mobile-organization-open .organization-mobile-chevron {
+    transform: rotate(180deg);
+  }
+  .admin-shell--registrations .sidebar nav {
+    display: none;
+  }
+  .admin-shell--registrations .sidebar.mobile-organization-open nav {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 4px;
+    overflow: visible;
+    padding: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .admin-shell--registrations .sidebar nav a {
+    min-height: 48px;
+    white-space: normal;
+    padding: 10px;
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 800px) {
+  .registrations-workspace .review-back {
+    margin-bottom: 2px;
+    min-height: 44px;
+  }
+  .registrations-workspace .page-heading {
+    margin-bottom: 12px;
+    gap: 8px;
+  }
+  .admin-shell--registrations .page-heading h1 {
+    margin: 4px 0 6px;
+    font-size: 22px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+  }
+  .registrations-workspace .page-heading .eyebrow {
+    display: none;
+  }
+  .registrations-workspace .page-heading p {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .registrations-workspace .review-tabs {
+    margin-bottom: 12px;
+    gap: 0;
+  }
+  .registrations-workspace .review-tabs button {
+    min-height: 48px;
+    padding: 10px 8px;
+    font-size: 13px;
+  }
+  .registrations-workspace .review-controls {
+    position: sticky;
+    top: env(safe-area-inset-top, 0px);
+    z-index: 3;
+    padding: 10px;
+    margin-bottom: 12px;
+    border-radius: 12px;
+    box-shadow: 0 4px 14px #17213608;
+    background: white;
+  }
+  .review-toolbar.review-mobile-controls {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: end;
+    gap: 8px;
+  }
+  .review-toolbar.review-mobile-controls > .field:first-child {
+    flex: 1 1 0;
+    min-width: 0;
+    margin: 0;
+  }
+  .review-mobile-controls .review-search > svg {
+    left: 11px;
+  }
+  .review-mobile-controls .review-search input {
+    padding-left: 35px;
+  }
+  .review-mobile-filter-trigger {
+    position: relative;
+    min-height: 48px;
+    min-width: 80px;
+    padding: 9px 11px;
+    flex: 0 0 auto;
+    gap: 6px;
+  }
+  .review-filter-count {
+    display: inline-grid;
+    place-items: center;
+    min-width: 20px;
+    min-height: 20px;
+    padding: 0 4px;
+    border-radius: 10px;
+    background: var(--purple);
+    color: white;
+    font-size: 11px;
+  }
+  .review-mobile-filter-summary {
+    margin: 7px 0 0;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .registrations-workspace input,
+  .registrations-workspace select,
+  .registrations-workspace textarea,
+  .review-modal input,
+  .review-modal select,
+  .review-modal textarea {
+    font-size: 16px;
+    min-height: 48px;
+  }
+  .review-mobile-filter-panel .review-toolbar,
+  .review-mobile-filter-panel .review-more-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .review-mobile-filter-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  .review-mobile-filter-panel .review-more-filters {
+    margin-top: 0;
+    padding-top: 16px;
+  }
+  .review-mobile-filter-panel .review-toolbar > .field,
+  .review-mobile-filter-panel .review-more-filters > .field {
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+  }
+  .review-mobile-filter-panel .review-closed-toggle {
+    justify-content: flex-start;
+    min-height: 48px;
+    width: 100%;
+  }
+  .review-mobile-filter-panel .review-closed-toggle span {
+    max-width: none;
+    font-size: 13px;
+  }
+  .review-mobile-filter-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    position: sticky;
+    bottom: 0;
+    padding: 16px 0 max(8px, env(safe-area-inset-bottom, 0px));
+    margin-top: 20px;
+    background: white;
+    border-top: 1px solid var(--border);
+  }
+  .review-mobile-filter-footer > button {
+    width: 100%;
+    min-height: 48px;
+  }
+  .registrations-workspace .review-list-panel {
+    padding-top: 14px;
+    border-radius: 12px;
+  }
+  .registrations-workspace .review-list-caption {
+    padding: 0 12px 12px;
+    gap: 4px;
+  }
+  .registrations-workspace .review-list-caption strong {
+    font-size: 13px;
+  }
+  .registrations-workspace .review-list-caption > small {
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .registrations-workspace .review-registration-table tbody {
+    padding: 0 10px;
+  }
+  .registrations-workspace .review-registration-table tr {
+    padding: 12px;
+    margin-bottom: 12px;
+    gap: 10px 12px;
+    border-radius: 12px;
+  }
+  .registrations-workspace .review-registration-table td:first-child {
+    padding-bottom: 8px !important;
+  }
+  .registrations-workspace .review-person > strong {
+    display: block;
+    font-size: 16px;
+    line-height: 1.4;
+    margin-bottom: 3px;
+  }
+  .registrations-workspace .review-person-protocol,
+  .registrations-workspace .review-person-campaign {
+    display: inline;
+    font-size: 11px;
+    margin-top: 0;
+    margin-right: 8px;
+  }
+  .registrations-workspace .review-registration-table td::before {
+    font-size: 12px;
+    margin-bottom: 5px;
+  }
+  .registrations-workspace .review-cell-detail::before,
+  .registrations-workspace .review-cell-whatsapp::before {
+    display: none;
+  }
+  .registrations-workspace .review-current-department {
+    display: block;
+    overflow-wrap: anywhere;
+    line-height: 1.4;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .registrations-workspace .review-whatsapp-hint {
+    display: block;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--muted);
+    margin-top: 5px;
+  }
+  .registrations-workspace .review-registration-table .review-icon-button,
+  .registrations-workspace .review-registration-table .review-whatsapp {
+    width: 100%;
+    min-height: 48px;
+    height: auto;
+    padding: 10px 8px;
+    gap: 7px;
+    font-size: 13px;
+  }
+  .registrations-workspace .review-action-label {
+    display: inline;
+  }
+  .registrations-workspace .review-invite {
+    width: 100%;
+    min-height: 48px;
+    font-size: 12px;
+    padding: 7px;
+  }
+  .registrations-workspace .pagination {
+    padding: 14px 10px;
+    gap: 10px;
+    justify-content: space-between;
+    font-size: 12px;
+  }
+  .registrations-workspace .pagination button {
+    min-height: 48px;
+    min-width: 72px;
+    padding: 10px;
+  }
+  .registrations-workspace .review-event-grid {
+    gap: 12px;
+  }
+  .registrations-workspace .review-event-art {
+    height: 112px;
+  }
+  .registrations-workspace .review-event-card-body {
+    padding: 16px;
+  }
+  .registrations-workspace .review-event-card-body h2 {
+    font-size: 19px;
+    margin-bottom: 10px;
+  }
+  .registrations-workspace .review-event-card-footer {
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+  .registrations-workspace .department-capacity-form {
+    display: grid;
+    grid-template-columns: minmax(90px, 1fr) minmax(120px, 1fr);
+    gap: 10px;
+  }
+  .registrations-workspace .department-capacity-form .field {
+    width: auto;
+  }
+  .registrations-workspace .department-capacity-form > button,
+  .registrations-workspace .department-capacity .text-button {
+    min-height: 48px;
+  }
+  .review-modal {
+    overscroll-behavior: contain;
+    overflow-x: hidden;
+  }
+  .review-modal-header {
+    padding-top: max(14px, env(safe-area-inset-top, 0px));
+  }
+  .review-modal-body {
+    padding-bottom: max(20px, env(safe-area-inset-bottom, 0px));
+  }
+  .review-modal .button-row .button {
+    min-height: 48px;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 360px) {
+  .admin-shell--registrations {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .admin-shell--registrations .sidebar.mobile-organization-open nav {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .registrations-workspace .review-registration-table tr {
+    padding: 10px;
+    gap: 10px;
+  }
+  .registrations-workspace .review-action-label {
+    font-size: 12px;
+  }
+}

@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import {
   Link,
   Navigate,
   NavLink,
   Outlet,
+  useLocation,
   useOutletContext,
   useParams,
 } from "react-router-dom";
@@ -18,6 +19,8 @@ import {
   RefreshCw,
   UserCog,
   MessageSquare,
+  Menu,
+  ChevronDown,
 } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { clearPendingInvitation, rememberInvitation } from "../lib/navigation";
@@ -95,7 +98,17 @@ export function OrganizationPicker() {
 }
 export function OrganizationLayout() {
   const { organizationId } = useParams();
+  const location = useLocation();
   const auth = useAuth();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuButton = useRef<HTMLButtonElement>(null);
+  const navigationId = useId();
+  const base = `/organizacao/${organizationId}`;
+  const compactMobileNavigation =
+    location.pathname.replace(/\/$/, "") === `${base}/inscricoes`;
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
   const membership = auth.access?.organizations.find(
     (m) => m.organizationId === organizationId,
   );
@@ -106,10 +119,41 @@ export function OrganizationLayout() {
         <Link to="/organizacao">Selecionar outra organização</Link>
       </div>
     );
-  const base = `/organizacao/${organizationId}`;
   return (
-    <div className="admin-shell">
-      <aside className="sidebar">
+    <div
+      className={`admin-shell${compactMobileNavigation ? " admin-shell--registrations" : ""}`}
+    >
+      <aside
+        className={`sidebar${mobileMenuOpen ? " mobile-organization-open" : ""}`}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && mobileMenuOpen) {
+            setMobileMenuOpen(false);
+            mobileMenuButton.current?.focus();
+          }
+        }}
+      >
+        {compactMobileNavigation && (
+          <button
+            ref={mobileMenuButton}
+            className="organization-mobile-toggle"
+            type="button"
+            aria-label="Menu da organização"
+            aria-expanded={mobileMenuOpen}
+            aria-controls={navigationId}
+            onClick={() => setMobileMenuOpen((value) => !value)}
+          >
+            <Menu size={21} aria-hidden="true" />
+            <span className="organization-mobile-toggle-copy">
+              <small>Menu da organização</small>
+              <strong>{membership.organization.name}</strong>
+            </span>
+            <ChevronDown
+              size={19}
+              className="organization-mobile-chevron"
+              aria-hidden="true"
+            />
+          </button>
+        )}
         <div className="sidebar-org">
           <OrganizationAvatar organization={membership.organization} />
           <h3>{membership.organization.name}</h3>
@@ -117,7 +161,14 @@ export function OrganizationLayout() {
             {membership.function?.name ?? roleLabels[membership.role]}
           </small>
         </div>
-        <nav aria-label="Organização">
+        <nav
+          id={navigationId}
+          aria-label="Organização"
+          onClick={(event) => {
+            if ((event.target as Element).closest("a"))
+              setMobileMenuOpen(false);
+          }}
+        >
           <NavLink end to={base}>
             <LayoutDashboard size={18} />
             Visão geral

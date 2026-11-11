@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { RegistrationDetail } from "./RegistrationDetail";
+import { Modal } from "./Modal";
 
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
@@ -71,6 +73,40 @@ beforeEach(() => {
 });
 
 describe("Ficha completa extraída", () => {
+  it("protege a decisão recém-selecionada quando Escape ocorre logo após a edição", async () => {
+    const close = vi.fn();
+    function Fixture() {
+      const [dirty, setDirty] = useState(false);
+      return (
+        <Modal title="Ficha do participante" dirty={dirty} onClose={close}>
+          <RegistrationDetail
+            organizationId="org"
+            registrationId="candidate"
+            onChanged={vi.fn()}
+            onDirtyChange={setDirty}
+          />
+        </Modal>
+      );
+    }
+    render(<Fixture />);
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Decisão sobre a candidatura" }),
+      "APPROVED",
+    );
+    fireEvent(
+      screen.getByRole("dialog"),
+      new Event("cancel", { cancelable: true }),
+    );
+    expect(close).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog")).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Continuar editando" }),
+    );
+    expect(
+      screen.getByRole("combobox", { name: "Decisão sobre a candidatura" }),
+    ).toHaveValue("APPROVED");
+    expect(close).not.toHaveBeenCalled();
+  });
   it("não sinaliza alteração ao carregar departamento já salvo", () => {
     mocks.team = { id: "team", name: "SECRETARIA" };
     const onDirtyChange = vi.fn();

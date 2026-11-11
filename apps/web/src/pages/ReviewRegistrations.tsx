@@ -60,6 +60,24 @@ const sorts = {
 };
 type Sort = keyof typeof sorts;
 type RowFeedback = { busy?: boolean; error?: string; info?: string };
+function useMobileReview() {
+  const [mobile, setMobile] = useState(
+    () => window.matchMedia?.("(max-width: 800px)").matches ?? false,
+  );
+  useEffect(() => {
+    const query = window.matchMedia?.("(max-width: 800px)");
+    if (!query) return;
+    const update = () => setMobile(query.matches);
+    update();
+    if (query.addEventListener) {
+      query.addEventListener("change", update);
+      return () => query.removeEventListener("change", update);
+    }
+    query.addListener(update);
+    return () => query.removeListener(update);
+  }, []);
+  return mobile;
+}
 const pendingStates = ["RECEIVED", "REVIEW", "WAITLIST"];
 const allocatedStates = ["APPROVED", "CONFIRMED"];
 const defaultReasons: Record<
@@ -132,6 +150,18 @@ export function ReviewRegistrations() {
   const [showFilters, setShowFilters] = useState(
     Boolean(campaignId || status || origin || completeness),
   );
+  const isMobile = useMobileReview();
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const filterCount = [
+    campaignId,
+    status,
+    origin,
+    completeness,
+    includeClosed,
+  ].filter(Boolean).length;
+  useEffect(() => {
+    setMobileFiltersOpen(false);
+  }, [isMobile, eventId, tab, selectedQuery]);
   const [rows, setRows] = useState<Record<string, RowFeedback>>({});
   const inFlight = useRef(new Set<string>());
   const [invite, setInvite] = useState<{
@@ -411,8 +441,10 @@ export function ReviewRegistrations() {
       <tr key={registration.id} aria-busy={feedback?.busy || undefined}>
         <td className="review-person" data-label="Participante">
           <strong>{registration.person.name}</strong>
-          <small>{registration.protocol}</small>
-          <small>
+          <small className="review-person-protocol">
+            {registration.protocol}
+          </small>
+          <small className="review-person-campaign">
             {registration.campaign.kind === "VOLUNTEER" ? "Servo" : "Campista"}
             {registration.origin === "IMPORT" ? " · Importada" : ""}
           </small>
@@ -435,7 +467,7 @@ export function ReviewRegistrations() {
             </small>
           )}
         </td>
-        <td data-label="Departamento">
+        <td className="review-cell-department" data-label="Departamento">
           {registration.campaign.kind === "VOLUNTEER" ? (
             <>
               <select
@@ -474,6 +506,11 @@ export function ReviewRegistrations() {
                     </option>
                   )}
               </select>
+              {registration.team && (
+                <small className="review-current-department">
+                  {registration.team.name}
+                </small>
+              )}
               {pending && registration.team && (
                 <small className="muted">Indicado — sem reserva</small>
               )}
@@ -482,7 +519,7 @@ export function ReviewRegistrations() {
             <span className="muted">Não se aplica</span>
           )}
         </td>
-        <td data-label="Ficha">
+        <td className="review-cell-detail" data-label="Ficha">
           <button
             type="button"
             className="review-icon-button"
@@ -491,9 +528,10 @@ export function ReviewRegistrations() {
             onClick={() => openDetail(registration.id)}
           >
             <UserRound size={19} />
+            <span className="review-action-label">Ver ficha</span>
           </button>
         </td>
-        <td data-label="Decisão">
+        <td className="review-cell-decision" data-label="Decisão">
           <select
             aria-label={`Decisão de ${registration.person.name}`}
             value={registration.status}
@@ -525,8 +563,10 @@ export function ReviewRegistrations() {
               </small>
             )}
         </td>
-        <td data-label="Convite / presença">{invitation(registration)}</td>
-        <td data-label="WhatsApp">
+        <td className="review-cell-invite" data-label="Convite / presença">
+          {invitation(registration)}
+        </td>
+        <td className="review-cell-whatsapp" data-label="WhatsApp">
           <button
             type="button"
             className="review-whatsapp"
@@ -540,11 +580,143 @@ export function ReviewRegistrations() {
             onClick={() => setInvite({ id: registration.id, whatsapp: true })}
           >
             <WhatsAppIcon />
+            <span className="review-action-label">WhatsApp</span>
           </button>
+          {!canWhatsApp && (
+            <small className="review-whatsapp-hint">
+              {!editable
+                ? "Sem permissão de envio"
+                : !allocatedStates.includes(registration.status)
+                  ? "Disponível após o aceite"
+                  : notice?.expired
+                    ? "Renove o link do convite"
+                    : "Convite indisponível"}
+            </small>
+          )}
         </td>
       </tr>
     );
   }
+
+  const filterOptions = (
+    <>
+      <Field label="Ordenar">
+        <div className="review-sort">
+          <ArrowUpDown size={17} />
+          <select
+            value={sort}
+            onChange={(event) => filter("sort", event.target.value)}
+          >
+            {Object.entries(sorts).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </Field>
+      <button
+        type="button"
+        className={`button outline review-closed-toggle ${includeClosed ? "is-active" : ""}`}
+        aria-pressed={includeClosed}
+        title={
+          includeClosed
+            ? "Ocultar recusadas e canceladas"
+            : "Mostrar recusadas e canceladas"
+        }
+        onClick={() =>
+          changeSearch({
+            includeClosed: String(!includeClosed),
+            page: null,
+            ...(!includeClosed
+              ? {}
+              : ["REJECTED", "CANCELLED"].includes(status)
+                ? { status: null }
+                : {}),
+          })
+        }
+      >
+        {includeClosed ? <Eye size={18} /> : <EyeOff size={18} />}
+        <span>
+          {includeClosed
+            ? "Recusadas e canceladas visíveis"
+            : "Recusadas e canceladas ocultas"}
+        </span>
+      </button>
+      <button
+        type="button"
+        className="review-icon-button"
+        aria-label="Atualizar inscrições"
+        title="Atualizar inscrições"
+        onClick={refresh}
+      >
+        <RefreshCw size={18} />
+        <span className="review-action-label">Atualizar lista</span>
+      </button>
+    </>
+  );
+  const moreFiltersToggle = (
+    <button
+      type="button"
+      className="button outline"
+      aria-expanded={showFilters}
+      aria-controls="review-more-filters"
+      onClick={() => setShowFilters((value) => !value)}
+    >
+      <SlidersHorizontal size={17} />
+      Mais filtros
+    </button>
+  );
+  const advancedOptions = (
+    <div id="review-more-filters" className="review-more-filters">
+      <Field label="Campanha">
+        <select
+          value={campaignId}
+          onChange={(event) => filter("campaign", event.target.value)}
+        >
+          <option value="">Todas</option>
+          {edition?.campaigns.map((campaign) => (
+            <option value={campaign.id} key={campaign.id}>
+              {campaign.kind === "VOLUNTEER" ? "Servos" : "Campistas"}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Estado">
+        <select
+          value={status}
+          onChange={(event) => filter("status", event.target.value)}
+        >
+          <option value="">Todos</option>
+          {Object.entries(statusLabels).map(([value, label]) => (
+            <option value={value} key={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Origem">
+        <select
+          value={origin}
+          onChange={(event) => filter("origin", event.target.value)}
+        >
+          <option value="">Todas</option>
+          <option value="PUBLIC_FORM">Ficha da aplicação</option>
+          <option value="IMPORT">Importada</option>
+        </select>
+      </Field>
+      <Field label="Complementação">
+        <select
+          value={completeness}
+          onChange={(event) => filter("completeness", event.target.value)}
+        >
+          <option value="">Todas</option>
+          <option value="PENDING">Com pendências</option>
+          <option value="COMPLETE">Completa</option>
+        </select>
+      </Field>
+    </div>
+  );
 
   return (
     <div className="registrations-workspace">
@@ -791,7 +963,9 @@ export function ReviewRegistrations() {
               aria-labelledby="review-registrations-tab"
             >
               <div className="panel review-controls">
-                <div className="review-toolbar">
+                <div
+                  className={`review-toolbar${isMobile ? " review-mobile-controls" : ""}`}
+                >
                   <Field label="Pesquisar participante">
                     <div className="review-search">
                       <Search size={18} />
@@ -804,129 +978,40 @@ export function ReviewRegistrations() {
                       />
                     </div>
                   </Field>
-                  <Field label="Ordenar">
-                    <div className="review-sort">
-                      <ArrowUpDown size={17} />
-                      <select
-                        value={sort}
-                        onChange={(event) => filter("sort", event.target.value)}
-                      >
-                        {Object.entries(sorts).map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </Field>
-                  <button
-                    type="button"
-                    className={`button outline review-closed-toggle ${includeClosed ? "is-active" : ""}`}
-                    aria-pressed={includeClosed}
-                    title={
-                      includeClosed
-                        ? "Ocultar recusadas e canceladas"
-                        : "Mostrar recusadas e canceladas"
-                    }
-                    onClick={() =>
-                      changeSearch({
-                        includeClosed: String(!includeClosed),
-                        page: null,
-                        ...(!includeClosed
-                          ? {}
-                          : ["REJECTED", "CANCELLED"].includes(status)
-                            ? { status: null }
-                            : {}),
-                      })
-                    }
-                  >
-                    {includeClosed ? <Eye size={18} /> : <EyeOff size={18} />}
-                    <span>
-                      {includeClosed
-                        ? "Recusadas e canceladas visíveis"
-                        : "Recusadas e canceladas ocultas"}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className="review-icon-button"
-                    aria-label="Atualizar inscrições"
-                    title="Atualizar inscrições"
-                    onClick={refresh}
-                  >
-                    <RefreshCw size={18} />
-                  </button>
-                  <button
-                    type="button"
-                    className="button outline"
-                    aria-expanded={showFilters}
-                    aria-controls="review-more-filters"
-                    onClick={() => setShowFilters((value) => !value)}
-                  >
-                    <SlidersHorizontal size={17} />
-                    Mais filtros
-                  </button>
+                  {!isMobile && filterOptions}
+                  {!isMobile && moreFiltersToggle}
+                  {isMobile && (
+                    <button
+                      type="button"
+                      className="button outline review-mobile-filter-trigger"
+                      aria-label={`Filtros e ordenação${filterCount ? `, ${filterCount} filtros ativos` : ""}`}
+                      aria-haspopup="dialog"
+                      aria-expanded={mobileFiltersOpen}
+                      onClick={() => setMobileFiltersOpen(true)}
+                    >
+                      <SlidersHorizontal size={19} />
+                      <span>Filtros</span>
+                      {filterCount > 0 && (
+                        <span
+                          className="review-filter-count"
+                          aria-hidden="true"
+                        >
+                          {filterCount}
+                        </span>
+                      )}
+                    </button>
+                  )}
                 </div>
-                {showFilters && (
-                  <div id="review-more-filters" className="review-more-filters">
-                    <Field label="Campanha">
-                      <select
-                        value={campaignId}
-                        onChange={(event) =>
-                          filter("campaign", event.target.value)
-                        }
-                      >
-                        <option value="">Todas</option>
-                        {edition?.campaigns.map((campaign) => (
-                          <option value={campaign.id} key={campaign.id}>
-                            {campaign.kind === "VOLUNTEER"
-                              ? "Servos"
-                              : "Campistas"}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label="Estado">
-                      <select
-                        value={status}
-                        onChange={(event) =>
-                          filter("status", event.target.value)
-                        }
-                      >
-                        <option value="">Todos</option>
-                        {Object.entries(statusLabels).map(([value, label]) => (
-                          <option value={value} key={value}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label="Origem">
-                      <select
-                        value={origin}
-                        onChange={(event) =>
-                          filter("origin", event.target.value)
-                        }
-                      >
-                        <option value="">Todas</option>
-                        <option value="PUBLIC_FORM">Ficha da aplicação</option>
-                        <option value="IMPORT">Importada</option>
-                      </select>
-                    </Field>
-                    <Field label="Complementação">
-                      <select
-                        value={completeness}
-                        onChange={(event) =>
-                          filter("completeness", event.target.value)
-                        }
-                      >
-                        <option value="">Todas</option>
-                        <option value="PENDING">Com pendências</option>
-                        <option value="COMPLETE">Completa</option>
-                      </select>
-                    </Field>
-                  </div>
+                {isMobile && (
+                  <p className="review-mobile-filter-summary">
+                    {sorts[sort]} ·{" "}
+                    {includeClosed
+                      ? "Inclui recusadas e canceladas"
+                      : "Recusadas e canceladas ocultas"}
+                    {filterCount > 0 ? ` · ${filterCount} filtros ativos` : ""}
+                  </p>
                 )}
+                {!isMobile && showFilters && advancedOptions}
               </div>
               {list.error && <Notice>{list.error}</Notice>}
               <div className="panel review-list-panel">
@@ -990,6 +1075,45 @@ export function ReviewRegistrations() {
             </section>
           )}
         </>
+      )}
+      {isMobile && mobileFiltersOpen && (
+        <Modal
+          title="Filtros e ordenação"
+          onClose={() => setMobileFiltersOpen(false)}
+        >
+          <div className="review-mobile-filter-panel">
+            {filterOptions}
+            {advancedOptions}
+          </div>
+          <div className="review-mobile-filter-footer">
+            <button
+              type="button"
+              className="button outline"
+              onClick={() =>
+                changeSearch({
+                  campaign: null,
+                  status: null,
+                  origin: null,
+                  completeness: null,
+                  includeClosed: null,
+                  sort: null,
+                  page: null,
+                })
+              }
+            >
+              Limpar filtros
+            </button>
+            <button
+              type="button"
+              className="button primary"
+              onClick={() => setMobileFiltersOpen(false)}
+            >
+              {list.loading
+                ? "Ver inscrições"
+                : `Ver ${list.data?.total ?? 0} ${list.data?.total === 1 ? "inscrição" : "inscrições"}`}
+            </button>
+          </div>
+        </Modal>
       )}
       {selected && (
         <Modal
