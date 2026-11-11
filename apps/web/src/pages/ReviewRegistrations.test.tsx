@@ -423,7 +423,7 @@ describe("Gestão de inscrições por evento", () => {
     expect(screen.getByRole("combobox", { name: "Ordenar" })).toHaveValue(
       "ACCEPTED_FIRST",
     );
-    expect(screen.getByRole("button", { name: "Mais filtros" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Filtros" })).toBeVisible();
   });
   it("protege alterações não salvas ao voltar no histórico e permite continuar editando", async () => {
     render(
@@ -585,7 +585,7 @@ describe("Gestão de inscrições por evento", () => {
     expect(
       screen.getByRole("button", { name: /Recusadas e canceladas visíveis/ }),
     ).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(screen.getByRole("button", { name: "Mais filtros" }));
+    fireEvent.click(screen.getByRole("button", { name: "Filtros" }));
     expect(
       screen.getByRole("combobox", { name: "Complementação" }),
     ).toBeVisible();

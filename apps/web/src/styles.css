@@ -2980,6 +2980,19 @@ td strong {
   align-items: end;
   flex-wrap: wrap;
 }
+.review-toolbar > button {
+  height: 46px;
+  min-height: 46px;
+  margin: 0;
+  flex-shrink: 0;
+}
+.review-toolbar > .review-icon-button {
+  width: 46px;
+  flex-basis: 46px;
+}
+.review-toolbar > .review-more-filters-toggle {
+  padding: 0 14px;
+}
 .review-toolbar > .field:first-child {
   flex: 1 1 230px;
 }
@@ -3009,14 +3022,14 @@ td strong {
   width: 100%;
 }
 .review-closed-toggle {
+  width: 46px;
+  height: 46px;
   min-height: 46px;
-  padding: 10px 12px;
+  flex: 0 0 46px;
+  padding: 0;
 }
 .review-closed-toggle span {
-  max-width: 140px;
-  line-height: 1.4;
-  font-size: 11px;
-  text-align: left;
+  display: none;
 }
 .review-closed-toggle.is-active {
   border-color: #c8c0f3;
@@ -3454,9 +3467,6 @@ td strong {
   .review-toolbar > .field:nth-child(2) {
     flex: 1 1 170px;
   }
-  .review-closed-toggle {
-    flex: 1 1 140px;
-  }
   .review-tabs button {
     flex: 1;
     padding: 14px 8px;
@@ -3698,6 +3708,10 @@ td strong {
     flex: 0 0 auto;
     gap: 6px;
   }
+  .review-toolbar.review-mobile-controls > button {
+    height: 48px;
+    min-height: 48px;
+  }
   .review-filter-count {
     display: inline-grid;
     place-items: center;
@@ -3748,10 +3762,12 @@ td strong {
   .review-mobile-filter-panel .review-closed-toggle {
     justify-content: flex-start;
     min-height: 48px;
+    height: auto;
     width: 100%;
+    padding: 10px 12px;
   }
   .review-mobile-filter-panel .review-closed-toggle span {
-    max-width: none;
+    display: inline;
     font-size: 13px;
   }
   .review-mobile-filter-footer {

@@ -618,6 +618,11 @@ export function ReviewRegistrations() {
         type="button"
         className={`button outline review-closed-toggle ${includeClosed ? "is-active" : ""}`}
         aria-pressed={includeClosed}
+        aria-label={
+          includeClosed
+            ? "Recusadas e canceladas visíveis"
+            : "Recusadas e canceladas ocultas"
+        }
         title={
           includeClosed
             ? "Ocultar recusadas e canceladas"
@@ -635,11 +640,15 @@ export function ReviewRegistrations() {
           })
         }
       >
-        {includeClosed ? <Eye size={18} /> : <EyeOff size={18} />}
+        {includeClosed ? (
+          <Eye size={18} aria-hidden="true" />
+        ) : (
+          <EyeOff size={18} aria-hidden="true" />
+        )}
         <span>
           {includeClosed
-            ? "Recusadas e canceladas visíveis"
-            : "Recusadas e canceladas ocultas"}
+            ? "Ocultar recusadas/canceladas"
+            : "Mostrar recusadas/canceladas"}
         </span>
       </button>
       <button
@@ -657,13 +666,13 @@ export function ReviewRegistrations() {
   const moreFiltersToggle = (
     <button
       type="button"
-      className="button outline"
+      className="button outline review-more-filters-toggle"
       aria-expanded={showFilters}
       aria-controls="review-more-filters"
       onClick={() => setShowFilters((value) => !value)}
     >
       <SlidersHorizontal size={17} />
-      Mais filtros
+      Filtros
     </button>
   );
   const advancedOptions = (

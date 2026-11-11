@@ -444,6 +444,49 @@ try {
         0,
         "A tabela não deve carregar ficha individual por linha.",
       );
+      if (!mobile) {
+        const toolbar = page.locator(".review-toolbar");
+        const controls = [
+          toolbar.getByRole("searchbox"),
+          toolbar.getByRole("combobox", { name: /^Ordenar/ }),
+          toolbar.locator(".review-closed-toggle"),
+          toolbar.getByRole("button", {
+            name: "Atualizar inscrições",
+            exact: true,
+          }),
+          toolbar.getByRole("button", { name: "Filtros", exact: true }),
+        ];
+        const bounds = await Promise.all(
+          controls.map((control) => control.boundingBox()),
+        );
+        assert(
+          bounds.every(Boolean),
+          "Todos os controles da barra devem estar visíveis.",
+        );
+        for (const box of bounds) {
+          assert(
+            Math.abs(box.height - 46) <= 1,
+            "Busca, ordenação e botões devem ter a mesma altura de 46 px.",
+          );
+          assert(
+            Math.abs(box.y - bounds[0].y) <= 1,
+            "Os controles da barra devem estar alinhados no topo.",
+          );
+        }
+        assert(
+          bounds[2].width >= 44 && bounds[2].width <= 48,
+          "Ocultar inscrições deve ser um botão compacto de ícone.",
+        );
+        await expect(controls[2]).toHaveAttribute("aria-pressed", "false");
+        await expect(controls[2]).toHaveAttribute(
+          "title",
+          "Mostrar recusadas e canceladas",
+        );
+        await page.screenshot({
+          path: ".local/screenshots/review-toolbar-desktop.png",
+          fullPage: true,
+        });
+      }
       const importedCandidate = page
         .locator("tbody tr")
         .filter({ has: page.getByText("Bruno Souza", { exact: true }) });
@@ -537,6 +580,10 @@ try {
       await page
         .getByRole("button", { name: /Recusadas e canceladas ocultas/i })
         .click();
+      await expect(page.locator(".review-closed-toggle")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
       await closeFilters();
       await expect(
         page.getByText("Carla Oliveira", { exact: true }),
@@ -558,6 +605,10 @@ try {
       await page
         .getByRole("button", { name: /Recusadas e canceladas visíveis/i })
         .click();
+      await expect(page.locator(".review-closed-toggle")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
       await closeFilters();
       await expect(
         page.getByText("Carla Oliveira", { exact: true }),
