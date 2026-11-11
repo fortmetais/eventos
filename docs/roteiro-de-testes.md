@@ -1,5 +1,15 @@
 # Roteiro de testes da aplicação Encontro
 
+## Compartilhar convites pela lista — 11/11/2026
+
+- O botão verde de WhatsApp abre diretamente uma nova aba com a conversa e a mensagem personalizada do evento, sem abrir modal. Não envia a mensagem nem registra envio automaticamente.
+- O botão de copiar ao lado copia o link curto do candidato; quando indisponível, usa o link completo. Não altera o indicador de convite. Se a área de transferência for bloqueada, exibe um campo para cópia manual.
+- Depois de abrir a conversa, **Marcar como enviado** na própria linha registra o envio e atualiza o indicador. Um convite renovado ou uma decisão desfeita exige abrir a nova conversa antes de registrar o envio.
+- O indicador **Enviar convite / Aguardando confirmação / Presença confirmada** mantém acesso ao modal com renovação, e-mail e histórico. Links expirados ou encerrados não são compartilhados automaticamente.
+- Conferir desktop e celular de 320, 390 e 430 px: WhatsApp e cópia lado a lado, controles acessíveis, erros na linha e ausência de rolagem horizontal. Verificar bloqueio de nova aba, telefone ausente e erro de rede. A cópia permanece disponível quando não houver telefone válido.
+
+Verificação desta entrega: testes da interface, tipos e compilação aprovados. Percurso automatizado no navegador passou em desktop e celulares de 320, 390 e 430 px com serviços simulados. Cópia durante o clique e cancelamento de consultas possuem testes específicos; validar também em iPhone físico. Não há alteração de banco nem envio real de mensagens nos testes.
+
 ## Corrigir decisões — 11/11/2026
 
 - Em análise pode voltar para Recebida; Aceita, Confirmada, Lista de espera, Recusada e Cancelada podem voltar para Recebida ou Em análise, pela lista e pela ficha.
@@ -16,7 +26,7 @@ Validação: tipos e compilação aprovados; percurso completo no navegador em d
 - Repetir com menor importado sem termo: permite confirmar a vaga e mantém **Autorização do responsável pendente: obrigatória antes do evento** no aviso de pendências. Um menor inscrito pela ficha nativa continua exigindo a assinatura.
 - Conferir que capacidade concorrente, departamento, situação do evento e permissões continuam verificados.
 - A lista mostra exclamação antes do nome em vez de repetir Complementação pendente. Abrir por mouse, toque e teclado mostra as pendências atuais; fechar devolve foco. Candidatura sem pendências não mostra exclamação.
-- WhatsApp de importado aceito/confirmado com pendências abre o aviso. Abrir conversa não registra envio. Quando expirado, permite acessar a renovação sem criar avisos ou enviar mensagens automaticamente.
+- WhatsApp de importado aceito/confirmado com pendências abre diretamente a conversa em nova aba. Abrir conversa não registra envio. Quando expirado, orienta acessar a renovação pelo indicador de convite sem criar avisos ou enviar mensagens automaticamente.
 - A listagem carrega o estado da autorização em lote e mantém compatibilidade quando o módulo do responsável não está instalado. Não deve expor dados de saúde nem credenciais novas.
 
 A página de complementação fica para uma próxima entrega. Prazo escolhido para os futuros links: **15 dias com renovação**. Não gerar links de complementação nem anunciar que já estão disponíveis.

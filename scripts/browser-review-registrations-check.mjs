@@ -84,6 +84,21 @@ try {
         localStorage.setItem("sb-auth-auth-token", JSON.stringify(value)),
       session,
     );
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: async (value) => {
+            window.__fixtureClipboard = value;
+          },
+          write: async (items) => {
+            window.__fixtureClipboard = await (
+              await items[0].getType("text/plain")
+            ).text();
+          },
+        },
+      });
+    });
     const errors = [],
       queries = [],
       changes = [];
@@ -132,7 +147,7 @@ try {
     const rows = people.map((name, index) => ({
       id: `00000000-0000-4000-8000-${String(index + 11).padStart(12, "0")}`,
       protocol: `INS-TESTE-${index + 1}`,
-      person: { name },
+      person: { name, phone: "44999999999" },
       status: index === 2 ? "REJECTED" : index === 1 ? "APPROVED" : "RECEIVED",
       origin: index === 1 ? "IMPORT" : "PUBLIC_FORM",
       ...(index === 1
@@ -598,23 +613,67 @@ try {
       ).toBeFocused();
       await candidate
         .getByRole("button", {
-          name: "Enviar convite: Ágata Silva",
+          name: "Copiar link do candidato Ágata Silva",
+          exact: true,
+        })
+        .click();
+      await expect
+        .poll(() => page.evaluate(() => window.__fixtureClipboard))
+        .toBe(notices.get(rows[0].id).shortLink);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      assert.equal(
+        notices.get(rows[0].id).whatsappSentAt,
+        null,
+        "Copiar o link não registra envio.",
+      );
+      const popupPromise = context.waitForEvent("page");
+      await candidate
+        .getByRole("button", {
+          name: "Enviar convite por WhatsApp para Ágata Silva",
+          exact: true,
+        })
+        .click();
+      const whatsappPage = await popupPromise;
+      await expect(whatsappPage).toHaveURL(/^https:\/\/wa\.me\//);
+      await whatsappPage.close();
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      assert.equal(notices.get(rows[0].id).whatsappSentAt, null);
+      await candidate
+        .getByRole("button", { name: /Marcar como enviado/i })
+        .click();
+      await expect(candidate).toContainText("Aguardando confirmação");
+      await candidate
+        .getByRole("button", {
+          name: "Aguardando confirmação: Ágata Silva",
           exact: true,
         })
         .click();
       await expect(page.getByRole("dialog")).toBeVisible();
-      const openWhatsApp = page.getByRole("link", { name: /WhatsApp/i });
-      await expect(openWhatsApp).toHaveAttribute("href", /^https:\/\/wa\.me\//);
-      const popupPromise = context.waitForEvent("page");
-      await openWhatsApp.click();
-      await (await popupPromise).close();
-      assert.equal(notices.get(rows[0].id).whatsappSentAt, null);
-      await page.getByRole("button", { name: /Marcar como enviado/i }).click();
       await expect(
-        page.getByText(/Envio pelo WhatsApp registrado/),
+        page.getByRole("dialog").getByText(/Envio pelo WhatsApp registrado/),
       ).toBeVisible();
       await page.keyboard.press("Escape");
-      await expect(candidate).toContainText("Aguardando confirmação");
+      await page.screenshot({
+        path: `.local/screenshots/review-quick-share-${screenLabel}.png`,
+        fullPage: true,
+      });
+      if (mobile) {
+        for (const name of [
+          "Enviar convite por WhatsApp para Ágata Silva",
+          "Copiar link do candidato Ágata Silva",
+        ]) {
+          const actionBounds = await candidate
+            .getByRole("button", { name, exact: true })
+            .boundingBox();
+          assert(
+            actionBounds &&
+              actionBounds.width >= 44 &&
+              actionBounds.height >= 44 &&
+              actionBounds.height <= 80,
+            "Compartilhamento precisa de botões legíveis e área de toque adequada.",
+          );
+        }
+      }
       notices.get(rows[0].id).confirmedAt = new Date().toISOString();
       await openFilters();
       await page
@@ -707,9 +766,10 @@ try {
       );
       assert.deepEqual(errors, []);
       console.log(
-        `Inscrições ${screenLabel}: cards, abas, pesquisa/URL, indicação, aprovação, modal, convite manual, presença e link antigo aprovados.`,
+        `Inscrições ${screenLabel}: cards, abas, pesquisa/URL, indicação, aprovação, modal, WhatsApp direto, cópia de link, envio explícito, presença e link antigo aprovados.`,
       );
     } catch (error) {
+      if (errors.length) console.error(errors);
       await page.screenshot({
         path: `.local/screenshots/review-error-${screenLabel}.png`,
         fullPage: true,

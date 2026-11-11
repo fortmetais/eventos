@@ -25,6 +25,7 @@ import { DepartmentCapacity } from "../components/DepartmentCapacity";
 import { Modal } from "../components/Modal";
 import { RegistrationDetail } from "../components/RegistrationDetail";
 import { RegistrationInvite } from "../components/RegistrationInvite";
+import { RegistrationShareActions } from "../components/RegistrationShareActions";
 import { useOrganization } from "./Organization";
 import { useAuth } from "../lib/auth";
 import { useRemote } from "../lib/hooks";
@@ -101,29 +102,6 @@ const defaultReasons: Record<RegistrationStatus, string> = {
   CANCELLED: "Participação cancelada pela organização na lista de inscrições.",
 };
 
-function WhatsAppIcon() {
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M20.5 11.7a8.5 8.5 0 0 1-12.6 7.5L3 20.6l1.3-4.9a8.5 8.5 0 1 1 16.2-4Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path
-        d="m8.6 7.5 1.2 2-1 1.2c.8 1.7 1.9 2.8 3.7 3.6l1.1-1 2.1 1.2c.1 1.5-1 2.1-2.2 1.8-3.6-.9-6.6-3.9-7.3-7.1-.2-1.2.9-2.2 2.4-1.7Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
-
 export function ReviewRegistrations() {
   const auth = useAuth();
   const { organizationId, membership } = useOrganization();
@@ -174,7 +152,6 @@ export function ReviewRegistrations() {
   const inFlight = useRef(new Set<string>());
   const [invite, setInvite] = useState<{
     id: string;
-    whatsapp: boolean;
   } | null>(null);
   const [pendingRegistration, setPendingRegistration] =
     useState<Registration | null>(null);
@@ -438,7 +415,7 @@ export function ReviewRegistrations() {
         type="button"
         className={`review-invite ${color}`}
         disabled={!editable}
-        onClick={() => setInvite({ id: registration.id, whatsapp: false })}
+        onClick={() => setInvite({ id: registration.id })}
         aria-label={`${label}: ${registration.person.name}`}
       >
         {label}
@@ -455,11 +432,15 @@ export function ReviewRegistrations() {
       (pending || allocatedStates.includes(registration.status));
     const notice = registration.decisionSummary?.notice;
     const pendingInformation = registrationPendingInformation(registration);
-    const canWhatsApp =
+    const canShare = Boolean(
       editable &&
       allocatedStates.includes(registration.status) &&
       registration.decisionSummary?.ready &&
-      notice?.active;
+      notice?.active,
+    );
+    const canWhatsApp =
+      canShare &&
+      /^\d{10,13}$/.test(registration.person.phone?.replace(/\D/g, "") ?? "");
     const choices = statusOptions[registration.status].filter(
       (choice) => choice !== "WAITLIST" || registration.campaign.allowWaitlist,
     );
@@ -589,33 +570,26 @@ export function ReviewRegistrations() {
         <td className="review-cell-invite" data-label="Convite / presença">
           {invitation(registration)}
         </td>
-        <td className="review-cell-whatsapp" data-label="WhatsApp">
-          <button
-            type="button"
-            className="review-whatsapp"
-            disabled={!canWhatsApp || feedback?.busy}
-            aria-label={`Enviar convite por WhatsApp para ${registration.person.name}`}
-            title={
-              canWhatsApp
-                ? notice?.expired
-                  ? "Renovar o link para preparar a conversa"
-                  : "Preparar conversa no WhatsApp"
-                : "Disponível para convites ativos de candidaturas aceitas"
-            }
-            onClick={() => setInvite({ id: registration.id, whatsapp: true })}
-          >
-            <WhatsAppIcon />
-            <span className="review-action-label">WhatsApp</span>
-          </button>
+        <td className="review-cell-whatsapp" data-label="Compartilhar">
+          <RegistrationShareActions
+            organizationId={organizationId}
+            registration={registration}
+            disabled={Boolean(feedback?.busy)}
+            canWhatsApp={canWhatsApp}
+            canCopy={canShare}
+            onChanged={refresh}
+          />
           {!canWhatsApp && (
             <small className="review-whatsapp-hint">
               {!editable
                 ? "Sem permissão de envio"
                 : !allocatedStates.includes(registration.status)
                   ? "Disponível após o aceite"
-                  : notice?.expired
-                    ? "Renove o link do convite"
-                    : "Convite indisponível"}
+                  : canShare
+                    ? "Telefone inválido. Use Copiar link."
+                    : notice?.expired
+                      ? "Renove o link do convite"
+                      : "Convite indisponível"}
             </small>
           )}
         </td>
@@ -1066,7 +1040,7 @@ export function ReviewRegistrations() {
                           <th>Ficha</th>
                           <th>Decisão</th>
                           <th>Convite / presença</th>
-                          <th>WhatsApp</th>
+                          <th>Compartilhar</th>
                         </tr>
                       </thead>
                       <tbody>{list.data.items.map(row)}</tbody>
@@ -1212,7 +1186,6 @@ export function ReviewRegistrations() {
             key={invite.id}
             organizationId={organizationId}
             registrationId={invite.id}
-            initialWhatsApp={invite.whatsapp}
             onChanged={refresh}
             onClose={() => setInvite(null)}
           />

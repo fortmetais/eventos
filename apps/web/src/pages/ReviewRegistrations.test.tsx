@@ -703,13 +703,9 @@ describe("Gestão de inscrições por evento", () => {
       screen.getByRole("button", { name: "Enviar convite: Maria Teste" }),
     ).toHaveClass("pending");
     fireEvent.click(
-      screen.getByRole("button", {
-        name: "Enviar convite por WhatsApp para Maria Teste",
-      }),
+      screen.getByRole("button", { name: "Enviar convite: Maria Teste" }),
     );
-    expect(
-      await screen.findByText("Convite registration pelo WhatsApp"),
-    ).toBeVisible();
+    expect(await screen.findByText("Convite registration")).toBeVisible();
     expect(items[0].decisionSummary.notice!.whatsappSentAt).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Fechar modal" }));
     items[0].decisionSummary.notice!.whatsappSentAt = "2026-11-11";
@@ -852,7 +848,7 @@ describe("Gestão de inscrições por evento", () => {
       screen.queryByRole("button", { name: "Ver pendências de Maria Teste" }),
     ).not.toBeInTheDocument();
   });
-  it("permite abrir aviso expirado de importada para renovar antes de enviar por WhatsApp", async () => {
+  it("mantém a renovação explícita pelo indicador do convite expirado", async () => {
     items[0].origin = "IMPORT";
     items[0].status = "APPROVED";
     items[0].importData = { pending: ["Informar contato de emergência."] };
@@ -872,18 +868,10 @@ describe("Gestão de inscrições por evento", () => {
     };
     show();
     await ready();
-    const whatsapp = screen.getByRole("button", {
-      name: "Enviar convite por WhatsApp para Maria Teste",
-    });
-    expect(whatsapp).not.toBeDisabled();
-    expect(whatsapp).toHaveAttribute(
-      "title",
-      "Renovar o link para preparar a conversa",
+    fireEvent.click(
+      screen.getByRole("button", { name: "Link expirado: Maria Teste" }),
     );
-    fireEvent.click(whatsapp);
-    expect(
-      await screen.findByText("Convite registration pelo WhatsApp"),
-    ).toBeVisible();
+    expect(await screen.findByText("Convite registration")).toBeVisible();
     expect(
       mocks.api.mock.calls.some(([, options]) => options?.method === "POST"),
     ).toBe(false);

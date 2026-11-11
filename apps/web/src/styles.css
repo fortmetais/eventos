@@ -3060,6 +3060,33 @@ td strong {
 .review-whatsapp:not(:disabled):hover {
   background: #0e7038;
 }
+.review-share {
+  min-width: 96px;
+}
+.review-share-buttons {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.review-share > small {
+  display: block;
+  max-width: 190px;
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.review-share input {
+  width: 100%;
+  min-width: 0;
+  margin-top: 7px;
+}
+.review-mark-sent {
+  min-height: 44px;
+  margin-top: 5px;
+  padding: 5px 0;
+  font-size: 11px;
+  text-align: left;
+}
 .review-list-panel {
   padding: 20px 0 0;
   overflow: hidden;
@@ -3112,7 +3139,7 @@ td strong {
   width: 19%;
 }
 .review-registration-table th:nth-child(6) {
-  width: 8%;
+  width: 11%;
 }
 .review-registration-table select {
   width: 100%;
@@ -3815,6 +3842,24 @@ td strong {
   }
   .registrations-workspace .review-action-label {
     display: inline;
+  }
+  .registrations-workspace .review-registration-table td.review-cell-detail {
+    grid-column: 1 / -1;
+    grid-row: 4;
+  }
+  .registrations-workspace .review-registration-table td.review-cell-whatsapp {
+    grid-column: 1 / -1;
+    grid-row: 5;
+  }
+  .registrations-workspace .review-share-buttons {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .registrations-workspace .review-share > small {
+    max-width: none;
+  }
+  .registrations-workspace .review-mark-sent {
+    font-size: 12px;
   }
   .registrations-workspace .review-invite {
     width: 100%;
