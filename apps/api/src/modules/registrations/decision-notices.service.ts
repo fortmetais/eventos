@@ -84,7 +84,9 @@ export class DecisionNoticesService {
   }
   async invalidate(tx: Prisma.TransactionClient, registrationId: string) {
     await tx.decisionNotice.updateMany({
-      where: { registrationId, kind: "ACEITE", revokedAt: null },
+      // Reopening an analysis must end refusal notices too: otherwise their
+      // personal links would become active again after a later refusal.
+      where: { registrationId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
   }

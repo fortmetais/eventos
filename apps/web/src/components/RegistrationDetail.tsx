@@ -17,12 +17,19 @@ import { DecisionNotice } from "./DecisionNotice";
 import { ImportedRegistrationCorrection } from "./ImportedRegistrationCorrection";
 const statusOptions: Record<RegistrationStatus, RegistrationStatus[]> = {
   RECEIVED: ["REVIEW", "APPROVED", "REJECTED", "CANCELLED"],
-  REVIEW: ["APPROVED", "WAITLIST", "REJECTED", "CANCELLED"],
-  APPROVED: ["CONFIRMED", "WAITLIST", "REJECTED", "CANCELLED"],
-  CONFIRMED: ["CANCELLED"],
-  WAITLIST: ["REVIEW", "APPROVED", "CANCELLED", "REJECTED"],
-  REJECTED: [],
-  CANCELLED: [],
+  REVIEW: ["RECEIVED", "APPROVED", "WAITLIST", "REJECTED", "CANCELLED"],
+  APPROVED: [
+    "RECEIVED",
+    "REVIEW",
+    "CONFIRMED",
+    "WAITLIST",
+    "REJECTED",
+    "CANCELLED",
+  ],
+  CONFIRMED: ["RECEIVED", "REVIEW", "CANCELLED"],
+  WAITLIST: ["RECEIVED", "REVIEW", "APPROVED", "CANCELLED", "REJECTED"],
+  REJECTED: ["RECEIVED", "REVIEW"],
+  CANCELLED: ["RECEIVED", "REVIEW"],
 };
 export function RegistrationDetail({
   organizationId,
@@ -507,7 +514,15 @@ export function RegistrationDetail({
                           registration.campaign.allowWaitlist,
                       )
                       .map((s) => (
-                        <option key={s} value={s}>
+                        <option
+                          key={s}
+                          value={s}
+                          disabled={
+                            ["CANCELLED", "COMPLETED"].includes(
+                              edition?.status ?? "",
+                            ) && s !== "CANCELLED"
+                          }
+                        >
                           {s === "APPROVED"
                             ? registration.campaign.kind === "CAMPER"
                               ? "Aprovar inscrição"

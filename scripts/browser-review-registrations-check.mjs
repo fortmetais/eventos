@@ -327,6 +327,18 @@ try {
           row.status = body.status;
           changes.push(body.status);
           if (body.status === "APPROVED") notices.set(row.id, makeNotice(row));
+          else if (
+            [
+              "RECEIVED",
+              "REVIEW",
+              "WAITLIST",
+              "REJECTED",
+              "CANCELLED",
+            ].includes(body.status) &&
+            notices.has(row.id)
+          )
+            notices.get(row.id).active = false;
+          if (["REJECTED", "CANCELLED"].includes(body.status)) row.team = null;
           return json(route, row);
         }
         if (suffix === "/decision-notice") {
@@ -636,6 +648,48 @@ try {
       ).toBeEnabled();
       await page.screenshot({
         path: `.local/screenshots/review-presence-${screenLabel}.png`,
+        fullPage: true,
+      });
+      await candidate
+        .getByRole("combobox", { name: /Decisão de/ })
+        .selectOption("RECEIVED");
+      await expect(
+        candidate.getByRole("combobox", { name: /Decisão de/ }),
+      ).toHaveValue("RECEIVED");
+      await expect(
+        candidate.getByRole("combobox", { name: /Departamento de/ }),
+      ).toHaveValue(teamId);
+      await expect(candidate).toContainText("Indicado — sem reserva");
+      await expect(
+        candidate.getByRole("button", { name: /Enviar convite por WhatsApp/ }),
+      ).toBeDisabled();
+      assert.equal(
+        notices.get(rows[0].id).active,
+        false,
+        "Reabrir invalida o convite anterior.",
+      );
+      await candidate
+        .getByRole("combobox", { name: /Decisão de/ })
+        .selectOption("REVIEW");
+      await expect(
+        candidate.getByRole("combobox", { name: /Decisão de/ }),
+      ).toHaveValue("REVIEW");
+      await candidate
+        .getByRole("combobox", { name: /Decisão de/ })
+        .selectOption("APPROVED");
+      await expect(candidate).toContainText("Enviar convite");
+      assert.equal(
+        notices.get(rows[0].id).confirmedAt,
+        null,
+        "O novo aceite não reutiliza presença anterior.",
+      );
+      assert.equal(
+        emails,
+        0,
+        "Corrigir decisões não envia e-mail automaticamente.",
+      );
+      await page.screenshot({
+        path: `.local/screenshots/review-reopened-${screenLabel}.png`,
         fullPage: true,
       });
       await page.goto(

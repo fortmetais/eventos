@@ -114,7 +114,7 @@ O navegador guarda somente a credencial do rascunho. Token expira em 14 dias. De
 - GET `.../registrations/:registrationId/health` — informações médicas, autorização explícita por evento e auditoria.
 - POST `.../registrations/:registrationId/link` — organizador; `email` da conta verificada existente e `reason` com pelo menos dez caracteres, após comprovação.
 
-Fluxo: RECEIVED → REVIEW → APPROVED → CONFIRMED. REVIEW/APPROVED podem ir para WAITLIST quando habilitada. Recebida/em análise/aprovada/espera podem ser recusadas ou canceladas. Confirmada pode ser cancelada. Recusada e cancelada são finais.
+Fluxo principal: RECEIVED → REVIEW → APPROVED → CONFIRMED; também é permitido aceitar diretamente de RECEIVED. REVIEW/APPROVED podem ir para WAITLIST quando habilitada. Para corrigir uma decisão, REVIEW pode voltar para RECEIVED, e APPROVED/CONFIRMED/WAITLIST/REJECTED/CANCELLED podem voltar para RECEIVED ou REVIEW. Não há retorno para o próprio estado. Eventos cancelados/concluídos não permitem reabertura. Voltar libera a vaga, preservando o departamento existente apenas como indicação sem reserva; vínculos já apagados pela recusa/cancelamento não são restaurados. Todos os avisos anteriores de aceite/recusa são revogados e o histórico permanece. Reaprovar gera outro convite e exige nova resposta de presença, sem envio automático.
 
 As listagens paginadas retornam `{ items, total, page, pageSize }`. Padrão: 20; máximo: 100. Listagens não exportam saúde. Não há exclusão definitiva de eventos com inscrições.
 

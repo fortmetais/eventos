@@ -298,6 +298,7 @@ export function validateSubmission(
 export const statusSchema = z
   .object({
     status: z.enum([
+      "RECEIVED",
       "REVIEW",
       "APPROVED",
       "CONFIRMED",
@@ -322,10 +323,17 @@ export const manualLinkSchema = z
   .strict();
 export const transitions: Record<string, string[]> = {
   RECEIVED: ["REVIEW", "APPROVED", "REJECTED", "CANCELLED"],
-  REVIEW: ["APPROVED", "WAITLIST", "REJECTED", "CANCELLED"],
-  APPROVED: ["CONFIRMED", "WAITLIST", "REJECTED", "CANCELLED"],
-  CONFIRMED: ["CANCELLED"],
-  WAITLIST: ["REVIEW", "APPROVED", "CANCELLED", "REJECTED"],
-  REJECTED: [],
-  CANCELLED: [],
+  REVIEW: ["RECEIVED", "APPROVED", "WAITLIST", "REJECTED", "CANCELLED"],
+  APPROVED: [
+    "RECEIVED",
+    "REVIEW",
+    "CONFIRMED",
+    "WAITLIST",
+    "REJECTED",
+    "CANCELLED",
+  ],
+  CONFIRMED: ["RECEIVED", "REVIEW", "CANCELLED"],
+  WAITLIST: ["RECEIVED", "REVIEW", "APPROVED", "CANCELLED", "REJECTED"],
+  REJECTED: ["RECEIVED", "REVIEW"],
+  CANCELLED: ["RECEIVED", "REVIEW"],
 };

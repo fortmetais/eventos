@@ -60,6 +60,11 @@ export class RegistrationsService {
       SELECT to_regclass('inscricoes.autorizacoes_responsavel') IS NOT NULL AS ready`;
     return result?.ready === true;
   }
+  private async decisionNoticeTableReady() {
+    const [result] = await this.repo.db.$queryRaw<{ ready: boolean }[]>`
+      SELECT to_regclass('inscricoes.avisos_decisao') IS NOT NULL AS ready`;
+    return result?.ready === true;
+  }
   private async withPendingInformation<T extends PendingInformationRecord>(
     items: T[],
   ) {
@@ -514,6 +519,9 @@ export class RegistrationsService {
   ) {
     const data = statusSchema.parse(input);
     const noticesReady = this.notices ? await this.notices.ready() : false;
+    const reopenNoticeStorageReady =
+      ["RECEIVED", "REVIEW"].includes(data.status) &&
+      (noticesReady || (await this.decisionNoticeTableReady()));
     const departmentsRepo = new DepartmentsRepository(this.repo.db);
     const departmentsReady = await departmentsRepo.ready();
     let decisionNoticeMissing = false;
@@ -557,7 +565,9 @@ export class RegistrationsService {
             registration.campaign.event.status,
           ) || data.status === "CANCELLED",
           409,
-          "Este evento não aceita novas confirmações.",
+          ["RECEIVED", "REVIEW"].includes(data.status)
+            ? "Este evento foi encerrado ou cancelado e não aceita reabertura de inscrições."
+            : "Este evento não aceita novas confirmações.",
         );
         let status: RegistrationStatus = data.status;
         if (status === "WAITLIST")
@@ -656,7 +666,8 @@ export class RegistrationsService {
           where: { id: registrationId },
           data: {
             status,
-            // Pending candidates keep a non-reserving department indication.
+            // Returning to received/review releases capacity while preserving
+            // the existing department as a non-reserving indication.
             ...(["REJECTED", "CANCELLED"].includes(status)
               ? { teamId: null }
               : {}),
@@ -701,6 +712,13 @@ export class RegistrationsService {
               registration.campaign.event.startsAt,
             );
           } else decisionNoticeMissing = Boolean(this.notices);
+        } else if (reopenNoticeStorageReady) {
+          // Revocation needs only the existing table, not a configured sending
+          // secret. Old links must not revive when configuration is restored.
+          await tx.decisionNotice.updateMany({
+            where: { registrationId, revokedAt: null },
+            data: { revokedAt: new Date() },
+          });
         } else if (
           noticesReady &&
           !["APPROVED", "CONFIRMED"].includes(status)

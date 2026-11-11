@@ -818,6 +818,7 @@ const schemas = {
     {
       status: {
         enum: [
+          "RECEIVED",
           "REVIEW",
           "APPROVED",
           "CONFIRMED",

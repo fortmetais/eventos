@@ -1,5 +1,15 @@
 # Roteiro de testes da aplicação Encontro
 
+## Corrigir decisões — 11/11/2026
+
+- Em análise pode voltar para Recebida; Aceita, Confirmada, Lista de espera, Recusada e Cancelada podem voltar para Recebida ou Em análise, pela lista e pela ficha.
+- Ao voltar, conferir motivo/autor/histórico, liberação da vaga e manutenção do departamento existente apenas como indicação sem reserva. Voltar de recusa/cancelamento não restaura departamento apagado.
+- O aviso anterior, inclusive de recusa, deixa de aceitar acesso/resposta. Um novo aceite cria convite novo e exige nova presença; a correção não envia mensagens automaticamente.
+- Respostas, origem, pendências, consentimentos e assinatura do responsável permanecem preservados. Reaprovar reconfere capacidade: outra pessoa pode ter ocupado a vaga liberada.
+- Reabertura de eventos cancelados/concluídos, usuário sem permissão e outra organização continuam bloqueados. Conferir pesquisa/filtros ao reabrir uma candidatura antes oculta.
+
+Validação: tipos e compilação aprovados; percurso completo no navegador em desktop e telas de 320, 390 e 430 px verificou o retorno a Recebida, passagem para Em análise, indicação sem reserva, bloqueio do convite anterior e novo aceite sem reutilizar presença. A suíte com PostgreSQL descartável verifica capacidade concorrente, histórico, respostas/aceites preservados e revogação mesmo sem o segredo de envio configurado. Nenhum SQL adicional necessário.
+
 ## Confirmação de importados com pendências — 11/11/2026
 
 - Aceitar e alocar uma candidatura importada incompleta. Sem presença respondida no aviso ativo, a confirmação continua bloqueada. Após a resposta, confirmar a vaga com pendências: não deve exigir foto, saúde ou aceite atual, nem criar essas evidências.

@@ -218,6 +218,129 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Gestão de inscrições por evento", () => {
+  it.each([
+    "APPROVED",
+    "CONFIRMED",
+    "WAITLIST",
+    "REJECTED",
+    "CANCELLED",
+  ] as const)(
+    "oferece Recebida e Em análise para corrigir uma decisão %s",
+    async (status) => {
+      items[0].status = status;
+      show();
+      const decision = await ready();
+      expect(
+        within(decision).getByRole("option", { name: "Recebida" }),
+      ).not.toBeDisabled();
+      expect(
+        within(decision).getByRole("option", { name: "Em análise" }),
+      ).not.toBeDisabled();
+    },
+  );
+  it("volta uma aceita para Recebida com motivo padrão e mantém só indicação de departamento", async () => {
+    items[0].status = "APPROVED";
+    items[0].team = events[0].teams[0];
+    items[0].decisionSummary = {
+      ready: true,
+      notice: {
+        id: "notice",
+        kind: "ACEITE",
+        active: true,
+        expired: false,
+        emailStatus: "PENDENTE",
+        emailSentAt: null,
+        whatsappSentAt: null,
+        confirmedAt: null,
+        expiresAt: "2027-02-01",
+      },
+    };
+    const original = mocks.api.getMockImplementation()!;
+    mocks.api.mockImplementation(
+      async (
+        path: string,
+        options?: { method?: string; body?: Record<string, unknown> },
+      ) => {
+        if (path.endsWith("/status")) {
+          items[0].status = options!.body!.status as Registration["status"];
+          items[0].decisionSummary!.notice!.active = false;
+          events[0].teams[0].occupied = 0;
+          events[0].teams[0].available = 1;
+          return structuredClone(items[0]);
+        }
+        return original(path, options);
+      },
+    );
+    show();
+    fireEvent.change(await ready(), { target: { value: "RECEIVED" } });
+    await waitFor(() =>
+      expect(mocks.api).toHaveBeenCalledWith(
+        "/organizations/org/registrations/registration/status",
+        {
+          method: "PATCH",
+          body: {
+            status: "RECEIVED",
+            reason:
+              "Candidatura devolvida a Recebida pela organização para correção da decisão.",
+          },
+        },
+      ),
+    );
+    expect(await screen.findByText("Indicado — sem reserva")).toBeVisible();
+    expect(
+      screen.getByRole("combobox", { name: "Decisão de Maria Teste" }),
+    ).toHaveValue("RECEIVED");
+    expect(
+      screen.getByRole("combobox", { name: "Departamento de Maria Teste" }),
+    ).toHaveValue("team");
+    expect(
+      screen.getByRole("button", {
+        name: "Enviar convite por WhatsApp para Maria Teste",
+      }),
+    ).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Enviar convite: Maria Teste" }),
+    ).not.toBeInTheDocument();
+  });
+  it("preserva a decisão aceita quando a API recusa a reabertura", async () => {
+    items[0].status = "APPROVED";
+    const original = mocks.api.getMockImplementation()!;
+    mocks.api.mockImplementation(
+      (
+        path: string,
+        options?: { method?: string; body?: Record<string, unknown> },
+      ) =>
+        path.endsWith("/status")
+          ? Promise.reject(new Error("Este evento não aceita reabertura."))
+          : original(path, options),
+    );
+    show();
+    fireEvent.change(await ready(), { target: { value: "REVIEW" } });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Este evento não aceita reabertura.",
+    );
+    expect(
+      screen.getByRole("combobox", { name: "Decisão de Maria Teste" }),
+    ).toHaveValue("APPROVED");
+  });
+  it("oferece retorno de Em análise para Recebida e bloqueia reabertura de evento encerrado", async () => {
+    items[0].status = "REVIEW";
+    show();
+    expect(
+      within(await ready()).getByRole("option", { name: "Recebida" }),
+    ).not.toBeDisabled();
+    cleanup();
+    items[0].status = "APPROVED";
+    events[0].status = "COMPLETED";
+    show();
+    const decision = await ready();
+    expect(
+      within(decision).getByRole("option", { name: "Recebida" }),
+    ).toBeDisabled();
+    expect(
+      within(decision).getByRole("option", { name: "Em análise" }),
+    ).toBeDisabled();
+  });
   it("mantém busca e ações no celular e concentra filtros em uma única janela", async () => {
     mobileViewport = true;
     show(

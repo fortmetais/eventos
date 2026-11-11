@@ -41,12 +41,19 @@ import { Empty, Field, Loading, Notice, PageHeading } from "../components/ui";
 
 const statusOptions: Record<RegistrationStatus, RegistrationStatus[]> = {
   RECEIVED: ["REVIEW", "APPROVED", "REJECTED", "CANCELLED"],
-  REVIEW: ["APPROVED", "WAITLIST", "REJECTED", "CANCELLED"],
-  APPROVED: ["CONFIRMED", "WAITLIST", "REJECTED", "CANCELLED"],
-  CONFIRMED: ["CANCELLED"],
-  WAITLIST: ["REVIEW", "APPROVED", "CANCELLED", "REJECTED"],
-  REJECTED: [],
-  CANCELLED: [],
+  REVIEW: ["RECEIVED", "APPROVED", "WAITLIST", "REJECTED", "CANCELLED"],
+  APPROVED: [
+    "RECEIVED",
+    "REVIEW",
+    "CONFIRMED",
+    "WAITLIST",
+    "REJECTED",
+    "CANCELLED",
+  ],
+  CONFIRMED: ["RECEIVED", "REVIEW", "CANCELLED"],
+  WAITLIST: ["RECEIVED", "REVIEW", "APPROVED", "CANCELLED", "REJECTED"],
+  REJECTED: ["RECEIVED", "REVIEW"],
+  CANCELLED: ["RECEIVED", "REVIEW"],
 };
 const eventLabels = {
   DRAFT: "Rascunho",
@@ -82,10 +89,9 @@ function useMobileReview() {
 }
 const pendingStates = ["RECEIVED", "REVIEW", "WAITLIST"];
 const allocatedStates = ["APPROVED", "CONFIRMED"];
-const defaultReasons: Record<
-  Exclude<RegistrationStatus, "RECEIVED">,
-  string
-> = {
+const defaultReasons: Record<RegistrationStatus, string> = {
+  RECEIVED:
+    "Candidatura devolvida a Recebida pela organização para correção da decisão.",
   REVIEW: "Análise iniciada pela organização na lista de inscrições.",
   APPROVED: "Candidatura aceita pela organização na lista de inscrições.",
   CONFIRMED: "Participação confirmada pela organização na lista de inscrições.",
@@ -318,10 +324,7 @@ export function ReviewRegistrations() {
               ? { teamId: value || null }
               : {
                   status: value,
-                  reason:
-                    defaultReasons[
-                      value as Exclude<RegistrationStatus, "RECEIVED">
-                    ],
+                  reason: defaultReasons[value as RegistrationStatus],
                 },
         },
       );

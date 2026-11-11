@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   team: null as { id: string; name: string } | null,
   origin: "PUBLIC_FORM" as "PUBLIC_FORM" | "IMPORT",
   status: "RECEIVED",
+  eventStatus: "PUBLISHED",
   pendingInformation: undefined as string[] | undefined,
 }));
 vi.mock("../lib/api", () => ({ api: mocks.api }));
@@ -31,6 +32,7 @@ vi.mock("../lib/hooks", () => ({
       ? [
           {
             id: "event",
+            status: mocks.eventStatus,
             teams: [
               { id: "team", name: "SECRETARIA", available: 0, capacity: 1 },
             ],
@@ -76,6 +78,7 @@ beforeEach(() => {
   mocks.team = null;
   mocks.origin = "PUBLIC_FORM";
   mocks.status = "RECEIVED";
+  mocks.eventStatus = "PUBLISHED";
   mocks.pendingInformation = undefined;
   mocks.api.mockResolvedValue({
     url: "https://example.test/photo.webp",
@@ -84,6 +87,65 @@ beforeEach(() => {
 });
 
 describe("Ficha completa extraída", () => {
+  it.each(["APPROVED", "CONFIRMED", "WAITLIST", "REJECTED", "CANCELLED"])(
+    "oferece retorno para Recebida e Em análise na ficha %s",
+    (status) => {
+      mocks.status = status;
+      render(
+        <RegistrationDetail
+          organizationId="org"
+          registrationId="candidate"
+          onChanged={vi.fn()}
+        />,
+      );
+      expect(
+        screen.getByRole("option", { name: "Recebida" }),
+      ).not.toBeDisabled();
+      expect(
+        screen.getByRole("option", { name: "Em análise" }),
+      ).not.toBeDisabled();
+    },
+  );
+  it("salva retorno para Recebida sem exigir motivo adicional", async () => {
+    mocks.status = "APPROVED";
+    render(
+      <RegistrationDetail
+        organizationId="org"
+        registrationId="candidate"
+        onChanged={vi.fn()}
+      />,
+    );
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Decisão sobre a candidatura" }),
+      "RECEIVED",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Salvar decisão" }),
+    );
+    expect(mocks.api).toHaveBeenCalledWith(
+      "/organizations/org/registrations/candidate/status",
+      expect.objectContaining({
+        body: {
+          status: "RECEIVED",
+          reason:
+            "Situação alterada para Recebida pela organização na ficha de inscrição.",
+        },
+      }),
+    );
+  });
+  it("bloqueia retorno para Recebida ou Em análise em evento concluído", () => {
+    mocks.status = "APPROVED";
+    mocks.eventStatus = "COMPLETED";
+    render(
+      <RegistrationDetail
+        organizationId="org"
+        registrationId="candidate"
+        onChanged={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("option", { name: "Recebida" })).toBeDisabled();
+    expect(screen.getByRole("option", { name: "Em análise" })).toBeDisabled();
+  });
   it("permite confirmar vaga importada com pendências reais, sem afirmar que a autorização já foi dada", async () => {
     mocks.origin = "IMPORT";
     mocks.status = "APPROVED";

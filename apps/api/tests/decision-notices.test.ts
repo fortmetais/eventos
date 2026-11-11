@@ -889,6 +889,357 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       expect(fallback.active).toBe(false);
       expect(fallback.id).toBe(newestRevokedId);
     });
+    it("corrige estados anteriores para recebida/análise com histórico, sem atalhos ou envio automático", async () => {
+      const sentBefore = messages.length;
+      for (const source of [
+        "REVIEW",
+        "APPROVED",
+        "CONFIRMED",
+        "WAITLIST",
+        "REJECTED",
+        "CANCELLED",
+      ] as const) {
+        for (const target of ["RECEIVED", "REVIEW"] as const) {
+          if (source === target) continue;
+          const id = await candidate();
+          await db.registration.update({
+            where: { id },
+            data: { status: source },
+          });
+          const before = await db.registration.findUniqueOrThrow({
+            where: { id },
+          });
+          await status(id, target).then((response) =>
+            expect(response.status).toBe(200),
+          );
+          const after = await db.registration.findUniqueOrThrow({
+            where: { id },
+          });
+          expect(after.status).toBe(target);
+          expect(after.snapshot).toEqual(before.snapshot);
+          expect(after.importData).toEqual(before.importData);
+          expect(
+            await db.statusHistory.findFirst({ where: { registrationId: id } }),
+          ).toMatchObject({
+            fromStatus: source,
+            toStatus: target,
+            actorId: users.organizer.id,
+            reason: "Motivo interno que não será enviado ao candidato",
+          });
+          expect(
+            await db.auditLog.findFirst({
+              where: { entityId: id, action: `REGISTRATION_${target}` },
+            }),
+          ).not.toBeNull();
+          expect(
+            await db.decisionNotice.count({ where: { registrationId: id } }),
+          ).toBe(0);
+        }
+      }
+      const rejected = await candidate();
+      await status(rejected, "REJECTED").then((response) =>
+        expect(response.status).toBe(200),
+      );
+      // A terminal decision can be reopened, but cannot jump straight back to acceptance.
+      await status(rejected, "APPROVED").then((response) =>
+        expect(response.status).toBe(409),
+      );
+      expect(messages.length).toBe(sentBefore);
+    });
+    it("reabrir confirmação libera vaga, mantém indicação e evidências, revoga link e exige nova presença no aceite seguinte", async () => {
+      const sentBefore = messages.length;
+      const id = await candidate();
+      const team = await db.team.create({
+        data: { eventId, name: `CORREÇÃO ${randomUUID()}`, capacity: 1 },
+      });
+      const consent = await db.consent.create({
+        data: {
+          registrationId: id,
+          version: "TESTE",
+          termsText: "Termos fictícios aceitos anteriormente",
+          accepted: true,
+          guardianAuthorized: false,
+          imageAuthorized: false,
+        },
+      });
+      const health = await db.healthSubmission.create({
+        data: { registrationId: id, data: { hasAllergies: false } },
+      });
+      const original = await db.registration.findUniqueOrThrow({
+        where: { id },
+      });
+      await status(id, "APPROVED").then((response) =>
+        expect(response.status).toBe(200),
+      );
+      await request(app)
+        .put(`${base(id)}/team`)
+        .set(auth())
+        .send({ teamId: team.id })
+        .expect(200);
+      const previous = (
+        await request(app)
+          .get(`${base(id)}/decision-notice`)
+          .set(auth())
+          .expect(200)
+      ).body.notice;
+      const previousToken = new URLSearchParams(
+        new URL(previous.link).hash.slice(1),
+      ).get("token");
+      await request(app)
+        .post(publicPath(previous.id))
+        .send({ token: previousToken })
+        .expect(200);
+      await status(id, "CONFIRMED").then((response) =>
+        expect(response.status).toBe(200),
+      );
+      await status(id, "RECEIVED").then((response) =>
+        expect(response.status).toBe(200),
+      );
+      const reopened = await db.registration.findUniqueOrThrow({
+        where: { id },
+      });
+      expect(reopened.teamId).toBe(team.id);
+      expect(reopened.snapshot).toEqual(original.snapshot);
+      expect(reopened.importData).toEqual(original.importData);
+      expect(
+        await db.consent.findUnique({ where: { registrationId: id } }),
+      ).toEqual(consent);
+      expect(
+        await db.healthSubmission.findUnique({ where: { registrationId: id } }),
+      ).toEqual(health);
+      expect(
+        await db.registration.count({
+          where: { teamId: team.id, status: { in: ["APPROVED", "CONFIRMED"] } },
+        }),
+      ).toBe(0);
+      const ended = await db.decisionNotice.findUniqueOrThrow({
+        where: { id: previous.id },
+      });
+      expect(ended.revokedAt).not.toBeNull();
+      expect(ended.confirmedAt).not.toBeNull();
+      await request(app)
+        .post(`${publicPath(previous.id)}/view`)
+        .send({ token: previousToken })
+        .expect(410);
+      expect(
+        await db.statusHistory.findFirst({
+          where: {
+            registrationId: id,
+            fromStatus: "CONFIRMED",
+            toStatus: "RECEIVED",
+          },
+        }),
+      ).not.toBeNull();
+      const other = await candidate();
+      await status(other, "APPROVED").then((response) =>
+        expect(response.status).toBe(200),
+      );
+      await request(app)
+        .put(`${base(other)}/team`)
+        .set(auth())
+        .send({ teamId: team.id })
+        .expect(200);
+      await status(id, "APPROVED").then((response) =>
+        expect(response.status).toBe(409),
+      );
+      expect(
+        (await db.registration.findUniqueOrThrow({ where: { id } })).status,
+      ).toBe("RECEIVED");
+      await status(other, "CANCELLED").then((response) =>
+        expect(response.status).toBe(200),
+      );
+      await status(other, "REVIEW").then((response) =>
+        expect(response.status).toBe(200),
+      );
+      expect(
+        (await db.registration.findUniqueOrThrow({ where: { id: other } }))
+          .teamId,
+      ).toBeNull();
+      await status(id, "APPROVED").then((response) =>
+        expect(response.status).toBe(200),
+      );
+      const fresh = (
+        await request(app)
+          .get(`${base(id)}/decision-notice`)
+          .set(auth())
+          .expect(200)
+      ).body.notice;
+      expect(fresh.id).not.toBe(previous.id);
+      expect(fresh.confirmedAt).toBeNull();
+      const confirmation = await status(id, "CONFIRMED");
+      expect(confirmation.status).toBe(409);
+      expect(confirmation.body.error.code).toBe(
+        "CANDIDATE_CONFIRMATION_REQUIRED",
+      );
+      await request(app)
+        .post(publicPath(previous.id))
+        .send({ token: previousToken })
+        .expect(410);
+      await status(id, "REVIEW").then((response) =>
+        expect(response.status).toBe(200),
+      );
+      expect(
+        (await db.registration.findUniqueOrThrow({ where: { id } })).teamId,
+      ).toBe(team.id);
+      expect(
+        await db.registration.count({
+          where: { teamId: team.id, status: { in: ["APPROVED", "CONFIRMED"] } },
+        }),
+      ).toBe(0);
+      expect(messages.length).toBe(sentBefore);
+    });
+    it("revoga recusa ao reabrir e não reativa o link antigo após nova decisão", async () => {
+      const id = await candidate();
+      await status(id, "REJECTED").then((response) =>
+        expect(response.status).toBe(200),
+      );
+      const refusal = (
+        await request(app)
+          .get(`${base(id)}/decision-notice`)
+          .set(auth())
+          .expect(200)
+      ).body.notice;
+      const refusalToken = new URLSearchParams(
+        new URL(refusal.link).hash.slice(1),
+      ).get("token");
+      await status(id, "REVIEW").then((response) =>
+        expect(response.status).toBe(200),
+      );
+      expect(
+        (
+          await db.decisionNotice.findUniqueOrThrow({
+            where: { id: refusal.id },
+          })
+        ).revokedAt,
+      ).not.toBeNull();
+      await request(app)
+        .post(`${publicPath(refusal.id)}/view`)
+        .send({ token: refusalToken })
+        .expect(410);
+      await status(id, "RECEIVED").then((response) =>
+        expect(response.status).toBe(200),
+      );
+      await status(id, "REJECTED").then((response) =>
+        expect(response.status).toBe(200),
+      );
+      const fresh = (
+        await request(app)
+          .get(`${base(id)}/decision-notice`)
+          .set(auth())
+          .expect(200)
+      ).body.notice;
+      expect(fresh.id).not.toBe(refusal.id);
+      expect(fresh.kind).toBe("RECUSA");
+      await request(app)
+        .post(`${publicPath(refusal.id)}/view`)
+        .send({ token: refusalToken })
+        .expect(410);
+    });
+    it("revoga avisos ao reabrir mesmo sem configuração de envio e impede reativar o link antigo", async () => {
+      const withoutSending = createApp({
+        db,
+        eventsEnabled: false,
+        camperRegistrationsEnabled: false,
+        volunteerRegistrationsEnabled: true,
+        rateLimits: false,
+        decisionNotificationsEnabled: false,
+        resolveIdentity: async (token) => users[token] ?? null,
+      });
+      const sentBefore = messages.length;
+      for (const source of ["APPROVED", "REJECTED"]) {
+        const id = await candidate();
+        await status(id, source).then((response) =>
+          expect(response.status).toBe(200),
+        );
+        const previous = (
+          await request(app)
+            .get(`${base(id)}/decision-notice`)
+            .set(auth())
+            .expect(200)
+        ).body.notice;
+        const previousToken = new URLSearchParams(
+          new URL(previous.link).hash.slice(1),
+        ).get("token");
+        await request(withoutSending)
+          .patch(`${base(id)}/status`)
+          .set(auth())
+          .send({
+            status: "RECEIVED",
+            reason: "Correção com envio indisponível",
+          })
+          .expect(200);
+        expect(
+          (
+            await db.decisionNotice.findUniqueOrThrow({
+              where: { id: previous.id },
+            })
+          ).revokedAt,
+        ).not.toBeNull();
+        // Even reaccepting without a sending secret must not make the previous
+        // personal link usable when the configured server handles it again.
+        await request(withoutSending)
+          .patch(`${base(id)}/status`)
+          .set(auth())
+          .send({
+            status: source,
+            reason: "Decisão revista sem envio automático",
+          })
+          .expect(200);
+        await request(app)
+          .post(`${publicPath(previous.id)}/view`)
+          .send({ token: previousToken })
+          .expect(410);
+      }
+      expect(messages.length).toBe(sentBefore);
+    });
+    it("mantém bloqueios de reabertura para eventos encerrados/cancelados e contas sem permissão", async () => {
+      const id = await candidate();
+      await status(id, "APPROVED").then((response) =>
+        expect(response.status).toBe(200),
+      );
+      const noticesBefore = await db.decisionNotice.findMany({
+        where: { registrationId: id },
+      });
+      const historiesBefore = await db.statusHistory.count({
+        where: { registrationId: id },
+      });
+      for (const actor of ["other", "secretary"]) {
+        await request(app)
+          .patch(`${base(id)}/status`)
+          .set(auth(actor))
+          .send({ status: "RECEIVED", reason: "Correção indevida" })
+          .expect(403);
+      }
+      try {
+        for (const eventStatus of ["CANCELLED", "COMPLETED"] as const) {
+          await db.event.update({
+            where: { id: eventId },
+            data: { status: eventStatus },
+          });
+          for (const target of ["RECEIVED", "REVIEW"]) {
+            const denied = await status(id, target);
+            expect(denied.status).toBe(409);
+            expect(denied.body.error.message).toContain(
+              "não aceita reabertura",
+            );
+          }
+        }
+      } finally {
+        await db.event.update({
+          where: { id: eventId },
+          data: { status: "PUBLISHED" },
+        });
+      }
+      expect(
+        (await db.registration.findUniqueOrThrow({ where: { id } })).status,
+      ).toBe("APPROVED");
+      expect(
+        await db.statusHistory.count({ where: { registrationId: id } }),
+      ).toBe(historiesBefore);
+      expect(
+        await db.decisionNotice.findMany({ where: { registrationId: id } }),
+      ).toEqual(noticesBefore);
+    });
     it("cancelamento e suspensão bloqueiam respostas e ações administrativas", async () => {
       await status(registrationId, "CANCELLED").then((r) =>
         expect(r.status).toBe(200),
