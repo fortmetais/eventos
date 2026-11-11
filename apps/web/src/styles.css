@@ -3194,19 +3194,25 @@ td strong {
   overflow-wrap: anywhere;
 }
 .review-pending-trigger {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 28px;
-  width: 28px;
-  min-height: 28px;
-  padding: 3px;
-  border: 1px solid #efda9b;
+  flex: 0 0 24px;
+  width: 24px;
+  min-height: 24px;
+  padding: 4px;
+  border: 0;
   border-radius: 50%;
   color: #8b6114;
+  background: transparent;
+}
+.review-pending-trigger svg {
+  flex-shrink: 0;
+  border-radius: 50%;
   background: #fff5d6;
 }
-.review-pending-trigger:hover {
+.review-pending-trigger:hover svg {
   background: #ffedb3;
 }
 .review-pending-information {
@@ -3221,10 +3227,10 @@ td strong {
     font-size: 16px;
     line-height: 1.4;
   }
-  .review-pending-trigger {
-    flex-basis: 44px;
-    width: 44px;
-    min-height: 44px;
+  .review-pending-trigger::after {
+    content: "";
+    position: absolute;
+    inset: -10px;
   }
 }
 .review-person > small {

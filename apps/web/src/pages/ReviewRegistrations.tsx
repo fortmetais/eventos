@@ -448,6 +448,7 @@ export function ReviewRegistrations() {
       <tr key={registration.id} aria-busy={feedback?.busy || undefined}>
         <td className="review-person" data-label="Participante">
           <div className="review-person-heading">
+            <strong>{registration.person.name}</strong>
             {pendingInformation.length > 0 && (
               <button
                 type="button"
@@ -456,10 +457,9 @@ export function ReviewRegistrations() {
                 title="Complementação pendente"
                 onClick={() => setPendingRegistration(registration)}
               >
-                <CircleAlert size={19} aria-hidden="true" />
+                <CircleAlert size={16} aria-hidden="true" />
               </button>
             )}
-            <strong>{registration.person.name}</strong>
           </div>
           <small className="review-person-protocol">
             {registration.protocol}
