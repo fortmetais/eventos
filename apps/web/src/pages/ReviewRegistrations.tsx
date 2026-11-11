@@ -981,6 +981,7 @@ export function ReviewRegistrations() {
                       <Search size={18} />
                       <input
                         type="search"
+                        aria-label="Pesquisar participante"
                         value={query}
                         maxLength={120}
                         onChange={(event) => setQuery(event.target.value)}

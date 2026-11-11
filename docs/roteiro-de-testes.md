@@ -1,5 +1,13 @@
 # Roteiro de testes da aplicação Encontro
 
+## Densidade da gestão no celular — 11/11/2026
+
+- Conferir cabeçalho, menu da organização e abas compactos; nomes de candidatos em 14 px e rótulos menores. O ícone de pendências fica depois do nome, com desenho de 16 px e área de toque ampliada no celular.
+- Cada cartão mantém departamento, decisão e convite, com Ficha, WhatsApp e cópia na mesma linha. O departamento selecionado não é repetido abaixo do dropdown. Os botões de compartilhamento usam ícones e nomes acessíveis.
+- Conferir controles com toque de 44 px, pesquisa nomeada para leitores de tela e sem rolagem horizontal. Campos editáveis preservam texto de 16 px. Filtros, ficha e mensagens também usam espaçamentos menores.
+
+Validação: compilação e 27 testes da página aprovados. O percurso no navegador passou em desktop e telas de 320, 390 e 430 px, verificando nome, altura dos cartões, alinhamento das ações e limites de toque. Capturas de densidade são feitas no topo da página para evitar deslocamento visual da busca fixa. Sem alteração de banco ou regras de decisão.
+
 ## Compartilhar convites pela lista — 11/11/2026
 
 - O botão verde de WhatsApp abre diretamente uma nova aba com a conversa e a mensagem personalizada do evento, sem abrir modal. Não envia a mensagem nem registra envio automaticamente.
@@ -25,7 +33,7 @@ Validação: tipos e compilação aprovados; percurso completo no navegador em d
 - Aceitar e alocar uma candidatura importada incompleta. Sem presença respondida no aviso ativo, a confirmação continua bloqueada. Após a resposta, confirmar a vaga com pendências: não deve exigir foto, saúde ou aceite atual, nem criar essas evidências.
 - Repetir com menor importado sem termo: permite confirmar a vaga e mantém **Autorização do responsável pendente: obrigatória antes do evento** no aviso de pendências. Um menor inscrito pela ficha nativa continua exigindo a assinatura.
 - Conferir que capacidade concorrente, departamento, situação do evento e permissões continuam verificados.
-- A lista mostra exclamação antes do nome em vez de repetir Complementação pendente. Abrir por mouse, toque e teclado mostra as pendências atuais; fechar devolve foco. Candidatura sem pendências não mostra exclamação.
+- A lista mostra uma pequena exclamação depois do nome em vez de repetir Complementação pendente. Abrir por mouse, toque e teclado mostra as pendências atuais; fechar devolve foco. Candidatura sem pendências não mostra exclamação.
 - WhatsApp de importado aceito/confirmado com pendências abre diretamente a conversa em nova aba. Abrir conversa não registra envio. Quando expirado, orienta acessar a renovação pelo indicador de convite sem criar avisos ou enviar mensagens automaticamente.
 - A listagem carrega o estado da autorização em lote e mantém compatibilidade quando o módulo do responsável não está instalado. Não deve expor dados de saúde nem credenciais novas.
 
@@ -35,7 +43,7 @@ Verificação desta entrega: suítes completas da API/interface aprovadas com Po
 
 ## Inscrições por evento — revisão de 11/11/2026
 
-Ajuste de usabilidade no celular: o menu da organização fica recolhido nesta página; busca permanece visível e os demais controles ficam em **Filtros e ordenação**, com aplicação imediata e retorno por **Ver inscrições**. O botão **Limpar filtros** preserva o texto da pesquisa. Os cartões têm ações nomeadas **Ficha** e **WhatsApp**, departamento completo em texto e orientação quando o envio não está disponível. Campos usam 16 px e alvos de toque de pelo menos 44 px; modais respeitam as áreas de segurança da tela.
+Ajuste de usabilidade no celular: o menu da organização fica recolhido nesta página; busca permanece visível e os demais controles ficam em **Filtros e ordenação**, com aplicação imediata e retorno por **Ver inscrições**. O botão **Limpar filtros** preserva o texto da pesquisa. Os cartões têm ações nomeadas **Ficha**, **WhatsApp** e **Copiar link**; o departamento permanece no dropdown e há orientação quando o envio não está disponível. Campos usam 16 px e alvos de toque de pelo menos 44 px; modais respeitam as áreas de segurança da tela.
 
 No teste de navegador, conferir larguras de 320, 390 e 430 px, além do desktop: primeiro departamento acessível na primeira tela, menu recolhível, filtros sem controles duplicados, ordem/filtros preservados ao fechar, pesquisa fixa durante a rolagem, nomes longos de departamento, ficha/convite, navegação sem rolagem horizontal e retorno de foco. Em aparelho físico, conferir o teclado e o seletor nativo de opções; a emulação automatizada não reproduz o teclado do iPhone.
 

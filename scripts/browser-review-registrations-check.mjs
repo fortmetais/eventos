@@ -541,6 +541,61 @@ try {
           bounds.height >= 44,
           "Campos precisam de área adequada ao toque.",
         );
+        const firstCard = page.locator("tbody tr").filter({
+          has: page.getByText("Ágata Silva", { exact: true }),
+        });
+        const cardBounds = await firstCard.boundingBox();
+        assert(
+          cardBounds && cardBounds.height <= 330,
+          "O cartão móvel deve manter a ficha simples compacta, com até 330 px de altura.",
+        );
+        const nameFont = await firstCard
+          .locator(".review-person-heading strong")
+          .evaluate((node) =>
+            Number.parseFloat(getComputedStyle(node).fontSize),
+          );
+        assert(
+          nameFont <= 14,
+          "O nome deve usar a escala compacta de até 14 px no celular.",
+        );
+        const actionBounds = await Promise.all([
+          firstCard
+            .getByRole("button", {
+              name: "Abrir ficha de Ágata Silva",
+              exact: true,
+            })
+            .boundingBox(),
+          firstCard
+            .getByRole("button", {
+              name: "Enviar convite por WhatsApp para Ágata Silva",
+              exact: true,
+            })
+            .boundingBox(),
+          firstCard
+            .getByRole("button", {
+              name: "Copiar link do candidato Ágata Silva",
+              exact: true,
+            })
+            .boundingBox(),
+        ]);
+        assert(
+          actionBounds.every(Boolean),
+          "Ficha, WhatsApp e cópia devem permanecer disponíveis no cartão.",
+        );
+        for (const action of actionBounds) {
+          assert(
+            action.width >= 44 && action.height >= 44 && action.height <= 48,
+            "Ações compactas devem preservar área de toque de pelo menos 44 px.",
+          );
+          assert(
+            Math.abs(action.y - actionBounds[0].y) <= 1,
+            "Ficha, WhatsApp e cópia devem ficar alinhados na mesma linha.",
+          );
+        }
+        await page.screenshot({
+          path: `.local/screenshots/review-mobile-density-${screenLabel}.png`,
+          fullPage: true,
+        });
       }
       await page.getByRole("tab", { name: "Departamentos e vagas" }).click();
       await expect(
@@ -704,6 +759,7 @@ try {
         page.getByRole("dialog").getByText(/Envio pelo WhatsApp registrado/),
       ).toBeVisible();
       await page.keyboard.press("Escape");
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({
         path: `.local/screenshots/review-quick-share-${screenLabel}.png`,
         fullPage: true,
