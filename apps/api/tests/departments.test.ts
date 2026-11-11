@@ -356,6 +356,85 @@ const url = process.env.TEST_DEPARTMENT_DATABASE_URL;
         }),
       ).toBe(1);
     });
+    it("indica antes de aceitar sem reservar, preserva ao analisar e disputa a vaga somente no aceite", async () => {
+      const team = await db.team.create({
+        data: { eventId, name: "PRÉVIA", capacity: 1 },
+      });
+      const pending = await Promise.all([candidate(), candidate()]);
+      for (const id of pending)
+        await db.registration.update({
+          where: { id },
+          data: { status: "RECEIVED" },
+        });
+      for (const id of pending)
+        await request(app)
+          .put(`${registrationPath(id)}/team`)
+          .set(auth())
+          .send({ teamId: team.id })
+          .expect(200);
+      await request(app)
+        .patch(`${registrationPath(pending[0])}/status`)
+        .set(auth())
+        .send({ status: "REVIEW", reason: "Análise na lista" })
+        .expect(200);
+      expect(
+        (await db.registration.findUniqueOrThrow({ where: { id: pending[0] } }))
+          .teamId,
+      ).toBe(team.id);
+      const event = (
+        await request(app)
+          .get(`/api/v1/organizations/${org}/events`)
+          .set(auth())
+          .expect(200)
+      ).body.find((e: { id: string }) => e.id === eventId);
+      expect(
+        event.teams.find((t: { id: string }) => t.id === team.id),
+      ).toMatchObject({ occupied: 0, available: 1 });
+      await request(app).delete(teamPath(team.id)).set(auth()).expect(409);
+      const results = await Promise.all(
+        pending.map((id) =>
+          request(app)
+            .patch(`${registrationPath(id)}/status`)
+            .set(auth())
+            .send({ status: "APPROVED", reason: "Aceite na lista" }),
+        ),
+      );
+      expect(results.map((r) => r.status).sort()).toEqual([200, 409]);
+      const loser = pending[results.findIndex((r) => r.status === 409)];
+      expect(
+        (await db.registration.findUniqueOrThrow({ where: { id: loser } }))
+          .status,
+      ).not.toBe("APPROVED");
+      await request(app)
+        .put(`${registrationPath(loser)}/team`)
+        .set(auth())
+        .send({ teamId: null })
+        .expect(200);
+      expect(
+        (await db.registration.findUniqueOrThrow({ where: { id: loser } }))
+          .teamId,
+      ).toBeNull();
+      await request(app)
+        .put(`${registrationPath(loser)}/team`)
+        .set(auth())
+        .send({ teamId: team.id })
+        .expect(200);
+      const winner = pending[results.findIndex((r) => r.status === 200)];
+      await request(app)
+        .patch(`${registrationPath(winner)}/status`)
+        .set(auth())
+        .send({ status: "REJECTED", reason: "Recusa na lista" })
+        .expect(200);
+      expect(
+        (await db.registration.findUniqueOrThrow({ where: { id: winner } }))
+          .teamId,
+      ).toBeNull();
+      await request(app)
+        .patch(`${registrationPath(loser)}/status`)
+        .set(auth())
+        .send({ status: "APPROVED", reason: "Aceite na lista" })
+        .expect(200);
+    });
     it("bloqueia redução abaixo dos alocados, troca de departamento libera a vaga e cancelamento libera presença confirmada", async () => {
       await request(app)
         .put(teamPath())
@@ -382,6 +461,11 @@ const url = process.env.TEST_DEPARTMENT_DATABASE_URL;
         .set(auth())
         .send({ status: "CONFIRMED", reason: "Presença confirmada" })
         .expect(200);
+      await request(app)
+        .put(`${registrationPath(candidates[0])}/team`)
+        .set(auth())
+        .send({ teamId: null })
+        .expect(409);
       await request(app)
         .patch(`${registrationPath(candidates[0])}/status`)
         .set(auth())

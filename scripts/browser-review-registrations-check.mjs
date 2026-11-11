@@ -1,0 +1,524 @@
+import assert from "node:assert/strict";
+import { mkdirSync } from "node:fs";
+import { chromium, expect } from "@playwright/test";
+
+// React real e serviços fictícios: nenhuma conexão com dados ou mensageria reais.
+const target = process.env.PREVIEW_URL ?? "http://127.0.0.1:5174";
+if (!["localhost", "127.0.0.1"].includes(new URL(target).hostname))
+  throw new Error("Execute somente contra a aplicação local.");
+const orgId = "00000000-0000-4000-8000-000000000001";
+const eventId = "00000000-0000-4000-8000-000000000003";
+const campaignId = "00000000-0000-4000-8000-000000000004";
+const teamId = "00000000-0000-4000-8000-000000000005";
+const otherEventId = "00000000-0000-4000-8000-000000000006";
+const authHost = "auth.encontro.invalid";
+const user = {
+  id: "00000000-0000-4000-8000-000000000002",
+  email: "organizador@example.test",
+  aud: "authenticated",
+  role: "authenticated",
+  app_metadata: {},
+  user_metadata: {},
+  email_confirmed_at: new Date().toISOString(),
+};
+const now = Math.floor(Date.now() / 1000);
+const jwt = [
+  Buffer.from('{"alg":"HS256","typ":"JWT"}').toString("base64url"),
+  Buffer.from(
+    JSON.stringify({
+      sub: user.id,
+      aud: "authenticated",
+      exp: now + 3600,
+      iat: now,
+    }),
+  ).toString("base64url"),
+  "fixture",
+].join(".");
+const session = {
+  access_token: jwt,
+  refresh_token: "fixture",
+  token_type: "bearer",
+  expires_in: 3600,
+  expires_at: now + 3600,
+  user,
+};
+const organization = {
+  id: orgId,
+  name: "Paróquia do teste de inscrições",
+  city: "Loanda",
+  state: "PR",
+  kind: "PARISH",
+  active: true,
+};
+const browser = await chromium.launch({
+  headless: true,
+  ...(process.platform === "win32"
+    ? {
+        executablePath:
+          process.env.CHROME_PATH ??
+          "C:/Program Files/Google/Chrome/Application/chrome.exe",
+      }
+    : {}),
+});
+mkdirSync(".local/screenshots", { recursive: true });
+try {
+  for (const mobile of [false, true]) {
+    const context = await browser.newContext({
+      viewport: mobile
+        ? { width: 390, height: 844 }
+        : { width: 1536, height: 1000 },
+      isMobile: mobile,
+      hasTouch: mobile,
+    });
+    await context.addInitScript(
+      (value) =>
+        localStorage.setItem("sb-auth-auth-token", JSON.stringify(value)),
+      session,
+    );
+    const errors = [],
+      queries = [],
+      changes = [];
+    let emails = 0,
+      detailReads = 0,
+      noticeReads = 0;
+    const event = {
+      id: eventId,
+      organizationId: orgId,
+      name: "3º Acampamento FAC",
+      description: "Evento fictício",
+      startsAt: "2028-02-05",
+      endsAt: "2028-02-09",
+      location: "Comunidade Santa Teresinha",
+      city: "Loanda",
+      status: "PUBLISHED",
+      type: { name: "FAC" },
+      departmentsReady: true,
+      imageThumbnailUrl: `${target}/fixture-banner.svg`,
+      imageUrl: `${target}/fixture-banner.svg`,
+      campaigns: [
+        {
+          id: campaignId,
+          kind: "VOLUNTEER",
+          allowWaitlist: true,
+          _count: { registrations: 4 },
+        },
+      ],
+      teams: [
+        {
+          id: teamId,
+          eventId,
+          name: "SECRETARIA",
+          capacity: 5,
+          occupied: 1,
+          available: 4,
+        },
+      ],
+    };
+    const people = [
+      "Ágata Silva",
+      "Bruno Souza",
+      "Carla Oliveira",
+      "Daniel Lima",
+    ];
+    const rows = people.map((name, index) => ({
+      id: `00000000-0000-4000-8000-${String(index + 11).padStart(12, "0")}`,
+      protocol: `INS-TESTE-${index + 1}`,
+      person: { name },
+      status: index === 2 ? "REJECTED" : index === 1 ? "APPROVED" : "RECEIVED",
+      origin: "PUBLIC_FORM",
+      accountId: user.id,
+      team: index === 1 ? event.teams[0] : null,
+      createdAt: `2026-10-${index + 10}T12:00:00Z`,
+      updatedAt: "2026-11-11T12:00:00Z",
+      snapshot: {
+        name,
+        phone: "44999999999",
+        email: "candidato@example.test",
+        birthDate: "1990-01-01",
+        answers: {},
+      },
+      history: [],
+      campaign: {
+        ...event.campaigns[0],
+        event: { id: eventId, name: event.name, startsAt: event.startsAt },
+      },
+      form: { config: { questions: [], terms: "Termos fictícios" } },
+    }));
+    const notices = new Map();
+    function makeNotice(row) {
+      return {
+        id: `notice-${row.id}`,
+        kind: "ACEITE",
+        emailStatus: "PENDENTE",
+        emailSentAt: null,
+        whatsappSentAt: null,
+        confirmedAt: null,
+        expiresAt: "2028-01-10T12:00:00Z",
+        active: true,
+        expired: false,
+        email: row.snapshot.email,
+        message: `Olá, ${row.person.name}! Departamento: ${row.team?.name ?? "A definir pela organização"}.`,
+        link: `${target}/resposta/fixture#token=fixture`,
+        shortLink: `${target}/r#fixture`,
+        whatsappLink: "https://wa.me/5544999999999?text=convite-ficticio",
+      };
+    }
+    notices.set(rows[1].id, makeNotice(rows[1]));
+    function summary(row) {
+      const notice = notices.get(row.id);
+      if (!notice) return { ready: true, notice: null };
+      const { link, shortLink, whatsappLink, message, email, ...safe } = notice;
+      return { ready: true, notice: safe };
+    }
+    const json = (route, value, status = 200, headers = {}) =>
+      route.fulfill({
+        status,
+        headers,
+        contentType: "application/json",
+        body: JSON.stringify(value),
+      });
+    await context.route("**/*", async (route) => {
+      const request = route.request(),
+        url = new URL(request.url());
+      if (url.hostname === authHost) {
+        const headers = {
+          "access-control-allow-origin": "*",
+          "access-control-allow-headers":
+            "authorization,apikey,content-type,x-client-info,x-supabase-api-version",
+          "access-control-allow-methods": "GET,POST,OPTIONS",
+        };
+        if (request.method() === "OPTIONS")
+          return route.fulfill({ status: 204, headers });
+        if (url.pathname.endsWith("/user"))
+          return json(route, user, 200, headers);
+      }
+      if (url.pathname === "/api/v1/config")
+        return json(route, {
+          supabaseUrl: `https://${authHost}`,
+          supabaseAnonKey: "sb_publishable_test",
+          eventsEnabled: true,
+          eventManagementEnabled: true,
+        });
+      if (url.pathname === "/api/v1/me/access")
+        return json(route, {
+          account: {
+            id: user.id,
+            email: user.email,
+            profile: {},
+            platformAdmin: false,
+          },
+          organizations: [
+            {
+              id: "member",
+              organizationId: orgId,
+              accountId: user.id,
+              organization,
+              role: "ORGANIZER",
+              active: true,
+              healthEventIds: [],
+            },
+          ],
+        });
+      const base = `/api/v1/organizations/${orgId}`;
+      if (url.pathname === `${base}/events`)
+        return json(route, [
+          event,
+          {
+            ...event,
+            id: otherEventId,
+            name: "Retiro de formação",
+            teams: [],
+            campaigns: [],
+          },
+        ]);
+      if (url.pathname === `${base}/registrations`) {
+        queries.push(url.searchParams.toString());
+        const q = (url.searchParams.get("q") ?? "")
+          .normalize("NFD")
+          .replace(/\p{Diacritic}/gu, "")
+          .toLowerCase();
+        let result = rows.filter(
+          (row) =>
+            (url.searchParams.get("includeClosed") !== "false" ||
+              !["REJECTED", "CANCELLED"].includes(row.status)) &&
+            row.person.name
+              .normalize("NFD")
+              .replace(/\p{Diacritic}/gu, "")
+              .toLowerCase()
+              .includes(q),
+        );
+        if (url.searchParams.get("status"))
+          result = result.filter(
+            (row) => row.status === url.searchParams.get("status"),
+          );
+        const sort = url.searchParams.get("sort");
+        result.sort((a, b) =>
+          sort === "RECEIVED_ASC"
+            ? a.createdAt.localeCompare(b.createdAt)
+            : sort === "NAME_DESC"
+              ? b.person.name.localeCompare(a.person.name, "pt-BR")
+              : sort === "ACCEPTED_FIRST"
+                ? Number(["APPROVED", "CONFIRMED"].includes(b.status)) -
+                    Number(["APPROVED", "CONFIRMED"].includes(a.status)) ||
+                  a.person.name.localeCompare(b.person.name, "pt-BR")
+                : a.person.name.localeCompare(b.person.name, "pt-BR"),
+        );
+        return json(route, {
+          items: result.map((row) => ({
+            ...row,
+            decisionSummary: summary(row),
+          })),
+          total: result.length,
+          page: 1,
+          pageSize: 20,
+        });
+      }
+      const match = url.pathname.match(
+        new RegExp(`^${base}/registrations/([^/]+)(.*)$`),
+      );
+      if (match) {
+        const row = rows.find((item) => item.id === match[1]),
+          suffix = match[2];
+        if (!row) return json(route, {}, 404);
+        if (!suffix) {
+          detailReads++;
+          return json(route, row);
+        }
+        if (suffix === "/guardian")
+          return json(route, {
+            ready: true,
+            needsAuthorization: false,
+            authorization: null,
+          });
+        if (suffix === "/team" && request.method() === "PUT") {
+          const { teamId: value } = request.postDataJSON();
+          row.team = value ? event.teams.find((t) => t.id === value) : null;
+          if (notices.has(row.id))
+            notices.set(row.id, { ...notices.get(row.id), ...makeNotice(row) });
+          changes.push("team");
+          return json(route, row);
+        }
+        if (suffix === "/status" && request.method() === "PATCH") {
+          const body = request.postDataJSON();
+          assert(body.reason?.length >= 3);
+          row.status = body.status;
+          changes.push(body.status);
+          if (body.status === "APPROVED") notices.set(row.id, makeNotice(row));
+          return json(route, row);
+        }
+        if (suffix === "/decision-notice") {
+          noticeReads++;
+          return json(route, {
+            ready: true,
+            notice: notices.get(row.id) ?? null,
+          });
+        }
+        if (suffix.startsWith("/decision-notice/")) {
+          const notice = notices.get(row.id);
+          assert(notice);
+          if (suffix.endsWith("/whatsapp-sent"))
+            notice.whatsappSentAt = new Date().toISOString();
+          else if (suffix.endsWith("/email")) {
+            notice.emailStatus = "ENVIADA";
+            notice.emailSentAt = new Date().toISOString();
+            emails++;
+          } else if (suffix.endsWith("/renew")) {
+            notice.expired = false;
+            notice.expiresAt = "2028-01-11T12:00:00Z";
+          }
+          return json(route, { ready: true, notice });
+        }
+      }
+      if (url.pathname === "/fixture-banner.svg")
+        return route.fulfill({
+          contentType: "image/svg+xml",
+          body: '<svg xmlns="http://www.w3.org/2000/svg" width="800" height="300"><rect width="800" height="300" fill="#10285d"/><text x="40" y="180" fill="#f4c158" font-size="70">FAC 2028</text></svg>',
+        });
+      if (url.hostname === "wa.me")
+        return route.fulfill({
+          contentType: "text/html",
+          body: "<p>Conversa fictícia do WhatsApp</p>",
+        });
+      if (url.pathname.startsWith("/api/v1/")) {
+        errors.push(`API inesperada: ${url.pathname}`);
+        return json(route, {}, 400);
+      }
+      if (url.hostname === "fonts.googleapis.com")
+        return route.fulfill({ contentType: "text/css", body: "" });
+      if (url.origin === new URL(target).origin) return route.continue();
+      errors.push(`Destino externo: ${url.hostname}`);
+      return route.abort();
+    });
+    const page = await context.newPage();
+    page.on("pageerror", (error) => errors.push(error.message));
+    page.setDefaultTimeout(15000);
+    try {
+      await page.goto(`${target}/organizacao/${orgId}/inscricoes`);
+      await expect(
+        page.getByText(event.name, { exact: true }).first(),
+      ).toBeVisible();
+      await page.screenshot({
+        path: `.local/screenshots/review-events-${mobile ? "mobile" : "desktop"}.png`,
+        fullPage: true,
+      });
+      await page.getByText(event.name, { exact: true }).first().click();
+      await expect(
+        page.getByRole("tab", { name: "Inscrições", exact: true }),
+      ).toHaveAttribute("aria-selected", "true");
+      await expect(
+        page.getByText("Ágata Silva", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText("Carla Oliveira", { exact: true }),
+      ).toHaveCount(0);
+      assert.equal(
+        noticeReads,
+        0,
+        "A tabela não deve carregar aviso individual por linha.",
+      );
+      assert.equal(
+        detailReads,
+        0,
+        "A tabela não deve carregar ficha individual por linha.",
+      );
+      await page.getByRole("tab", { name: "Departamentos e vagas" }).click();
+      await expect(
+        page.getByRole("button", { name: "Criar departamento" }),
+      ).toBeVisible();
+      await page.getByRole("tab", { name: "Inscrições", exact: true }).click();
+      const search = page.getByRole("searchbox", { name: /pesquis|busc/i });
+      await search.fill("agata");
+      await expect(page.getByText("Bruno Souza", { exact: true })).toHaveCount(
+        0,
+      );
+      assert(queries.some((q) => new URLSearchParams(q).get("q") === "agata"));
+      await page.reload();
+      await expect(search).toHaveValue("agata");
+      await search.fill("");
+      await expect(
+        page.getByText("Bruno Souza", { exact: true }),
+      ).toBeVisible();
+      const ordering = page.getByRole("combobox", { name: /^Ordenar/ });
+      await ordering.selectOption("NAME_DESC");
+      await expect(
+        page.locator("tbody tr .review-person strong").first(),
+      ).toHaveText("Daniel Lima");
+      await page
+        .getByRole("button", { name: /Recusadas e canceladas ocultas/i })
+        .click();
+      await expect(
+        page.getByText("Carla Oliveira", { exact: true }),
+      ).toBeVisible();
+      await ordering.selectOption("ACCEPTED_FIRST");
+      await expect(
+        page.locator("tbody tr .review-person strong").first(),
+      ).toHaveText("Bruno Souza");
+      await ordering.selectOption("RECEIVED_ASC");
+      await expect(
+        page.locator("tbody tr .review-person strong").first(),
+      ).toHaveText("Ágata Silva");
+      await ordering.selectOption("NAME_ASC");
+      await page
+        .getByRole("button", { name: /Recusadas e canceladas visíveis/i })
+        .click();
+      await expect(
+        page.getByText("Carla Oliveira", { exact: true }),
+      ).toHaveCount(0);
+      const candidate = page
+        .locator("tr, article")
+        .filter({ has: page.getByText("Ágata Silva", { exact: true }) })
+        .last();
+      await candidate
+        .getByRole("combobox", { name: /departamento/i })
+        .selectOption(teamId);
+      await expect(candidate).toContainText(/sem reserva/i);
+      await candidate
+        .getByRole("combobox", { name: /decis/i })
+        .selectOption("APPROVED");
+      await expect(candidate).toContainText("Enviar convite");
+      assert.equal(emails, 0, "Aceitar não envia e-mail.");
+      assert(changes.includes("APPROVED") && changes.includes("team"));
+      await page.screenshot({
+        path: `.local/screenshots/review-registrations-${mobile ? "mobile" : "desktop"}.png`,
+        fullPage: true,
+      });
+      await candidate.getByRole("button", { name: /ficha/i }).click();
+      const dialog = page.getByRole("dialog");
+      await expect(
+        dialog.getByRole("heading", { name: "Ágata Silva" }),
+      ).toBeVisible();
+      await page.screenshot({
+        path: `.local/screenshots/review-detail-${mobile ? "mobile" : "desktop"}.png`,
+        fullPage: true,
+      });
+      await dialog
+        .getByLabel("Decisão sobre a candidatura")
+        .selectOption("WAITLIST");
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("alertdialog")).toBeVisible();
+      await page.getByRole("button", { name: "Continuar editando" }).click();
+      await expect(dialog).toBeVisible();
+      await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Descartar e fechar" }).click();
+      await expect(dialog).toHaveCount(0);
+      await expect(
+        candidate.getByRole("button", { name: /ficha/i }),
+      ).toBeFocused();
+      await candidate
+        .getByRole("button", {
+          name: "Enviar convite: Ágata Silva",
+          exact: true,
+        })
+        .click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      const openWhatsApp = page.getByRole("link", { name: /WhatsApp/i });
+      await expect(openWhatsApp).toHaveAttribute("href", /^https:\/\/wa\.me\//);
+      const popupPromise = context.waitForEvent("page");
+      await openWhatsApp.click();
+      await (await popupPromise).close();
+      assert.equal(notices.get(rows[0].id).whatsappSentAt, null);
+      await page.getByRole("button", { name: /Marcar como enviado/i }).click();
+      await expect(
+        page.getByText(/Envio pelo WhatsApp registrado/),
+      ).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(candidate).toContainText("Aguardando confirmação");
+      notices.get(rows[0].id).confirmedAt = new Date().toISOString();
+      await page
+        .getByRole("button", { name: /atualizar (lista|inscri)/i })
+        .click();
+      await expect(candidate).toContainText("Presença confirmada");
+      await page.screenshot({
+        path: `.local/screenshots/review-presence-${mobile ? "mobile" : "desktop"}.png`,
+        fullPage: true,
+      });
+      await page.goto(
+        `${target}/organizacao/${orgId}/inscricoes?inscricao=${rows[0].id}`,
+      );
+      await expect(
+        page.getByRole("dialog").getByRole("heading", { name: "Ágata Silva" }),
+      ).toBeVisible();
+      await page.keyboard.press("Escape");
+      assert(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth + 1,
+        ),
+        "A página não pode ter rolagem horizontal.",
+      );
+      assert.deepEqual(errors, []);
+      console.log(
+        `Inscrições ${mobile ? "celular" : "desktop"}: cards, abas, pesquisa/URL, indicação, aprovação, modal, convite manual, presença e link antigo aprovados.`,
+      );
+    } catch (error) {
+      await page.screenshot({
+        path: `.local/screenshots/review-error-${mobile ? "mobile" : "desktop"}.png`,
+        fullPage: true,
+      });
+      throw error;
+    } finally {
+      await context.close();
+    }
+  }
+} finally {
+  await browser.close();
+}

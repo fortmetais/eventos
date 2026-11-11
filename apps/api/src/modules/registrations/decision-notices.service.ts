@@ -231,6 +231,98 @@ export class DecisionNoticesService {
       },
     };
   }
+  async summaries(organizationId: string, registrationIds: string[]) {
+    type Summary = {
+      ready: boolean;
+      notice: null | {
+        id: string;
+        kind: string;
+        emailStatus: string;
+        emailSentAt: Date | null;
+        whatsappSentAt: Date | null;
+        confirmedAt: Date | null;
+        expiresAt: Date;
+        active: boolean;
+        expired: boolean;
+      };
+    };
+    const ready = await this.ready();
+    const result = new Map<string, Summary>(
+      registrationIds.map((id) => [id, { ready, notice: null }]),
+    );
+    if (!ready || !registrationIds.length) return result;
+    // Pick at most one authorization-free summary per registration in SQL.
+    // Prisma's distinct can deduplicate in memory; selecting ids here prevents
+    // loading an unbounded history of revoked notices for a single page.
+    const latest = await this.db.$queryRaw<{ id: string }[]>`
+      SELECT DISTINCT ON (a.inscricao_id) a.aviso_id AS id
+      FROM inscricoes.avisos_decisao a
+      JOIN inscricoes.inscricoes r ON r.inscricao_id = a.inscricao_id
+      JOIN eventos.campanhas c ON c.campanha_id = r.campanha_id
+      JOIN eventos.eventos e ON e.evento_id = c.evento_id
+      WHERE a.inscricao_id = ANY(${registrationIds}::uuid[])
+        AND e.organizacao_id = ${organizationId}::uuid
+      ORDER BY a.inscricao_id, (a.revogado_em IS NULL) DESC,
+        a.criado_em DESC, a.aviso_id ASC`;
+    if (!latest.length) return result;
+    const notices = await this.db.decisionNotice.findMany({
+      where: {
+        id: { in: latest.map((notice) => notice.id) },
+        registration: { campaign: { event: { organizationId } } },
+      },
+      select: {
+        id: true,
+        registrationId: true,
+        kind: true,
+        emailStatus: true,
+        emailSentAt: true,
+        whatsappSentAt: true,
+        confirmedAt: true,
+        expiresAt: true,
+        revokedAt: true,
+        registration: {
+          select: {
+            status: true,
+            campaign: {
+              select: {
+                event: {
+                  select: {
+                    status: true,
+                    organization: { select: { active: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    for (const notice of notices) {
+      const event = notice.registration.campaign.event;
+      const active =
+        !notice.revokedAt &&
+        event.organization.active &&
+        event.status === "PUBLISHED" &&
+        (notice.kind === "ACEITE"
+          ? ["APPROVED", "CONFIRMED"].includes(notice.registration.status)
+          : notice.registration.status === "REJECTED");
+      result.set(notice.registrationId, {
+        ready: true,
+        notice: {
+          id: notice.id,
+          kind: notice.kind,
+          emailStatus: notice.emailStatus,
+          emailSentAt: notice.emailSentAt,
+          whatsappSentAt: notice.whatsappSentAt,
+          confirmedAt: notice.confirmedAt,
+          expiresAt: notice.expiresAt,
+          active,
+          expired: !notice.confirmedAt && notice.expiresAt <= new Date(),
+        },
+      });
+    }
+    return result;
+  }
   async deliver(noticeId: string, retry = false) {
     let notice = await this.db.decisionNotice.findUnique({
       where: { id: noticeId },

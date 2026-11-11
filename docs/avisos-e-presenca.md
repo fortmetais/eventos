@@ -1,6 +1,6 @@
 # Avisos de aceite, recusa e confirmação de presença
 
-Ao aceitar uma candidatura de servo, a aplicação registra a decisão e cria um aviso com link pessoal. Quando o candidato informou e-mail e o SMTP da API está configurado, tenta enviar o aviso automaticamente. O painel também oferece **Abrir mensagem no WhatsApp**, com destinatário, texto e link preenchidos.
+Ao aceitar uma candidatura de servo, a aplicação registra a decisão e cria um aviso com link pessoal. O envio depende de uma ação explícita: **Enviar por e-mail** ou **Abrir mensagem no WhatsApp**, com destinatário, texto e link preenchidos. Aceitar ou recusar uma candidatura não envia e-mail automaticamente.
 
 O candidato abre o link e clica em **Confirmar minha presença**, sem obrigação de criar conta. Abrir o link não confirma automaticamente, inclusive quando um serviço de e-mail gera uma prévia. A confirmação final da inscrição permanece com o organizador, depois da resposta do candidato e da alocação em equipe. As regras de vagas continuam aplicadas.
 
@@ -42,13 +42,13 @@ Somente organizadores podem consultar ou salvar o modelo. `GET/PUT /api/v1/organ
 
 Testar inclusão de informações no cursor, prévia, salvar, restaurar padrão, revisão desatualizada, isolamento entre eventos/organizações, exigência de informações essenciais e fluxo sem migração. Conferir no WhatsApp e e-mail simulados se nome/departamento/link/validade são os do candidato. Usar `scripts/browser-event-messages-check.mjs` para o percurso no computador e celular, incluindo a abertura do link compacto e confirmação explícita. Nenhum envio real é realizado nos testes.
 
-1. Com um candidato fictício e contato de teste, passe a candidatura de **Recebida** para **Em análise** e depois para **Aceitar candidatura**. Confira o aviso, link e situação do e-mail na ficha.
+1. Com um candidato fictício e contato de teste, aceite diretamente uma candidatura **Recebida** pela lista. Confira o histórico e o aviso amarelo **Enviar convite**. Nenhum e-mail deve ser enviado até a ação explícita. A passagem por **Em análise** permanece opcional.
 2. Clique em **Abrir mensagem no WhatsApp** e confira destinatário, nome do evento e link. O painel deve continuar sem registrar envio até você clicar na ação de declaração. Durante testes, envie somente a um número controlado por você.
 3. Abra o link em janela privada. Antes de clicar em confirmar, atualize o painel: a presença deve continuar pendente. Clique em **Confirmar minha presença** e atualize novamente: o painel deve registrar a resposta.
 4. Clique/reenvie a mesma confirmação: deve preservar a primeira resposta. Aloque o candidato aprovado em uma equipe e confirme a inscrição no painel. Sem resposta ao aviso ativo, a confirmação final deve ser impedida.
 5. Use outra candidatura para **Recusar candidatura**. Confira a mensagem “Não foi dessa vez!” tanto no texto preparado para WhatsApp quanto no e-mail de teste. O link deve mostrar a recusa e não oferecer confirmação.
 6. Recuse ou cancele uma candidatura antes aprovada: o link de aceite anterior deve ficar indisponível. Teste outra paróquia e um membro suspenso: não podem acessar nem enviar esses avisos.
-7. Simule falha no SMTP: a decisão deve ficar salva, com envio pendente/falha. Após corrigir a configuração, use **Enviar por e-mail**. Abrir/recarregar a ficha não envia novamente.
+7. Clique em **Enviar por e-mail** e simule falha no SMTP: a decisão deve continuar salva, com a falha visível. Após corrigir a configuração, use novamente **Enviar por e-mail**. Abrir/recarregar a ficha não envia novamente.
 8. Para link expirado, use **Renovar link** e compartilhe o novo. A credencial anterior deixa de funcionar. O aceite vence em até sete dias, limitado ao início do evento no horário de Brasília; a recusa tem sete dias. Uma resposta já confirmada é preservada.
 
 **Inscrições antigas:** decisões feitas antes da ativação desta tabela não ganham aviso retroativamente. Elas preservam a confirmação manual já existente. Novos aceites que possuem aviso ativo exigem a resposta do candidato antes da confirmação final.

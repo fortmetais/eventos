@@ -55,8 +55,13 @@ describe("Aviso ao candidato", () => {
     expect(await navigator.clipboard.readText()).toBe(state.notice.shortLink);
   });
   it("abrir mensagem não declara envio; registro exige ação explícita", async () => {
+    const onChanged = vi.fn();
     render(
-      <DecisionNotice organizationId="org" registrationId="registration" />,
+      <DecisionNotice
+        organizationId="org"
+        registrationId="registration"
+        onChanged={onChanged}
+      />,
     );
     const link = await screen.findByRole("link", {
       name: "Abrir mensagem no WhatsApp",
@@ -65,6 +70,15 @@ describe("Aviso ao candidato", () => {
     expect(
       screen.getByText("Envio pelo WhatsApp ainda não registrado."),
     ).toBeVisible();
+    expect(
+      mocks.api.mock.calls.some(([, options]) => options?.method === "POST"),
+    ).toBe(false);
+    expect(
+      screen.queryByRole("button", {
+        name: "Marcar como enviado pelo WhatsApp",
+      }),
+    ).not.toBeInTheDocument();
+    await userEvent.click(link);
     expect(
       mocks.api.mock.calls.some(([, options]) => options?.method === "POST"),
     ).toBe(false);
@@ -77,6 +91,7 @@ describe("Aviso ao candidato", () => {
           path.endsWith("/whatsapp-sent") && options?.method === "POST",
       ),
     ).toBe(true);
+    expect(onChanged).toHaveBeenCalledTimes(1);
   });
   it("recusa mostra a mensagem desejada sem pedir confirmação de presença", async () => {
     mocks.api.mockResolvedValue(fixture("RECUSA"));
@@ -103,5 +118,67 @@ describe("Aviso ao candidato", () => {
     expect(
       screen.queryByText("Enviado", { exact: true }),
     ).not.toBeInTheDocument();
+  });
+  it("renovar o link não envia e-mail nem mantém declaração pendente de WhatsApp", async () => {
+    render(
+      <DecisionNotice organizationId="org" registrationId="registration" />,
+    );
+    const link = await screen.findByRole("link", {
+      name: "Abrir mensagem no WhatsApp",
+    });
+    await userEvent.click(link);
+    await userEvent.click(screen.getByRole("button", { name: "Renovar link" }));
+    expect(mocks.api).toHaveBeenCalledWith(expect.stringContaining("/renew"), {
+      method: "POST",
+    });
+    expect(
+      screen.queryByRole("button", {
+        name: "Marcar como enviado pelo WhatsApp",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      mocks.api.mock.calls.some(
+        ([path, options]) =>
+          path.endsWith("/email") && options?.method === "POST",
+      ),
+    ).toBe(false);
+  });
+  it("e-mail só é enviado ao acionar seu botão e atualiza a lista", async () => {
+    const state = fixture();
+    const withEmail = {
+      ...state,
+      notice: {
+        ...state.notice,
+        email: "candidato@example.test",
+        emailStatus: "PENDENTE",
+      },
+    };
+    mocks.api
+      .mockResolvedValueOnce(withEmail)
+      .mockResolvedValueOnce({
+        ...withEmail,
+        notice: {
+          ...withEmail.notice,
+          emailStatus: "ENVIADA",
+          emailSentAt: "2026-11-11T12:00:00Z",
+        },
+      });
+    const onChanged = vi.fn();
+    render(
+      <DecisionNotice
+        organizationId="org"
+        registrationId="registration"
+        onChanged={onChanged}
+      />,
+    );
+    await screen.findByRole("button", { name: "Enviar por e-mail" });
+    expect(
+      mocks.api.mock.calls.some(([, options]) => options?.method === "POST"),
+    ).toBe(false);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Enviar por e-mail" }),
+    );
+    expect(onChanged).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Enviado", { exact: true })).toBeVisible();
   });
 });

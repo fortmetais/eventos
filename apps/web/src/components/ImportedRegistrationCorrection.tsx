@@ -41,10 +41,12 @@ export function ImportedRegistrationCorrection({
   registration,
   organizationId,
   onSaved,
+  onDirtyChange,
 }: {
   registration: Registration & { updatedAt?: string };
   organizationId: string;
   onSaved: (registration: Registration) => void | Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, EventImportValue>>(
@@ -54,6 +56,12 @@ export function ImportedRegistrationCorrection({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  useEffect(() => {
+    onDirtyChange?.(
+      busy || Object.keys(overrides).length > 0 || reason.length > 0,
+    );
+  }, [onDirtyChange, busy, overrides, reason]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   useEffect(() => {
     setOverrides({});
     setReason("");

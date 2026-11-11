@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { useRemote } from "../lib/hooks";
 import { dateTime } from "../lib/types";
@@ -35,15 +35,25 @@ const emailLabels: Record<string, string> = {
 export function DecisionNotice({
   organizationId,
   registrationId,
+  onChanged,
+  initialWhatsApp = false,
 }: {
   organizationId: string;
   registrationId: string;
+  onChanged?: () => void;
+  initialWhatsApp?: boolean;
 }) {
   const path = `/organizations/${organizationId}/registrations/${registrationId}/decision-notice`;
   const state = useRemote<DecisionNoticeState>(path);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [info, setInfo] = useState("");
+  const [whatsappOpened, setWhatsappOpened] = useState(false);
+  const whatsappButton = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    if (initialWhatsApp && state.data?.notice?.whatsappLink)
+      whatsappButton.current?.focus();
+  }, [initialWhatsApp, state.data?.notice?.whatsappLink]);
   async function action(suffix: string) {
     setBusy(true);
     setError("");
@@ -52,6 +62,8 @@ export function DecisionNotice({
       state.setData(
         await api<DecisionNoticeState>(`${path}/${suffix}`, { method: "POST" }),
       );
+      if (suffix === "renew") setWhatsappOpened(false);
+      onChanged?.();
     } catch (error) {
       setError((error as Error).message);
     } finally {
@@ -98,7 +110,9 @@ export function DecisionNotice({
         <Notice kind={notice.confirmedAt ? "success" : "info"}>
           {notice.confirmedAt
             ? `Presença confirmada pelo candidato em ${dateTime(notice.confirmedAt)}.`
-            : "Aguardando o candidato confirmar presença pelo link. A confirmação final também exige alocação em equipe."}
+            : notice.whatsappSentAt || notice.emailSentAt
+              ? "Aguardando o candidato confirmar presença pelo link. A confirmação final também exige alocação em equipe."
+              : "Convite ainda não enviado. Escolha WhatsApp ou e-mail para solicitar a confirmação de presença."}
         </Notice>
       )}
       <p>
@@ -139,10 +153,12 @@ export function DecisionNotice({
               <div className="button-row">
                 {notice.whatsappLink && (
                   <a
+                    ref={whatsappButton}
                     className="button outline"
                     href={notice.whatsappLink}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={() => setWhatsappOpened(true)}
                   >
                     Abrir mensagem no WhatsApp
                   </a>
@@ -155,16 +171,18 @@ export function DecisionNotice({
                 >
                   Copiar link
                 </button>
-                {!notice.whatsappSentAt && notice.whatsappLink && (
-                  <button
-                    type="button"
-                    className="button outline"
-                    disabled={busy}
-                    onClick={() => void action("whatsapp-sent")}
-                  >
-                    Marcar como enviado pelo WhatsApp
-                  </button>
-                )}
+                {!notice.whatsappSentAt &&
+                  notice.whatsappLink &&
+                  whatsappOpened && (
+                    <button
+                      type="button"
+                      className="button outline"
+                      disabled={busy}
+                      onClick={() => void action("whatsapp-sent")}
+                    >
+                      Marcar como enviado pelo WhatsApp
+                    </button>
+                  )}
                 {notice.email && notice.emailStatus !== "ENVIADA" && (
                   <button
                     type="button"
@@ -180,6 +198,12 @@ export function DecisionNotice({
                 Abrir o WhatsApp prepara a conversa. Envie a mensagem e depois
                 registre o envio aqui.
               </p>
+              {initialWhatsApp && !notice.whatsappLink && (
+                <Notice kind="info">
+                  Este candidato não tem um telefone válido para abrir o
+                  WhatsApp. Confira a ficha ou utilize outro canal.
+                </Notice>
+              )}
             </>
           )}
           {!notice.confirmedAt && (

@@ -8,6 +8,14 @@ const filters = z.object({
   campaignId: id.optional(),
   origin: z.enum(["PUBLIC_FORM", "IMPORT"]).optional(),
   completeness: z.enum(["PENDING", "COMPLETE"]).optional(),
+  q: z.string().trim().max(120).optional(),
+  sort: z
+    .enum(["NAME_ASC", "NAME_DESC", "RECEIVED_ASC", "ACCEPTED_FIRST"])
+    .optional(),
+  includeClosed: z
+    .enum(["true", "false"])
+    .transform((value) => value === "true")
+    .optional(),
   status: z
     .enum([
       "RECEIVED",

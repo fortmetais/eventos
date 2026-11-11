@@ -109,6 +109,7 @@ let photoUploads = 0,
   expiredPhotoResponses = 0,
   rejectNextPhoto = false;
 const photoLinks = [],
+  photoLinkUrls = new WeakMap(),
   expiredPhotoSignatures = new Set();
 function signedPhotoUrl() {
   return `${target}/storage-test/photos/photo-test.png?signature=${++photoSignature}`;
@@ -181,6 +182,12 @@ const json = (route, value, status = 200, headers = {}) =>
     body: JSON.stringify(value),
   });
 async function fixtures(context) {
+  // StrictMode pode cancelar a primeira montagem antes de consumir a resposta.
+  // Contar apenas buscas concluídas mantém a verificação de renovação exata.
+  context.on("requestfinished", (request) => {
+    const url = photoLinkUrls.get(request);
+    if (url) photoLinks.push(url);
+  });
   context.on("page", (page) =>
     page.on("pageerror", (error) => errors.push(error.message)),
   );
@@ -370,7 +377,7 @@ async function fixtures(context) {
         "Renovar a foto deve conservar a autorização do rascunho.",
       );
       const url = signedPhotoUrl();
-      photoLinks.push(url);
+      photoLinkUrls.set(request, url);
       return json(route, { url });
     }
     if (path === `/api/v1/public/drafts/${draftId}/submit`) {
@@ -478,6 +485,12 @@ async function fixtures(context) {
       errors.push(`API inesperada: ${path}`);
       return json(route, {}, 400);
     }
+    if (url.hostname === "wa.me")
+      return route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        body: "<p>Conversa fictícia do WhatsApp</p>",
+      });
     if (url.hostname === "fonts.googleapis.com")
       return route.fulfill({ status: 200, contentType: "text/css", body: "" });
     if (url.origin === new URL(target).origin) return route.continue();
@@ -928,8 +941,9 @@ try {
     fullPage: true,
   });
 
-  await admin.goto(`${target}/organizacao/${id}/inscricoes`);
-  await admin.getByRole("button", { name: "Abrir ficha", exact: true }).click();
+  await admin.goto(
+    `${target}/organizacao/${id}/inscricoes?evento=${eventId}&inscricao=registration-test`,
+  );
   await admin.getByText("Respostas da ficha de intenção").click();
   await admin.getByLabel("Decisão sobre a candidatura").selectOption("REVIEW");
   await admin
@@ -954,6 +968,9 @@ try {
     .getAttribute("href");
   assert(new URL(whatsapp).searchParams.get("text").includes("foi aceita!"));
   assert.equal(decisionNotice.whatsappSentAt, null);
+  const whatsappWindow = organizerContext.waitForEvent("page");
+  await admin.getByRole("link", { name: "Abrir mensagem no WhatsApp" }).click();
+  await (await whatsappWindow).close();
   await admin
     .getByRole("button", { name: "Marcar como enviado pelo WhatsApp" })
     .click();
@@ -1309,7 +1326,6 @@ try {
         "credencial-temporaria-somente-teste",
       );
       if (oldPhotoUnavailable) {
-        oldPhotoUnavailable = false;
         return json(
           route,
           { message: "Storage temporariamente indisponível" },
@@ -1357,6 +1373,9 @@ try {
     { id: draftId, token: "credencial-temporaria-somente-teste" },
     "Uma falha de foto não deve apagar a inscrição anterior nem sua credencial.",
   );
+  // A indisponibilidade termina após a conferência do erro; montagens
+  // canceladas pelo StrictMode não devem consumir a falha simulada.
+  oldPhotoUnavailable = false;
   await oldDraftPage
     .getByRole("button", { name: "Tentar carregar foto" })
     .click();

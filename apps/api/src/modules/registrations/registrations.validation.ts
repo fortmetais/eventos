@@ -309,7 +309,7 @@ export const statusSchema = z
   })
   .strict();
 export const teamSchema = departmentSchema.omit({ id: true });
-export const assignmentSchema = z.object({ teamId: id }).strict();
+export const assignmentSchema = z.object({ teamId: id.nullable() }).strict();
 export const manualLinkSchema = z
   .object({
     email: z
@@ -321,7 +321,7 @@ export const manualLinkSchema = z
   })
   .strict();
 export const transitions: Record<string, string[]> = {
-  RECEIVED: ["REVIEW", "REJECTED", "CANCELLED"],
+  RECEIVED: ["REVIEW", "APPROVED", "REJECTED", "CANCELLED"],
   REVIEW: ["APPROVED", "WAITLIST", "REJECTED", "CANCELLED"],
   APPROVED: ["CONFIRMED", "WAITLIST", "REJECTED", "CANCELLED"],
   CONFIRMED: ["CANCELLED"],

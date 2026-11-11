@@ -10,6 +10,16 @@ Com `TEMPORARY_SITE=true` e `APPLICATION_TEST_ACCESS=true`, o cartaz permanece n
 
 ## Plataforma e organização
 
+### Gestão de inscrições por evento
+
+`GET /organizations/:organizationId/registrations` mantém os filtros existentes e aceita `q` (até 120 caracteres, trecho do nome sem distinção de maiúsculas/acentos), `sort` (`NAME_ASC`, `NAME_DESC`, `RECEIVED_ASC`, `ACCEPTED_FIRST`) e `includeClosed` (`true`/`false`). Pesquisa, ordenação e contagem são aplicadas antes da paginação. Sem os parâmetros novos, a ordenação e a inclusão de encerradas do contrato anterior são preservadas. `RECEIVED_ASC` usa o envio original válido em `importData.source.submittedAt` nas importadas, com fallback para criação na aplicação; não ordena pelo protocolo alfanumérico.
+
+Cada item inclui `decisionSummary={ready,notice}`. O resumo contém somente identificação/tipo do aviso, situação do e-mail, datas de envio/presença, prazo e indicadores `active`/`expired`; nunca contém mensagens, contatos, tokens ou links pessoais. Os dados são carregados em lote por página. Links e mensagens continuam restritos ao endpoint de aviso acessado por organizador.
+
+`PATCH /organizations/:organizationId/registrations/:registrationId/status` permite agora `RECEIVED → APPROVED`, mantém histórico/auditoria e os requisitos da confirmação final. Aceitar/recusar prepara o aviso na transação, sem envio SMTP automático. O envio exige `POST .../decision-notice/email`; abrir o WhatsApp não registra envio, que permanece uma ação explícita em `POST .../decision-notice/whatsapp-sent`.
+
+`PUT /organizations/:organizationId/registrations/:registrationId/team` aceita `{teamId: uuid|null}`. `RECEIVED`, `REVIEW` e `WAITLIST` podem indicar departamento sem reserva de capacidade; `APPROVED` e `CONFIRMED` exigem espaço ao alocar/trocar. Aceitar com indicação revalida vagas transacionalmente. Limpar é bloqueado para `CONFIRMED`; recusa/cancelamento removem o vínculo e lista de espera conserva apenas a indicação. Não requer migração adicional.
+
 Criação de versão em POST `/organizations/:organizationId/campaigns/:campaignId/forms` e publicação de servos em POST `/organizations/:organizationId/events/:eventId/volunteer-form` aceitam JSON como antes ou multipart com `data` (JSON da configuração) e `banner` (arquivo opcional). Banner JPEG/PNG/WebP até 10 MB, horizontal 2:1–6:1, sem animação e no máximo 40 milhões de pixels de origem. O arquivo é convertido em WebP e o servidor grava `config.banner={url,bucket,key,width,height}`. Para reaproveitar, envie o objeto já salvo em uma versão do mesmo evento; referências externas/adulteradas são rejeitadas. `banner:null` remove apenas da nova versão. Somente organizadores podem enviar, antes do processamento do arquivo. Em falha de publicação, o upload novo é removido; arquivos de versões anteriores permanecem preservados.
 
 GET `/public/parishes` retorna somente `{ id, name, city, state }` das organizações ativas de tipo `PARISH`, ordenadas por nome. É público e limitado a 120 requisições por minuto. Não retorna contatos, CNPJ, endereço completo, membros nem convites. O campo **Qual paróquia frequenta?** carrega a lista ao focar e filtra no navegador, sem consulta por letra; a inscrição continua salvando uma resposta textual, selecionada ou livre. Não cria organizações e não requer SQL adicional.

@@ -20,7 +20,10 @@ import {
   validateSubmission,
   validateEmergencyRelationship,
 } from "./registrations.validation.js";
-import { RegistrationsRepository } from "./registrations.repository.js";
+import {
+  RegistrationsRepository,
+  type RegistrationFilters,
+} from "./registrations.repository.js";
 import type { DecisionNoticesService } from "./decision-notices.service.js";
 import {
   DepartmentsRepository,
@@ -348,13 +351,7 @@ export class RegistrationsService {
   }
   async list(
     organizationId: string,
-    filters: {
-      eventId?: string;
-      campaignId?: string;
-      status?: RegistrationStatus;
-      origin?: "PUBLIC_FORM" | "IMPORT";
-      completeness?: "PENDING" | "COMPLETE";
-    },
+    filters: RegistrationFilters,
     page: number,
     pageSize: number,
   ) {
@@ -391,12 +388,36 @@ export class RegistrationsService {
             }
           : {}),
     };
-    const [items, total] = await this.repo.list(
-      where,
-      (page - 1) * pageSize,
+    const [items, total] =
+      filters.q !== undefined ||
+      filters.sort !== undefined ||
+      filters.includeClosed !== undefined
+        ? await this.repo.reviewList(
+            organizationId,
+            filters,
+            this.volunteersOnly,
+            (page - 1) * pageSize,
+            pageSize,
+          )
+        : await this.repo.list(where, (page - 1) * pageSize, pageSize);
+    const summaries = this.notices
+      ? await this.notices.summaries(
+          organizationId,
+          items.map((item) => item.id),
+        )
+      : new Map();
+    return {
+      items: items.map((item) => ({
+        ...item,
+        decisionSummary: summaries.get(item.id) ?? {
+          ready: false,
+          notice: null,
+        },
+      })),
+      total,
+      page,
       pageSize,
-    );
-    return { items, total, page, pageSize };
+    };
   }
   async detail(organizationId: string, registrationId: string) {
     const result = await this.repo.find(organizationId, registrationId);
@@ -418,7 +439,6 @@ export class RegistrationsService {
     const noticesReady = this.notices ? await this.notices.ready() : false;
     const departmentsRepo = new DepartmentsRepository(this.repo.db);
     const departmentsReady = await departmentsRepo.ready();
-    let noticeId: string | null = null;
     let decisionNoticeMissing = false;
     const result = await this.repo.db.$transaction(
       async (tx) => {
@@ -541,10 +561,8 @@ export class RegistrationsService {
           where: { id: registrationId },
           data: {
             status,
-            // Estados fora da alocação liberam a vaga e exigem nova escolha ao retornar.
-            ...(![...allocatedStatuses].includes(
-              status as "APPROVED" | "CONFIRMED",
-            )
+            // Pending candidates keep a non-reserving department indication.
+            ...(["REJECTED", "CANCELLED"].includes(status)
               ? { teamId: null }
               : {}),
             history: {
@@ -568,7 +586,7 @@ export class RegistrationsService {
         });
         if (["APPROVED", "REJECTED"].includes(status)) {
           if (noticesReady) {
-            noticeId = await this.notices!.prepare(
+            await this.notices!.prepare(
               tx,
               registrationId,
               historyId,
@@ -587,20 +605,7 @@ export class RegistrationsService {
       },
       { timeout: 15000 },
     );
-    if (noticeId) {
-      try {
-        await this.notices!.deliver(noticeId);
-      } catch {
-        console.error(
-          JSON.stringify({ level: "error", event: "decision_notice_pending" }),
-        );
-        return {
-          ...result,
-          noticeWarning:
-            "Decisão registrada. O aviso ficou pendente; confira o envio abaixo.",
-        };
-      }
-    }
+    // Preparing a notice never sends it: the organizer chooses the channel.
     return {
       ...result,
       ...(decisionNoticeMissing
@@ -783,9 +788,16 @@ export class RegistrationsService {
       assert(registration, 404, "Inscrição não encontrada.");
       assert(
         registration.campaign.kind === "VOLUNTEER" &&
-          ["APPROVED", "CONFIRMED"].includes(registration.status),
+          ["RECEIVED", "REVIEW", "WAITLIST", "APPROVED", "CONFIRMED"].includes(
+            registration.status,
+          ),
         409,
-        "Aloque somente servos aprovados.",
+        "Esta candidatura não permite indicar departamento.",
+      );
+      assert(
+        teamId !== null || registration.status !== "CONFIRMED",
+        409,
+        "Uma participação confirmada precisa manter um departamento.",
       );
       assert(
         !["CANCELLED", "COMPLETED"].includes(
@@ -804,13 +816,33 @@ export class RegistrationsService {
       ].sort())
         await tx.$queryRaw`SELECT e.equipe_id FROM eventos.equipes e JOIN eventos.eventos v ON v.evento_id = e.evento_id
           WHERE e.equipe_id = ${id}::uuid AND v.organizacao_id = ${organizationId}::uuid FOR UPDATE OF e`;
-      await departmentsRepo.requireSpace(
-        tx,
-        organizationId,
-        registration.campaign.eventId,
-        teamId,
-        registrationId,
-      );
+      if (teamId !== null) {
+        if (
+          [...allocatedStatuses].includes(
+            registration.status as "APPROVED" | "CONFIRMED",
+          )
+        ) {
+          await departmentsRepo.requireSpace(
+            tx,
+            organizationId,
+            registration.campaign.eventId,
+            teamId,
+            registrationId,
+          );
+        } else {
+          assert(
+            await tx.team.findFirst({
+              where: {
+                id: teamId,
+                eventId: registration.campaign.eventId,
+                event: { organizationId },
+              },
+            }),
+            422,
+            "Departamento inválido para este evento.",
+          );
+        }
+      }
       const updated = await tx.registration.update({
         where: { id: registrationId },
         data: { teamId },
@@ -819,7 +851,12 @@ export class RegistrationsService {
         data: {
           organizationId,
           actorId,
-          action: "DEPARTMENT_ASSIGNED",
+          action:
+            teamId === null
+              ? "DEPARTMENT_REMOVED"
+              : ["APPROVED", "CONFIRMED"].includes(registration.status)
+                ? "DEPARTMENT_ASSIGNED"
+                : "DEPARTMENT_INDICATED",
           entityId: registrationId,
         },
       });

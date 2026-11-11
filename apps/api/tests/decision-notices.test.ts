@@ -56,11 +56,20 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       `/api/v1/organizations/${org}/registrations/${id}`;
     const publicPath = (id = noticeId) =>
       `/api/v1/public/decision-responses/${id}`;
-    async function candidate(withEmail = true) {
+    async function candidate(
+      withEmail = true,
+      options: {
+        name?: string;
+        createdAt?: Date;
+        submittedAt?: string;
+        campaign?: string;
+        form?: string;
+      } = {},
+    ) {
       const draft = await db.draft.create({
         data: {
-          campaignId,
-          formVersionId: formId,
+          campaignId: options.campaign ?? campaignId,
+          formVersionId: options.form ?? formId,
           tokenHash: randomUUID().replaceAll("-", "").repeat(2),
           expiresAt: new Date(Date.now() + 86400000),
         },
@@ -68,7 +77,7 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       const person = await db.person.create({
         data: {
           organizationId: org,
-          name: "Pessoa do teste de avisos",
+          name: options.name ?? "Pessoa do teste de avisos",
           phone: "44999999999",
           birthDate: new Date("1990-01-01"),
         },
@@ -77,10 +86,17 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
         await db.registration.create({
           data: {
             personId: person.id,
-            campaignId,
-            draftId: draft.id,
-            formVersionId: formId,
+            campaignId: options.campaign ?? campaignId,
+            draftId: options.submittedAt !== undefined ? null : draft.id,
+            formVersionId: options.form ?? formId,
             protocol: `AVISO-${randomUUID()}`,
+            createdAt: options.createdAt,
+            ...(options.submittedAt !== undefined
+              ? {
+                  origin: "IMPORT",
+                  importData: { source: { submittedAt: options.submittedAt } },
+                }
+              : {}),
             snapshot: {
               name: person.name,
               phone: person.phone,
@@ -185,13 +201,32 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       expect(tables).toHaveLength(24);
       expect(tables.every((t) => t.rowsecurity)).toBe(true);
     });
-    it("aceite gera e envia link individual depois de salvar decisão e histórico", async () => {
-      await status(registrationId, "REVIEW").then((r) =>
-        expect(r.status).toBe(200),
-      );
+    it("aceite direto prepara link sem enviar; envio exige ação explícita", async () => {
       await status(registrationId, "APPROVED").then((r) =>
         expect(r.status).toBe(200),
       );
+      expect(messages).toHaveLength(0);
+      const pending = (
+        await request(app)
+          .get(`${base()}/decision-notice`)
+          .set(auth())
+          .expect(200)
+      ).body.notice;
+      expect(pending.emailStatus).toBe("PENDENTE");
+      expect(pending.emailSentAt).toBeNull();
+      const history = await db.statusHistory.findMany({
+        where: { registrationId },
+      });
+      expect(history).toHaveLength(1);
+      expect(history[0]).toMatchObject({
+        fromStatus: "RECEIVED",
+        toStatus: "APPROVED",
+        actorId: users.organizer.id,
+      });
+      await request(app)
+        .post(`${base()}/decision-notice/email`)
+        .set(auth())
+        .expect(200);
       const state = (
         await request(app)
           .get(`${base()}/decision-notice`)
@@ -424,6 +459,10 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       delivery = "FALHA";
       await status(id, "REVIEW");
       await status(id, "APPROVED");
+      await request(app)
+        .post(`${base(id)}/decision-notice/email`)
+        .set(auth())
+        .expect(200);
       let state = (
         await request(app)
           .get(`${base(id)}/decision-notice`)
@@ -466,6 +505,10 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
         new URL(previous.link).hash.slice(1),
       ).get("token");
       await status(id, "REJECTED").then((r) => expect(r.status).toBe(200));
+      await request(app)
+        .post(`${base(id)}/decision-notice/email`)
+        .set(auth())
+        .expect(200);
       const current = (
         await request(app)
           .get(`${base(id)}/decision-notice`)
@@ -497,6 +540,10 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       const count = messages.length;
       await status(id, "REVIEW");
       await status(id, "APPROVED");
+      await request(app)
+        .post(`${base(id)}/decision-notice/email`)
+        .set(auth())
+        .expect(200);
       const state = (
         await request(app)
           .get(`${base(id)}/decision-notice`)
@@ -539,6 +586,10 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       const id = await candidate();
       delivery = "SEM_CONFIGURACAO";
       await status(id, "REJECTED").then((r) => expect(r.status).toBe(200));
+      await request(app)
+        .post(`${base(id)}/decision-notice/email`)
+        .set(auth())
+        .expect(200);
       const state = (
         await request(app)
           .get(`${base(id)}/decision-notice`)
@@ -550,6 +601,293 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       expect(state.notice.emailSentAt).toBeNull();
       expect(state.notice.whatsappLink).toContain("wa.me");
       delivery = "ENVIADA";
+    });
+    it("pesquisa e ordena o conjunto antes de paginar, filtra encerradas e valida datas históricas", async () => {
+      const ids: string[] = [];
+      for (let i = 0; i < 26; i++) {
+        const id = await candidate(true, {
+          name: `Lista Árvore ${String(i).padStart(2, "0")}`,
+          createdAt: new Date(Date.UTC(2025, 0, i + 1)),
+          ...(i === 1
+            ? { submittedAt: "2021-01-01T12:00:00.000Z" }
+            : i === 25
+              ? { submittedAt: "2020-02-30T00:00:00.000Z" }
+              : {}),
+        });
+        ids.push(id);
+        const record = await db.registration.findUniqueOrThrow({
+          where: { id },
+        });
+        await db.person.update({
+          where: { id: record.personId },
+          data: { name: `Lista Árvore ${String(i).padStart(2, "0")}` },
+        });
+        await db.registration.update({
+          where: { id },
+          data: {
+            createdAt: new Date(Date.UTC(2025, 0, i + 1)),
+            status:
+              i === 1
+                ? "APPROVED"
+                : i === 7
+                  ? "CONFIRMED"
+                  : i === 2
+                    ? "REJECTED"
+                    : i === 3
+                      ? "CANCELLED"
+                      : i === 4
+                        ? "REVIEW"
+                        : i === 5
+                          ? "WAITLIST"
+                          : "RECEIVED",
+          },
+        });
+      }
+      const list = (query: Record<string, string | number>) =>
+        request(app)
+          .get(`/api/v1/organizations/${org}/registrations`)
+          .set(auth())
+          .query({ q: "lista arvore", eventId, pageSize: 5, ...query });
+      const asc = (await list({ sort: "NAME_ASC", page: 2 }).expect(200)).body;
+      expect(asc.total).toBe(26);
+      expect(asc.items.map((r: { id: string }) => r.id)).toEqual(
+        ids.slice(5, 10),
+      );
+      const desc = (await list({ sort: "NAME_DESC" }).expect(200)).body;
+      expect(desc.items.map((r: { id: string }) => r.id)).toEqual(
+        ids.slice(21).reverse(),
+      );
+      const accepted = (
+        await list({ sort: "ACCEPTED_FIRST", includeClosed: "false" }).expect(
+          200,
+        )
+      ).body;
+      expect(accepted.total).toBe(24);
+      expect(
+        accepted.items.slice(0, 2).map((r: { id: string }) => r.id),
+      ).toEqual([ids[1], ids[7]]);
+      expect(accepted.items.map((r: { id: string }) => r.id)).not.toContain(
+        ids[2],
+      );
+      for (const [status, index] of Object.entries({
+        RECEIVED: 0,
+        REVIEW: 4,
+        APPROVED: 1,
+        CONFIRMED: 7,
+        WAITLIST: 5,
+        REJECTED: 2,
+        CANCELLED: 3,
+      })) {
+        const result = (
+          await list({ status, sort: "NAME_ASC", pageSize: 100 }).expect(200)
+        ).body;
+        expect(
+          result.items.some((r: { id: string }) => r.id === ids[index]),
+        ).toBe(true);
+        expect(
+          result.items.every((r: { status: string }) => r.status === status),
+        ).toBe(true);
+      }
+      expect(
+        (await list({ completeness: "PENDING", sort: "NAME_ASC" }).expect(200))
+          .body.total,
+      ).toBe(2);
+      expect(
+        (await list({ completeness: "COMPLETE", sort: "NAME_ASC" }).expect(200))
+          .body.total,
+      ).toBe(24);
+      const chronology = (
+        await list({ sort: "RECEIVED_ASC", pageSize: 100 }).expect(200)
+      ).body.items;
+      expect(chronology[0].id).toBe(ids[1]);
+      expect(chronology.at(-1).id).toBe(ids[25]);
+      for (const submittedAt of [
+        "invalid date",
+        "0000-01-01T00:00:00Z",
+        "2020-13-01T00:00:00Z",
+        "2021-02-29T00:00:00.000Z",
+      ]) {
+        const name = `Data inválida ${submittedAt}`;
+        const native = await candidate(true, {
+          name,
+          createdAt: new Date("2029-01-01"),
+        });
+        const imported = await candidate(true, {
+          name,
+          createdAt: new Date("2030-01-01"),
+          submittedAt,
+        });
+        expect(
+          (
+            await list({ q: name, sort: "RECEIVED_ASC", pageSize: 100 }).expect(
+              200,
+            )
+          ).body.items.map((r: { id: string }) => r.id),
+        ).toEqual([native, imported]);
+      }
+      expect(
+        (await list({ q: "Lista Árvore 25", sort: "NAME_ASC" }).expect(200))
+          .body.total,
+      ).toBe(1);
+      expect(
+        (await list({ q: "%", sort: "NAME_ASC" }).expect(200)).body.total,
+      ).toBe(0);
+      expect(
+        (await list({ q: "' OR 1=1 --", sort: "NAME_ASC" }).expect(200)).body
+          .total,
+      ).toBe(0);
+      await list({ sort: "DROP TABLE" }).expect(422);
+      await list({ includeClosed: "yes" }).expect(422);
+      await request(app)
+        .get(`/api/v1/organizations/${org}/registrations`)
+        .query({ q: "Lista", sort: "NAME_ASC" })
+        .set(auth("other"))
+        .expect(403);
+      const summary = asc.items[0].decisionSummary;
+      expect(summary).toMatchObject({ ready: true, notice: null });
+    });
+    it("pesquisa respeita a liberação de servos e não retorna outro evento ou organização", async () => {
+      const camper = await db.campaign.create({
+        data: {
+          eventId,
+          kind: "CAMPER",
+          opensAt: new Date("2026-01-01"),
+          closesAt: new Date("2027-01-01"),
+        },
+      });
+      const form = await db.formVersion.create({
+        data: { campaignId: camper.id, version: 1, config: {} },
+      });
+      const volunteerId = await candidate(true, { name: "Escopo Pesquisa" });
+      await candidate(true, {
+        name: "Escopo Pesquisa",
+        campaign: camper.id,
+        form: form.id,
+      });
+      const path = `/api/v1/organizations/${org}/registrations`;
+      const query = { q: "Escopo Pesquisa", sort: "NAME_ASC", eventId };
+      const limited = (
+        await request(app).get(path).query(query).set(auth()).expect(200)
+      ).body;
+      expect(limited.items.map((r: { id: string }) => r.id)).toEqual([
+        volunteerId,
+      ]);
+      expect(
+        (
+          await request(app)
+            .get(path)
+            .query({ ...query, campaignId: camper.id })
+            .set(auth())
+            .expect(200)
+        ).body.total,
+      ).toBe(0);
+      const broadApp = createApp({
+        db,
+        eventsEnabled: true,
+        rateLimits: false,
+        decisionNotificationsEnabled: false,
+        resolveIdentity: async (token) => users[token] ?? null,
+      });
+      expect(
+        (await request(broadApp).get(path).query(query).set(auth()).expect(200))
+          .body.total,
+      ).toBe(2);
+      expect(
+        (
+          await request(app)
+            .get(path)
+            .query({ ...query, eventId: randomUUID() })
+            .set(auth())
+            .expect(200)
+        ).body.total,
+      ).toBe(0);
+      const otherPath = `/api/v1/organizations/${otherOrg}/registrations`;
+      expect(
+        (
+          await request(app)
+            .get(otherPath)
+            .query(query)
+            .set(auth("other"))
+            .expect(200)
+        ).body.total,
+      ).toBe(0);
+    });
+    it("lista resume presença e envio sem expor links ou credenciais", async () => {
+      const id = await candidate();
+      await status(id, "APPROVED").then((r) => expect(r.status).toBe(200));
+      const summary = async () => {
+        const result = await request(app)
+          .get(`/api/v1/organizations/${org}/registrations`)
+          .query({ eventId, sort: "ACCEPTED_FIRST", pageSize: 100 })
+          .set(auth())
+          .expect(200);
+        return result.body.items.find((r: { id: string }) => r.id === id)
+          .decisionSummary;
+      };
+      expect((await summary()).notice).toMatchObject({
+        active: true,
+        expired: false,
+        emailStatus: "PENDENTE",
+        confirmedAt: null,
+        emailSentAt: null,
+        whatsappSentAt: null,
+      });
+      const notice = (
+        await request(app)
+          .get(`${base(id)}/decision-notice`)
+          .set(auth())
+          .expect(200)
+      ).body.notice;
+      expect((await summary()).notice.whatsappSentAt).toBeNull();
+      await request(app)
+        .post(`${base(id)}/decision-notice/whatsapp-sent`)
+        .set(auth())
+        .expect(200);
+      expect((await summary()).notice.whatsappSentAt).not.toBeNull();
+      const currentToken = new URLSearchParams(
+        new URL(notice.link).hash.slice(1),
+      ).get("token");
+      await request(app)
+        .post(publicPath(notice.id))
+        .send({ token: currentToken })
+        .expect(200);
+      const data = await summary();
+      expect(data.notice.confirmedAt).not.toBeNull();
+      expect(JSON.stringify(data)).not.toMatch(
+        /token|hash|whatsappLink|shortLink|message|"link"/i,
+      );
+      const time = Date.now();
+      let newestRevokedId = "";
+      for (const offset of [-86400000, 1000]) {
+        const history = await db.statusHistory.create({
+          data: {
+            registrationId: id,
+            actorId: users.organizer.id,
+            fromStatus: "REVIEW",
+            toStatus: "APPROVED",
+            reason: "Histórico sintético para conferir resumo de avisos",
+          },
+        });
+        const revoked = await db.decisionNotice.create({
+          data: {
+            registrationId: id,
+            historyId: history.id,
+            createdById: users.organizer.id,
+            kind: "ACEITE",
+            tokenHash: randomUUID().replaceAll("-", "").repeat(2),
+            createdAt: new Date(time + offset),
+            revokedAt: new Date(time + offset + 1),
+            expiresAt: new Date(time + 86400000),
+          },
+        });
+        if (offset > 0) newestRevokedId = revoked.id;
+      }
+      // An active notice wins even when a newer revoked notice exists.
+      expect((await summary()).notice.id).toBe(notice.id);
+      await status(id, "CANCELLED");
+      const fallback = (await summary()).notice;
+      expect(fallback.active).toBe(false);
+      expect(fallback.id).toBe(newestRevokedId);
     });
     it("cancelamento e suspensão bloqueiam respostas e ações administrativas", async () => {
       await status(registrationId, "CANCELLED").then((r) =>

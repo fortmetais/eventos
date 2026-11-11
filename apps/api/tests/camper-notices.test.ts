@@ -126,6 +126,11 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
         .send({ status: next, reason: "Avaliação de campista" });
     await status("REVIEW").expect(200);
     await status("APPROVED").expect(200);
+    expect(messages).toHaveLength(0);
+    await request(app)
+      .post(`${base}/decision-notice/email`)
+      .set("Authorization", "Bearer organizer")
+      .expect(200);
     expect(messages).toHaveLength(1);
     expect(messages[0].text).toContain("inscrição como campista");
     expect(messages[0].text).not.toContain("para servir");

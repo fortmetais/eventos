@@ -213,7 +213,22 @@ export interface Draft {
   guardian?: import("./guardian").GuardianSummary | null;
   email?: string;
 }
+export interface RegistrationDecisionSummary {
+  ready: boolean;
+  notice: null | {
+    id: string;
+    kind: "ACEITE" | "RECUSA";
+    emailStatus: string;
+    emailSentAt: string | null;
+    whatsappSentAt: string | null;
+    confirmedAt: string | null;
+    expiresAt: string;
+    active: boolean;
+    expired: boolean;
+  };
+}
 export interface Registration {
+  decisionSummary?: RegistrationDecisionSummary;
   updatedAt?: string;
   origin?: "PUBLIC_FORM" | "IMPORT";
   importData?: {

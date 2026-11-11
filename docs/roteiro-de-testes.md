@@ -1,5 +1,33 @@
 # Roteiro de testes da aplicação Encontro
 
+## Inscrições por evento — revisão de 11/11/2026
+
+Esta revisão organiza a gestão por cards de evento e abas. Não exige SQL novo. Os itens históricos abaixo mantêm as datas de suas entregas; não representam comprovação da versão atualmente publicada.
+
+| Percurso | Resultado esperado |
+| --- | --- |
+| Abrir Inscrições e selecionar um evento | Cards com miniatura, nome, período, situação e quantidade; abre a aba Inscrições apenas desse evento |
+| Trocar para Departamentos e vagas | Criação, capacidade, ocupação e exclusão mantêm permissões e bloqueios existentes |
+| Pesquisar por trecho, maiúsculas ou nome sem acento | Filtro aplicado a todos os registros, antes da paginação, com total coerente |
+| Ordenar A–Z, Z–A, Ordem de inscrição e Aceitos primeiro | Ordenação global estável; data original válida das importadas é usada antes da data de criação |
+| Usar o olho e Mais filtros | Recusadas/canceladas inicialmente ocultas; campanha, situação, origem e complementação continuam disponíveis |
+| Atualizar, voltar e abrir link antigo com evento/inscricao | Contexto na URL é preservado; ficha abre mesmo fora da página atual e sem evento na URL |
+| Escolher departamento antes da aprovação | Mostra indicação sem reserva; não altera vagas ocupadas; pode escolher departamento lotado |
+| Aceitar diretamente Recebida com indicação | Registra motivo padrão, autor e histórico; reserva se houver espaço, caso contrário mantém situação e mostra erro |
+| Iniciar análise, entrar em espera, recusar e cancelar | Análise/espera preservam indicação; apenas aceitos/confirmados ocupam; recusa/cancelamento limpam vínculo |
+| Limpar departamento e disputar a última vaga | Limpeza permitida antes da confirmação final; confirmada exige departamento; concorrência não excede capacidade |
+| Aceitar ou recusar e recarregar ficha/lista | Prepara aviso sem disparar e-mail automaticamente |
+| Abrir WhatsApp e retornar sem marcar envio | Indicador permanece amarelo; só Marcar como enviado muda para azul |
+| Enviar e-mail explicitamente | Sucesso muda para azul; falha/ausência de contato é explicada sem apagar a decisão |
+| Confirmar presença pelo link pessoal | Indicador fica verde após atualização; não confirma participação final nem ignora pendências ou responsável |
+| Expirar/renovar convite e alterar departamento | Expiração tem orientação própria; renovação é explícita; mensagem usa departamento atual |
+| Abrir e fechar ficha por ícone, Escape e teclado | Modal com foco/retorno correto, foto, versão, originais, correções, histórico, vínculo e termos; pede confirmação com edições não salvas |
+| Usar celular e conta de secretaria/outra organização | Cards sem rolagem horizontal; permissões e isolamento conservados; dados de saúde não são ampliados |
+
+Automação do percurso: `npm run test:browser:reviews`, com a interface local disponível em `http://127.0.0.1:5174` (ou `PREVIEW_URL`). Usa apenas pessoas, sessão e serviços fictícios, bloqueando destinos externos. Capturas em `.local/screenshots/review-*.png`. A listagem deve carregar resumos em lote, sem buscar ficha/aviso por linha e sem expor links pessoais.
+
+Validação desta revisão: 363 testes da API e 261 da interface aprovados com PostgreSQL descartável, mais dois testes direcionados do resumo de avisos. Tipos, compilação e inicialização compatível com a Hostinger aprovados. Percursos de inscrições em desktop/celular e regressão completa da ficha de servos aprovados com serviços simulados. Publicação no GitHub/Hostinger autorizada após os testes; a publicação automática já estava configurada para `fortmetais/eventos`, branch `main`.
+
 ## Importação guiada de candidaturas — primeira entrega
 
 Preparação: aplicar SQL 16 após 06/13 no ambiente de teste. Preservar o CSV real fora do Git. Usar candidatos sintéticos para incorporar, aprovar e reservar vagas.
