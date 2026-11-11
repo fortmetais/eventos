@@ -27,6 +27,11 @@ const DecisionResponse = lazy(() =>
     default: m.DecisionResponse,
   })),
 );
+const ShortDecisionResponse = lazy(() =>
+  import("./pages/DecisionResponse").then((m) => ({
+    default: m.ShortDecisionResponse,
+  })),
+);
 const GuardianAuthorization = lazy(() =>
   import("./pages/GuardianAuthorization").then((m) => ({
     default: m.GuardianAuthorization,
@@ -90,6 +95,9 @@ const ReviewRegistrations = lazy(() =>
     default: m.ReviewRegistrations,
   })),
 );
+const EventMessages = lazy(() =>
+  import("./pages/EventMessages").then((m) => ({ default: m.EventMessages })),
+);
 const Health = lazy(() =>
   import("./pages/Health").then((m) => ({ default: m.Health })),
 );
@@ -138,6 +146,7 @@ export function App() {
             <Route path="eventos/:id" element={<EventDetail />} />
             <Route path="inscricao/:campaignId" element={<Registration />} />
             <Route path="resposta/:noticeId" element={<DecisionResponse />} />
+            <Route path="r" element={<ShortDecisionResponse />} />
             <Route
               path="autorizacao/:authorizationId"
               element={<GuardianAuthorization />}
@@ -206,6 +215,7 @@ export function App() {
                 element={<CamperFormSetup />}
               />
               <Route path="inscricoes" element={<ReviewRegistrations />} />
+              <Route path="mensagens" element={<EventMessages />} />
               <Route path="membros" element={<Members />} />
               <Route path="funcoes" element={<OrganizationFunctions />} />
               <Route

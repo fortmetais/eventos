@@ -17,6 +17,7 @@ import {
   Church,
   RefreshCw,
   UserCog,
+  MessageSquare,
 } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { clearPendingInvitation, rememberInvitation } from "../lib/navigation";
@@ -144,6 +145,12 @@ export function OrganizationLayout() {
             <NavLink to={`${base}/funcoes`}>
               <UserCog size={18} />
               Funções
+            </NavLink>
+          )}
+          {membership.role === "ORGANIZER" && (
+            <NavLink to={`${base}/mensagens`}>
+              <MessageSquare size={18} />
+              Mensagens
             </NavLink>
           )}
           {membership.role === "ORGANIZER" && (

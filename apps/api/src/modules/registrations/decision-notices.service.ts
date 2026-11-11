@@ -3,6 +3,11 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import { assert } from "../../core/errors.js";
 import { hashToken } from "../../core/security.js";
 import type { DecisionEmailSender } from "../../core/decision-mail.js";
+import {
+  defaultMessageTemplate,
+  EventMessagesService,
+  renderMessageTemplate,
+} from "./event-messages.service.js";
 
 const noticeInclude = {
   registration: {
@@ -109,7 +114,7 @@ export class DecisionNoticesService {
         : registration.status === "REJECTED")
     );
   }
-  private messages(notice: Notice) {
+  private async messages(notice: Notice) {
     const registration = notice.registration,
       event = registration.campaign.event;
     const token = this.token(notice.id, notice.expiresAt);
@@ -120,6 +125,12 @@ export class DecisionNoticesService {
     );
     const link = new URL(`/resposta/${notice.id}`, this.webUrl);
     link.hash = `token=${token}`;
+    // Pack the UUID and full 256-bit credential; no truncation, lookup table or external shortener.
+    const shortLink = new URL("/r", this.webUrl);
+    shortLink.hash = Buffer.concat([
+      Buffer.from(notice.id.replaceAll("-", ""), "hex"),
+      Buffer.from(token, "base64url"),
+    ]).toString("base64url");
     const eventDate = new Intl.DateTimeFormat("pt-BR", {
       timeZone: "UTC",
     }).format(event.startsAt);
@@ -131,19 +142,25 @@ export class DecisionNoticesService {
     const name = registration.person.name;
     const camper = registration.campaign.kind === "CAMPER";
     const department = registration.team?.name;
-    const departmentText = department
-      ? `Departamento alocado: ${department}.\n\n`
-      : "";
-    const volunteerConfirmation = department
-      ? "A organização finalizará a confirmação da sua participação."
-      : "A organização finalizará sua equipe e a confirmação da participação.";
-    const text = camper
+    let text = camper
       ? notice.kind === "ACEITE"
-        ? `Olá, ${name}! Sua inscrição como campista no ${event.name} foi aprovada!\n\n${event.organization.name} · Evento a partir de ${eventDate}.\n\nConfirme sua presença pelo link: ${link}\n\nO link é pessoal e válido até ${expiry} (horário de Brasília). A organização finalizará a confirmação conforme as vagas e, para menores, após a autorização do responsável.\n\nEsperamos você!`
-        : `Olá, ${name}. Agradecemos seu interesse em participar do ${event.name}. Sua inscrição como campista não foi selecionada para esta edição. Esperamos receber você em uma próxima oportunidade!\n\nConfira o resultado: ${link}\n\n${event.organization.name}`
+        ? `Olá, ${name}! Sua inscrição como campista no ${event.name} foi aprovada!\n\n${event.organization.name} · Evento a partir de ${eventDate}.\n\nConfirme sua presença pelo link: ${shortLink}\n\nO link é pessoal e válido até ${expiry} (horário de Brasília). A organização finalizará a confirmação conforme as vagas e, para menores, após a autorização do responsável.\n\nEsperamos você!`
+        : `Olá, ${name}. Agradecemos seu interesse em participar do ${event.name}. Sua inscrição como campista não foi selecionada para esta edição. Esperamos receber você em uma próxima oportunidade!\n\nConfira o resultado: ${shortLink}\n\n${event.organization.name}`
       : notice.kind === "ACEITE"
-        ? `Olá, ${name}! Sua candidatura para servir no ${event.name} foi aceita!\n\n${event.organization.name} · Evento a partir de ${eventDate}.\n\n${departmentText}Confirme sua presença pelo link: ${link}\n\nO link é pessoal e válido até ${expiry} (horário de Brasília). ${volunteerConfirmation}\n\nEsperamos você!`
-        : `Olá, ${name}. Não foi dessa vez!\n\nAgradecemos sua disponibilidade para servir no ${event.name}. Sua candidatura não foi selecionada para esta edição. Esperamos poder contar com você em uma próxima oportunidade!\n\nConfira o resultado: ${link}\n\n${event.organization.name}`;
+        ? ""
+        : `Olá, ${name}. Não foi dessa vez!\n\nAgradecemos sua disponibilidade para servir no ${event.name}. Sua candidatura não foi selecionada para esta edição. Esperamos poder contar com você em uma próxima oportunidade!\n\nConfira o resultado: ${shortLink}\n\n${event.organization.name}`;
+    if (!camper && notice.kind === "ACEITE") {
+      const custom = await new EventMessagesService(this.db).template(event.id);
+      text = renderMessageTemplate(custom ?? defaultMessageTemplate, {
+        nome: name,
+        evento: event.name,
+        organizacao: event.organization.name,
+        data_evento: eventDate,
+        departamento: department ?? "A definir pela organização",
+        link: shortLink.toString(),
+        validade: expiry,
+      });
+    }
     const snapshot = registration.snapshot as {
       email?: string;
       phone?: string;
@@ -154,6 +171,7 @@ export class DecisionNoticesService {
     return {
       text,
       link: link.toString(),
+      shortLink: shortLink.toString(),
       email,
       whatsappLink: /^\d{12,13}$/.test(phone)
         ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}`
@@ -192,7 +210,7 @@ export class DecisionNoticesService {
     if (!notice) return { ready: true, notice: null };
     const expired = notice.expiresAt <= new Date() && !notice.confirmedAt;
     const active = this.active(notice);
-    const messages = active && !expired ? this.messages(notice) : null;
+    const messages = active && !expired ? await this.messages(notice) : null;
     return {
       ready: true,
       notice: {
@@ -208,6 +226,7 @@ export class DecisionNoticesService {
         email: messages?.email ?? null,
         message: messages?.text ?? null,
         link: messages?.link ?? null,
+        shortLink: messages?.shortLink ?? null,
         whatsappLink: messages?.whatsappLink ?? null,
       },
     };
@@ -219,7 +238,7 @@ export class DecisionNoticesService {
     });
     if (!notice || !this.active(notice) || notice.expiresAt <= new Date())
       return;
-    let message = this.messages(notice);
+    let message = await this.messages(notice);
     if (!message.email) {
       await this.db.decisionNotice.updateMany({
         where: { id: notice.id, emailStatus: { not: "ENVIADA" } },
@@ -265,7 +284,7 @@ export class DecisionNoticesService {
       });
       return;
     }
-    message = this.messages(notice);
+    message = await this.messages(notice);
     if (!message.email) {
       await this.db.decisionNotice.updateMany({
         where: { id: noticeId, emailStartedAt: startedAt },

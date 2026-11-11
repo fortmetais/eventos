@@ -182,7 +182,7 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
       const tables = await db.$queryRaw<
         { rowsecurity: boolean }[]
       >`SELECT rowsecurity FROM pg_tables WHERE schemaname IN ('acesso','organizacoes','pessoas','eventos','inscricoes','saude','arquivos')`;
-      expect(tables).toHaveLength(24);
+      expect(tables).toHaveLength(25);
       expect(tables.every((t) => t.rowsecurity)).toBe(true);
       await request(app)
         .get(`/api/v1/public/campaigns/${camperId}`)

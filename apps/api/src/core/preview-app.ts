@@ -70,7 +70,7 @@ export function createPreviewApp(
     }
     const withoutTrailingSlash = path.replace(/\/+$/, "");
     if (
-      ["/entrar", "/nova-senha", "/meu-perfil"].includes(
+      ["/entrar", "/nova-senha", "/meu-perfil", "/r"].includes(
         withoutTrailingSlash,
       ) ||
       [

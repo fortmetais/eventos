@@ -210,6 +210,10 @@ Os casos a seguir precisam do ambiente de homologação completo. Use sempre nov
 
 O registro de presença do candidato e a confirmação administrativa são ações distintas. Aprovação, alocação e confirmação também são distintas: a vaga do departamento é ocupada na alocação de uma candidatura aprovada; a confirmação não deve contá-la novamente. A capacidade geral de campistas é independente dessas vagas.
 
+Complemento local: aplicar `database/manual/17_mensagens_aceite.sql` para habilitar **Minha organização → Mensagens**. Selecionar um evento; editar o aceite, inserir informações pelo cursor, conferir prévia fictícia, salvar e recarregar. Restaurar o padrão exige salvar. Outro evento deve conservar seu próprio modelo. Testar duas sessões salvando a mesma revisão (uma deve receber conflito), acesso de secretaria/outra organização, remoção de nome/evento/link/validade e variáveis desconhecidas. Nenhuma dessas ações deve enviar mensagens ou mudar candidaturas. Conferir no aceite preparado o nome, departamento efetivo, prazo e link curto do candidato. O percurso focado é `scripts/browser-event-messages-check.mjs`.
+
+Abrir o link compacto `/r#...` em computador/celular e recarregar a página de resposta; a credencial sai da barra de endereço e é preservada na sessão da aba. Só o botão confirma presença. Link antigo `/resposta/:id#token=...` continua aceito; código inválido/adulterado, expirado ou revogado não libera o aviso. Renovar invalida também o código compacto anterior. O SQL 17 não é necessário para compactar o link; sem a tabela, somente a personalização fica indisponível e os avisos usam o padrão.
+
 Inscrições antigas que não receberam aviso pelo fluxo atual conservam a confirmação administrativa manual. A exigência de resposta descrita em D06 se aplica ao aviso ativo e válido, não deve ser aplicada retroativamente a todas as inscrições antigas.
 
 ### Perfil, foto, histórico e saúde

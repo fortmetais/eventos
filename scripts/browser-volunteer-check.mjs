@@ -130,21 +130,27 @@ const bannerPng = await sharp({
 const bannerUrl = "https://storage.test/form-banner.png";
 const errors = [];
 let decisionNotice = null;
-const responseToken = "n".repeat(43);
+const responseToken = Buffer.alloc(32, 158).toString("base64url");
 function prepareNotice(kind) {
   const noticeId =
     kind === "ACEITE"
       ? "00000000-0000-4000-8000-000000000006"
       : "00000000-0000-4000-8000-000000000007";
   const link = `${target}/resposta/${noticeId}#token=${responseToken}`;
+  const code = Buffer.concat([
+    Buffer.from(noticeId.replaceAll("-", ""), "hex"),
+    Buffer.from(responseToken, "base64url"),
+  ]).toString("base64url");
+  const shortLink = `${target}/r#${code}`;
   const message =
     kind === "ACEITE"
-      ? `Sua candidatura foi aceita! Confirme sua presença: ${link}`
-      : `Não foi dessa vez! Agradecemos sua disponibilidade. Confira: ${link}`;
+      ? `Sua candidatura foi aceita! Confirme sua presença: ${shortLink}`
+      : `Não foi dessa vez! Agradecemos sua disponibilidade. Confira: ${shortLink}`;
   return {
     id: noticeId,
     kind,
     link,
+    shortLink,
     message,
     email: null,
     emailStatus: "SEM_EMAIL",
@@ -955,6 +961,8 @@ try {
     .getByText("Envio pelo WhatsApp registrado em", { exact: false })
     .waitFor();
   const responseLink = await admin.getByLabel("Link do candidato").inputValue();
+  assert.equal(responseLink, decisionNotice.shortLink);
+  assert(responseLink.length < decisionNotice.link.length);
   await visitor.goto(responseLink);
   await visitor
     .getByRole("button", { name: "Confirmar minha presença" })

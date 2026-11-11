@@ -71,7 +71,12 @@ WITH esperado (etapa, esquema, tabela, coluna, tipo, aceita_nulo) AS (
     ('16 - candidaturas importadas', 'pessoas', 'linhas_importacao', 'substituir_inscricao_id', 'uuid', 'YES'),
     ('16 - candidaturas importadas', 'inscricoes', 'inscricoes', 'rascunho_id', 'uuid', 'YES'),
     ('16 - candidaturas importadas', 'inscricoes', 'inscricoes', 'origem', 'text', 'NO'),
-    ('16 - candidaturas importadas', 'inscricoes', 'inscricoes', 'dados_importacao', 'jsonb', 'YES')
+    ('16 - candidaturas importadas', 'inscricoes', 'inscricoes', 'dados_importacao', 'jsonb', 'YES'),
+    ('17 - mensagens de aceite', 'eventos', 'mensagens_aceite', 'evento_id', 'uuid', 'NO'),
+    ('17 - mensagens de aceite', 'eventos', 'mensagens_aceite', 'conteudo', 'text', 'YES'),
+    ('17 - mensagens de aceite', 'eventos', 'mensagens_aceite', 'revisao', 'int4', 'NO'),
+    ('17 - mensagens de aceite', 'eventos', 'mensagens_aceite', 'atualizado_por', 'uuid', 'NO'),
+    ('17 - mensagens de aceite', 'eventos', 'mensagens_aceite', 'atualizado_em', 'timestamptz', 'NO')
 )
 SELECT current_database() AS banco,
        e.etapa,

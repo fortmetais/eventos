@@ -67,6 +67,7 @@ model Account {
   email           String
   platformAdmin   Boolean          @default(false) @map("admin")
   profile         Json             @default("{}") @map("perfil")
+  eventMessages   EventAcceptMessage[]
   createdAt       DateTime         @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
   memberships     Membership[]
   registrations   Registration[]
@@ -215,9 +216,22 @@ model Event {
   type           EventType    @relation(fields: [typeId], references: [id], map: "eventos_tipo_fk")
   campaigns      Campaign[]
   teams          Team[]
+  acceptMessage  EventAcceptMessage?
 
   @@index([organizationId, status], map: "eventos_organizacao_situacao_idx")
   @@map("eventos")
+  @@schema("eventos")
+}
+
+model EventAcceptMessage {
+  eventId   String   @id @map("evento_id") @db.Uuid
+  content   String?  @map("conteudo")
+  revision  Int      @default(0) @map("revisao")
+  updatedBy String   @map("atualizado_por") @db.Uuid
+  updatedAt DateTime @default(now()) @map("atualizado_em") @db.Timestamptz(6)
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  updater   Account  @relation(fields: [updatedBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  @@map("mensagens_aceite")
   @@schema("eventos")
 }
 

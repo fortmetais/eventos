@@ -35,6 +35,25 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe("Aviso ao candidato", () => {
+  it("mostra e copia o link compacto quando disponível", async () => {
+    const user = userEvent.setup();
+    const state = {
+      ...fixture(),
+      notice: {
+        ...fixture().notice,
+        shortLink: `https://example.test/r#${"a".repeat(64)}`,
+      },
+    };
+    mocks.api.mockResolvedValue(state);
+    render(
+      <DecisionNotice organizationId="org" registrationId="registration" />,
+    );
+    expect(
+      await screen.findByRole("textbox", { name: "Link do candidato" }),
+    ).toHaveValue(state.notice.shortLink);
+    await user.click(screen.getByRole("button", { name: "Copiar link" }));
+    expect(await navigator.clipboard.readText()).toBe(state.notice.shortLink);
+  });
   it("abrir mensagem não declara envio; registro exige ação explícita", async () => {
     render(
       <DecisionNotice organizationId="org" registrationId="registration" />,

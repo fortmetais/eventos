@@ -138,6 +138,8 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       token = new URLSearchParams(new URL(notice.link).hash.slice(1)).get(
         "token",
       );
+    expect(messages[0].text).toContain(notice.shortLink);
+    expect(new URL(notice.shortLink).pathname).toBe("/r");
     expect((await status("CONFIRMED").expect(409)).body.error.code).toBe(
       "CANDIDATE_CONFIRMATION_REQUIRED",
     );

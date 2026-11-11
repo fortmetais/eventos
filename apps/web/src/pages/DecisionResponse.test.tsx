@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { DecisionResponse } from "./DecisionResponse";
+import { DecisionResponse, ShortDecisionResponse } from "./DecisionResponse";
+import { decodeDecisionLink } from "../lib/decision-link";
 const mocks = vi.hoisted(() => ({ api: vi.fn() }));
 vi.mock("../lib/api", async (original) => ({
   ...(await original<typeof import("../lib/api")>()),
@@ -36,6 +37,66 @@ const view = () =>
     </MemoryRouter>,
   );
 describe("Resposta do candidato", () => {
+  it("abre o link compacto com a credencial completa, permite recarregar e confirma somente ao clicar", async () => {
+    const id = "00112233-4455-4677-8899-aabbccddeeff";
+    const tokenBytes = Buffer.from(Array.from({ length: 32 }, (_, i) => i * 7));
+    const token = tokenBytes.toString("base64url");
+    const code = Buffer.concat([
+      Buffer.from(id.replaceAll("-", ""), "hex"),
+      tokenBytes,
+    ]).toString("base64url");
+    expect(decodeDecisionLink(code)).toEqual({ noticeId: id, token });
+    history.replaceState({}, "", `/r#${code}`);
+    const first = render(
+      <MemoryRouter initialEntries={["/r"]}>
+        <Routes>
+          <Route path="/r" element={<ShortDecisionResponse />} />
+          <Route path="/resposta/:noticeId" element={<DecisionResponse />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(
+      await screen.findByRole("button", { name: "Confirmar minha presença" }),
+    ).toBeVisible();
+    expect(location.hash).toBe("");
+    expect(sessionStorage.getItem(`fac:decision:${id}`)).toBe(token);
+    expect(mocks.api.mock.calls.every(([path]) => path.endsWith("/view"))).toBe(
+      true,
+    );
+    expect(mocks.api).toHaveBeenCalledWith(
+      `/public/decision-responses/${id}/view`,
+      expect.objectContaining({ body: { token } }),
+    );
+    first.unmount();
+    render(
+      <MemoryRouter initialEntries={[`/resposta/${id}`]}>
+        <Routes>
+          <Route path="/resposta/:noticeId" element={<DecisionResponse />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Confirmar minha presença" }),
+    );
+    expect(mocks.api).toHaveBeenLastCalledWith(
+      `/public/decision-responses/${id}`,
+      expect.objectContaining({ body: { token } }),
+    );
+  });
+  it.each(["", "incompleto", "A".repeat(64), "!".repeat(64)])(
+    "rejeita link compacto inválido sem consultar dados privados: %s",
+    async (code) => {
+      history.replaceState({}, "", `/r#${code}`);
+      render(
+        <MemoryRouter>
+          <ShortDecisionResponse />
+        </MemoryRouter>,
+      );
+      expect(await screen.findByRole("alert")).toBeVisible();
+      expect(mocks.api).not.toHaveBeenCalled();
+      expect(location.hash).toBe("");
+    },
+  );
   it("campista recebe aprovação e confirmação sem orientações de trabalho", async () => {
     mocks.api.mockResolvedValue({ ...summary, participation: "CAMPER" });
     view();

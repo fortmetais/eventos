@@ -2668,6 +2668,19 @@ td strong {
 .event-import-wizard > .notice {
   margin-top: 1.25rem;
 }
+.message-editor {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+.message-preview {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 800px) {
+  .message-editor { grid-template-columns: minmax(0, 1fr); }
+}
 .event-import-steps {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));

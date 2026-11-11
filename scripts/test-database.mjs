@@ -364,6 +364,7 @@ try {
     for (const script of [
       "13_cadastros_anteriores.sql",
       "16_importacao_candidaturas.sql",
+      "17_mensagens_aceite.sql",
     ])
       run(binary("psql"), [
         "-h",
@@ -399,20 +400,24 @@ try {
   });
   // O SQL manual também deve aceitar reaplicação numa instalação por migrations.
   for (let attempt = 0; attempt < 2; attempt++)
-    run(binary("psql"), [
-      "-h",
-      "127.0.0.1",
-      "-p",
-      String(port),
-      "-U",
-      "fac_test",
-      "-d",
-      "fac_event_import_tests",
-      "-v",
-      "ON_ERROR_STOP=1",
-      "-f",
-      join(root, "database/manual/16_importacao_candidaturas.sql"),
-    ]);
+    for (const script of [
+      "16_importacao_candidaturas.sql",
+      "17_mensagens_aceite.sql",
+    ])
+      run(binary("psql"), [
+        "-h",
+        "127.0.0.1",
+        "-p",
+        String(port),
+        "-U",
+        "fac_test",
+        "-d",
+        "fac_event_import_tests",
+        "-v",
+        "ON_ERROR_STOP=1",
+        "-f",
+        join(root, "database/manual", script),
+      ]);
   run(process.execPath, [npmCli, "run", "test"], env);
 } finally {
   if (started) run(binary("pg_ctl"), ["-D", data, "-w", "-m", "fast", "stop"]);

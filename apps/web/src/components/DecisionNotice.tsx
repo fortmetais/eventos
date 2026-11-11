@@ -19,6 +19,7 @@ export interface DecisionNoticeState {
     email: string | null;
     message: string | null;
     link: string | null;
+    shortLink?: string | null;
     whatsappLink: string | null;
   };
 }
@@ -59,7 +60,8 @@ export function DecisionNotice({
   }
   async function copy() {
     try {
-      await navigator.clipboard.writeText(state.data!.notice!.link!);
+      const notice = state.data!.notice!;
+      await navigator.clipboard.writeText((notice.shortLink ?? notice.link)!);
       setInfo("Link copiado.");
     } catch {
       setError("Selecione e copie o link abaixo.");
@@ -126,7 +128,7 @@ export function DecisionNotice({
               <Field label="Link do candidato">
                 <input
                   readOnly
-                  value={notice.link ?? ""}
+                  value={notice.shortLink ?? notice.link ?? ""}
                   onFocus={(e) => e.target.select()}
                 />
               </Field>

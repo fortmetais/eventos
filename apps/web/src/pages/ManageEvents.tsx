@@ -335,6 +335,12 @@ function FullManageEvents() {
                 <button className="text-button" onClick={() => edit(event)}>
                   Editar informações
                 </button>
+                <Link
+                  className="button outline"
+                  to={`/organizacao/${organizationId}/mensagens?evento=${event.id}`}
+                >
+                  Mensagem de aceite
+                </Link>
                 {event.status === "DRAFT" && (
                   <button
                     className="text-button"

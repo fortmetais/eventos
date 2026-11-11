@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
 import { date, dateTime } from "../lib/types";
 import { BackLink, Loading, Notice } from "../components/ui";
+import { decodeDecisionLink } from "../lib/decision-link";
 
 interface ResponseSummary {
   kind: "ACEITE" | "RECUSA";
@@ -20,6 +21,29 @@ interface ResponseSummary {
 export function DecisionResponse() {
   const { noticeId } = useParams();
   return <ResponseForm key={noticeId} noticeId={noticeId!} />;
+}
+export function ShortDecisionResponse() {
+  const navigate = useNavigate();
+  const [code] = useState(() => window.location.hash.slice(1));
+  const [error, setError] = useState("");
+  useEffect(() => {
+    // The fragment never reaches the server. Clear it before requesting any candidate data.
+    history.replaceState(history.state, "", window.location.pathname);
+    try {
+      const { noticeId, token } = decodeDecisionLink(code);
+      sessionStorage.setItem(`fac:decision:${noticeId}`, token);
+      navigate(`/resposta/${noticeId}`, { replace: true });
+    } catch (error) {
+      setError((error as Error).message);
+    }
+  }, [code, navigate]);
+  return error ? (
+    <div className="auth-shell">
+      <Notice>{error}</Notice>
+    </div>
+  ) : (
+    <Loading />
+  );
 }
 function ResponseForm({ noticeId }: { noticeId: string }) {
   const [data, setData] = useState<ResponseSummary | null>(null),

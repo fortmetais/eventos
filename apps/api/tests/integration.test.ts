@@ -1135,7 +1135,8 @@ integration(
       const tables = await db.$queryRaw<
         { tablename: string; rowsecurity: boolean }[]
       >`SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname IN ('public', 'acesso', 'organizacoes', 'pessoas', 'eventos', 'inscricoes', 'saude', 'arquivos') AND tablename <> '_prisma_migrations'`;
-      expect(tables.length).toBe(26);
+      expect(tables.length).toBe(27);
+      expect(tables.map((table) => table.tablename)).toContain("mensagens_aceite");
       expect(tables.map((table) => table.tablename)).toContain("funcoes");
       expect(tables.map((table) => table.tablename)).toContain(
         "autorizacoes_responsavel",

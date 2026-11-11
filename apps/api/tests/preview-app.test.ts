@@ -125,6 +125,8 @@ describe("Fluxos públicos e painéis com o cartaz no início", () => {
     "/inscricao/test?source=event",
     "/INSCRICAO/test/",
     "/resposta/test",
+    "/r",
+    "/r/",
     "/autorizacao/test",
   ])(
     "serve React em %s com CSP de autenticação e o indicador de início temporário",

@@ -26,9 +26,21 @@ WhatsApp e e-mail utilizam o mesmo texto. A mensagem preparada considera a aloca
 
 No WhatsApp, o organizador precisa enviar a mensagem na conversa e depois clicar em **Marcar como enviado pelo WhatsApp**. Abrir a conversa sozinho não marca envio. Esse registro é uma declaração do organizador, não uma confirmação de entrega/leitura do WhatsApp. Não é necessária integração com WhatsApp Business para esta opção.
 
+As mensagens de WhatsApp/e-mail e o botão **Copiar link** usam `/r#<código>` no domínio da aplicação. O código compacto transporta o UUID e a credencial completa de 256 bits em 64 caracteres; não trunca o segredo, não usa encurtador externo e não exige coluna nova. O fragmento não é enviado ao servidor; o navegador o remove, guarda a credencial na sessão da aba e abre a página de resposta. Abrir continua sendo somente consulta: a confirmação depende do botão explícito. Expiração, renovação, revogação e isolamento seguem as mesmas verificações. Links antigos `/resposta/:id#token=...` continuam funcionando e o campo `link` da API permanece compatível; `shortLink` fornece o novo endereço.
+
 E-mail **Enviado** indica aceitação pelo servidor SMTP; não comprova entrega ou leitura pelo destinatário. Falhas ficam visíveis e permitem uma nova tentativa. Repetir uma solicitação já enviada não envia outra mensagem. Envios com resultado incerto após interrupção podem exigir nova tentativa manual; SMTP não oferece garantia de entrega exatamente uma vez.
 
 ## Roteiro de teste
+
+### Personalização por evento
+
+Em **Minha organização → Mensagens**, escolha o evento e edite o aceite de servos. Também há acesso no cartão do evento. Os botões inserem informações automáticas no cursor e a prévia usa uma pessoa fictícia. Salvar exige `{{nome}}`, `{{evento}}`, um único `{{link}}` e `{{validade}}`. Os campos opcionais são `{{organizacao}}`, `{{data_evento}}` e `{{departamento}}`; sem alocação, este último informa “A definir pela organização”. Não há execução de expressões, HTML ou fórmulas. O conteúdo é texto simples.
+
+Aplicar somente `database/manual/17_mensagens_aceite.sql` na instalação gradual (depois de acesso e eventos). A tabela `eventos.mensagens_aceite` guarda o modelo por evento, revisão e autoria, com RLS e sem acesso direto pelas funções públicas do Supabase. O SQL é aditivo e reaplicável. Há migration equivalente para instalações novas; não executar todas as migrations na produção gradual. O script `deploy/supabase/CONFERIR_ATUALIZACOES.sql` confere os campos. Sem a tabela, o envio usa o texto padrão e a edição informa a atualização pendente.
+
+Somente organizadores podem consultar ou salvar o modelo. `GET/PUT /api/v1/organizations/:organizationId/events/:eventId/accept-message` devolve/recebe a revisão; o PUT aceita `{ revision, template }`, com `template: null` restaurando o padrão. Escritas concorrentes com revisão antiga devolvem 409. Cada salvamento é auditado. Não há alteração de fichas, candidaturas, links, validade ou presença. Salvar não dispara envio; a mensagem personalizada vale para as próximas consultas/compartilhamentos e envios do aceite de servos desse evento. Recusas e campistas mantêm seus textos atuais.
+
+Testar inclusão de informações no cursor, prévia, salvar, restaurar padrão, revisão desatualizada, isolamento entre eventos/organizações, exigência de informações essenciais e fluxo sem migração. Conferir no WhatsApp e e-mail simulados se nome/departamento/link/validade são os do candidato. Usar `scripts/browser-event-messages-check.mjs` para o percurso no computador e celular, incluindo a abertura do link compacto e confirmação explícita. Nenhum envio real é realizado nos testes.
 
 1. Com um candidato fictício e contato de teste, passe a candidatura de **Recebida** para **Em análise** e depois para **Aceitar candidatura**. Confira o aviso, link e situação do e-mail na ficha.
 2. Clique em **Abrir mensagem no WhatsApp** e confira destinatário, nome do evento e link. O painel deve continuar sem registrar envio até você clicar na ação de declaração. Durante testes, envie somente a um número controlado por você.

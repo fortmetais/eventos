@@ -182,7 +182,7 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       const tables = await db.$queryRaw<
         { rowsecurity: boolean }[]
       >`SELECT rowsecurity FROM pg_tables WHERE schemaname IN ('acesso','organizacoes','pessoas','eventos','inscricoes','saude','arquivos')`;
-      expect(tables).toHaveLength(23);
+      expect(tables).toHaveLength(24);
       expect(tables.every((t) => t.rowsecurity)).toBe(true);
     });
     it("aceite gera e envia link individual depois de salvar decisão e histórico", async () => {
@@ -205,12 +205,24 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       expect(messages).toHaveLength(1);
       expect(messages[0].to).toBe("candidato@example.test");
       expect(messages[0].text).toContain("foi aceita!");
-      expect(messages[0].text).toContain(state.notice.link);
+      expect(messages[0].text).toContain(state.notice.shortLink);
+      expect(state.notice.shortLink.length).toBeLessThan(
+        state.notice.link.length,
+      );
+      expect(new URL(state.notice.shortLink).pathname).toBe("/r");
+      const packed = Buffer.from(
+        new URL(state.notice.shortLink).hash.slice(1),
+        "base64url",
+      );
+      expect(packed).toHaveLength(48);
+      expect(packed.subarray(0, 16).toString("hex")).toBe(
+        noticeId.replaceAll("-", ""),
+      );
+      expect(packed.subarray(16).toString("base64url")).toBe(token);
       expect(messages[0].text).not.toContain("Motivo interno");
       expect(messages[0].text).not.toContain("saúde");
-      expect(state.notice.message).not.toContain("Departamento alocado:");
       expect(state.notice.message).toContain(
-        "A organização finalizará sua equipe",
+        "Departamento alocado: A definir pela organização.",
       );
       expect(state.notice.emailStatus).toBe("ENVIADA");
       const row = await db.decisionNotice.findUniqueOrThrow({
@@ -263,7 +275,24 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       ).body;
       const whatsapp = new URL(state.notice.whatsappLink);
       expect(whatsapp.pathname).toBe("/5544999999999");
-      expect(whatsapp.searchParams.get("text")).toContain(state.notice.link);
+      expect(whatsapp.searchParams.get("text")).toContain(
+        state.notice.shortLink,
+      );
+      const packed = Buffer.from(
+        new URL(state.notice.shortLink).hash.slice(1),
+        "base64url",
+      );
+      const originalToken = packed.subarray(16).toString("base64url");
+      await request(app)
+        .post(publicPath() + "/view")
+        .send({ token: originalToken })
+        .expect(200);
+      const tampered = Buffer.from(packed.subarray(16));
+      tampered[0] ^= 1;
+      await request(app)
+        .post(publicPath() + "/view")
+        .send({ token: tampered.toString("base64url") })
+        .expect(404);
       expect(state.notice.whatsappSentAt).toBeNull();
       await request(app)
         .post(`${base()}/decision-notice/whatsapp-sent`)
@@ -285,7 +314,9 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
           .set(auth())
           .expect(200)
       ).body.notice;
-      expect(initial.message).not.toContain("Departamento alocado:");
+      expect(initial.message).toContain(
+        "Departamento alocado: A definir pela organização.",
+      );
       const teamA = await db.team.create({
         data: { eventId, name: "SECRETARIA & ACOLHIDA", capacity: 2 },
       });
@@ -494,6 +525,7 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
         new URL(renewed.notice.link).hash.slice(1),
       ).get("token");
       expect(renewedToken).not.toBe(expiredToken);
+      expect(renewed.notice.shortLink).not.toBe(state.notice.shortLink);
       await request(app)
         .post(publicPath(state.notice.id))
         .send({ token: expiredToken })
