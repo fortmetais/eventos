@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => ({
   api: vi.fn(),
   refresh: vi.fn(),
   team: null as { id: string; name: string } | null,
+  origin: "PUBLIC_FORM" as "PUBLIC_FORM" | "IMPORT",
+  status: "RECEIVED",
+  pendingInformation: undefined as string[] | undefined,
 }));
 vi.mock("../lib/api", () => ({ api: mocks.api }));
 vi.mock("../lib/auth", () => ({ useAuth: () => ({ eventsEnabled: true }) }));
@@ -36,8 +39,13 @@ vi.mock("../lib/hooks", () => ({
       : {
           id: "candidate",
           protocol: "INS-2026-TESTE",
-          status: "RECEIVED",
-          origin: "PUBLIC_FORM",
+          status: mocks.status,
+          origin: mocks.origin,
+          pendingInformation: mocks.pendingInformation,
+          importData:
+            mocks.origin === "IMPORT"
+              ? { pending: ["Pendência histórica"] }
+              : null,
           accountId: "account",
           team: mocks.team,
           person: { name: "Maria Teste" },
@@ -66,6 +74,9 @@ beforeEach(() => {
   mocks.api.mockReset();
   mocks.refresh.mockClear();
   mocks.team = null;
+  mocks.origin = "PUBLIC_FORM";
+  mocks.status = "RECEIVED";
+  mocks.pendingInformation = undefined;
   mocks.api.mockResolvedValue({
     url: "https://example.test/photo.webp",
     status: "APPROVED",
@@ -73,6 +84,45 @@ beforeEach(() => {
 });
 
 describe("Ficha completa extraída", () => {
+  it("permite confirmar vaga importada com pendências reais, sem afirmar que a autorização já foi dada", async () => {
+    mocks.origin = "IMPORT";
+    mocks.status = "APPROVED";
+    mocks.pendingInformation = [
+      "Adicionar foto.",
+      "Autorização do responsável pendente: obrigatória antes do evento.",
+    ];
+    render(
+      <RegistrationDetail
+        organizationId="org"
+        registrationId="candidate"
+        onChanged={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("option", { name: "Confirmada" }),
+    ).not.toBeDisabled();
+    expect(screen.getByText("Informações pendentes")).toBeVisible();
+    expect(screen.getByText("Adicionar foto.")).toBeVisible();
+    expect(screen.queryByText("Pendência histórica")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /A confirmação da vaga não registra aceites ou autorizações/,
+      ),
+    ).toBeVisible();
+    await userEvent.selectOptions(
+      screen.getByRole("combobox", { name: "Decisão sobre a candidatura" }),
+      "CONFIRMED",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Salvar decisão" }),
+    );
+    expect(mocks.api).toHaveBeenCalledWith(
+      "/organizations/org/registrations/candidate/status",
+      expect.objectContaining({
+        body: expect.objectContaining({ status: "CONFIRMED" }),
+      }),
+    );
+  });
   it("protege a decisão recém-selecionada quando Escape ocorre logo após a edição", async () => {
     const close = vi.fn();
     function Fixture() {

@@ -6,7 +6,9 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { ReviewRegistrations } from "./ReviewRegistrations";
 import type { EventEdition, Registration } from "../lib/types";
@@ -555,6 +557,8 @@ describe("Gestão de inscrições por evento", () => {
     ).toHaveValue("RECEIVED");
   });
   it("mostra cores textuais do convite e carrega a mensagem somente ao abrir", async () => {
+    items[0].origin = "IMPORT";
+    items[0].importData = { pending: ["Adicionar foto do participante."] };
     items[0].status = "APPROVED";
     items[0].decisionSummary = {
       ready: true,
@@ -624,12 +628,30 @@ describe("Gestão de inscrições por evento", () => {
     fireEvent.click(unavailable);
     expect(await screen.findByText("Convite registration")).toBeVisible();
   });
-  it("preserva bloqueio de confirmação de importadas e permissões de gestão", async () => {
+  it("permite confirmar importadas pendentes sem ampliar permissões de gestão", async () => {
     items[0].origin = "IMPORT";
     items[0].status = "APPROVED";
+    items[0].importData = { pending: ["Aceitar os termos atuais."] };
     show();
     await ready();
-    expect(screen.getByRole("option", { name: "Confirmada" })).toBeDisabled();
+    expect(
+      screen.getByRole("option", { name: "Confirmada" }),
+    ).not.toBeDisabled();
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Decisão de Maria Teste" }),
+      { target: { value: "CONFIRMED" } },
+    );
+    await waitFor(() =>
+      expect(mocks.api).toHaveBeenCalledWith(
+        "/organizations/org/registrations/registration/status",
+        expect.objectContaining({
+          method: "PATCH",
+          body: expect.objectContaining({ status: "CONFIRMED" }),
+        }),
+      ),
+    );
+    expect(items[0].importData.pending).toEqual(["Aceitar os termos atuais."]);
+    expect(await screen.findByText("Vaga confirmada.")).toBeVisible();
     cleanup();
     mocks.role = "SECRETARY";
     mocks.eventsEnabled = false;
@@ -644,5 +666,103 @@ describe("Gestão de inscrições por evento", () => {
     expect(
       screen.getByRole("button", { name: "Abrir ficha de Maria Teste" }),
     ).not.toBeDisabled();
+  });
+  it("mostra pendências pelo ícone antes do nome, inclusive de vaga confirmada, sem empilhar a ficha", async () => {
+    mobileViewport = true;
+    items[0].origin = "IMPORT";
+    items[0].status = "CONFIRMED";
+    items[0].importData = { pending: ["Texto histórico desatualizado"] };
+    items[0].pendingInformation = [
+      "Adicionar foto do participante.",
+      "Autorização do responsável pendente: obrigatória antes do evento.",
+    ];
+    show();
+    await ready();
+    expect(
+      screen.queryByText("Complementação pendente"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Conferir complementação"),
+    ).not.toBeInTheDocument();
+    const icon = screen.getByRole("button", {
+      name: "Ver pendências de Maria Teste",
+    });
+    icon.focus();
+    await userEvent.keyboard("{Enter}");
+    const dialog = screen.getByRole("dialog", {
+      name: "Informações pendentes",
+    });
+    expect(dialog).toHaveTextContent("A vaga está confirmada");
+    expect(
+      within(dialog).getByText("Adicionar foto do participante."),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByText(/Autorização do responsável pendente:/),
+    ).toBeVisible();
+    expect(
+      screen.queryByText("Texto histórico desatualizado"),
+    ).not.toBeInTheDocument();
+    items[0].pendingInformation = ["Informações atualizadas após revisão."];
+    fireEvent(window, new Event("focus"));
+    expect(
+      await within(dialog).findByText("Informações atualizadas após revisão."),
+    ).toBeVisible();
+    expect(
+      within(dialog).queryByText("Adicionar foto do participante."),
+    ).not.toBeInTheDocument();
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Abrir ficha" }),
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "Informações pendentes" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByText("Ficha original registration")).toBeVisible();
+  });
+  it("não mostra alerta quando a API informa que as pendências foram resolvidas", async () => {
+    items[0].origin = "IMPORT";
+    items[0].importData = { pending: ["Pendência histórica já resolvida"] };
+    items[0].pendingInformation = [];
+    show();
+    await ready();
+    expect(
+      screen.queryByRole("button", { name: "Ver pendências de Maria Teste" }),
+    ).not.toBeInTheDocument();
+  });
+  it("permite abrir aviso expirado de importada para renovar antes de enviar por WhatsApp", async () => {
+    items[0].origin = "IMPORT";
+    items[0].status = "APPROVED";
+    items[0].importData = { pending: ["Informar contato de emergência."] };
+    items[0].decisionSummary = {
+      ready: true,
+      notice: {
+        id: "notice",
+        kind: "ACEITE",
+        emailStatus: "PENDENTE",
+        emailSentAt: null,
+        whatsappSentAt: null,
+        confirmedAt: null,
+        expiresAt: "2020-01-01",
+        active: true,
+        expired: true,
+      },
+    };
+    show();
+    await ready();
+    const whatsapp = screen.getByRole("button", {
+      name: "Enviar convite por WhatsApp para Maria Teste",
+    });
+    expect(whatsapp).not.toBeDisabled();
+    expect(whatsapp).toHaveAttribute(
+      "title",
+      "Renovar o link para preparar a conversa",
+    );
+    fireEvent.click(whatsapp);
+    expect(
+      await screen.findByText("Convite registration pelo WhatsApp"),
+    ).toBeVisible();
+    expect(
+      mocks.api.mock.calls.some(([, options]) => options?.method === "POST"),
+    ).toBe(false);
   });
 });

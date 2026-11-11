@@ -19,9 +19,11 @@ type State = {
 export function GuardianNotice({
   organizationId,
   registrationId,
+  allowPendingConfirmation = false,
 }: {
   organizationId: string;
   registrationId: string;
+  allowPendingConfirmation?: boolean;
 }) {
   const base = `/organizations/${organizationId}/registrations/${registrationId}/guardian`;
   const remote = useRemote<State>(base);
@@ -46,6 +48,8 @@ export function GuardianNotice({
       <Notice>
         O envio de termos aos responsáveis aguarda configuração pela
         administração da plataforma.
+        {allowPendingConfirmation &&
+          " A vaga pode ser confirmada; a autorização do responsável permanece obrigatória antes do evento."}
       </Notice>
     ) : null;
   const item = remote.data.authorization;
@@ -54,8 +58,9 @@ export function GuardianNotice({
       <section className="guardian-notice">
         <h3>Autorização do responsável</h3>
         <Notice>
-          Esta ficha de menor ainda não tem termo. Crie a solicitação antes de
-          confirmar a participação.
+          {allowPendingConfirmation
+            ? "Esta ficha de menor ainda não tem termo. A vaga pode ser confirmada; a autorização do responsável permanece obrigatória antes do evento."
+            : "Esta ficha de menor ainda não tem termo. Crie a solicitação antes de confirmar a participação."}
         </Notice>
         {error && <Notice>{error}</Notice>}
         <button
@@ -102,7 +107,11 @@ export function GuardianNotice({
           <Notice>
             {item.expired
               ? "Link expirado. Renove para o responsável assinar."
-              : "Pendente de preenchimento e assinatura. A participação ainda não pode ser confirmada."}
+              : "Pendente de preenchimento e assinatura."}
+            {allowPendingConfirmation
+              ? " A vaga pode ser confirmada; a autorização do responsável permanece obrigatória antes do evento."
+              : !item.expired &&
+                " A participação ainda não pode ser confirmada."}
           </Notice>
           <p>
             E-mail:{" "}

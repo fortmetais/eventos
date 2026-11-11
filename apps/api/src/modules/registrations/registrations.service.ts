@@ -37,6 +37,16 @@ import { requireOrganizationManager } from "../organizations/organization-functi
 import { requiresGuardian } from "./guardian.validation.js";
 import { sanitizeHidden } from "@fac/form-layout";
 
+type PendingInformationRecord = {
+  id: string;
+  origin: string;
+  importData: Prisma.JsonValue | null;
+  person: { birthDate: Date };
+  campaign: { event: { startsAt: Date } };
+};
+const guardianPendingInformation =
+  "Autorização do responsável pendente: obrigatória antes do evento.";
+
 export class RegistrationsService {
   constructor(
     private repo: RegistrationsRepository,
@@ -44,6 +54,71 @@ export class RegistrationsService {
     private notices?: DecisionNoticesService,
     private guardians?: GuardianService,
   ) {}
+  private async guardianAuthorizationTableReady() {
+    // Existing signatures remain evidence even when link sending is not configured.
+    const [result] = await this.repo.db.$queryRaw<{ ready: boolean }[]>`
+      SELECT to_regclass('inscricoes.autorizacoes_responsavel') IS NOT NULL AS ready`;
+    return result?.ready === true;
+  }
+  private async withPendingInformation<T extends PendingInformationRecord>(
+    items: T[],
+  ) {
+    const importedIds = items
+      .filter((item) => item.origin === "IMPORT")
+      .map((item) => item.id);
+    const acceptances = importedIds.length
+      ? await this.repo.db.consent.findMany({
+          where: { registrationId: { in: importedIds }, accepted: true },
+          select: { registrationId: true },
+        })
+      : [];
+    const acceptedIds = new Set(acceptances.map((item) => item.registrationId));
+    const minorIds = items
+      .filter(
+        (item) =>
+          item.origin === "IMPORT" &&
+          requiresGuardian(
+            item.person.birthDate.toISOString().slice(0, 10),
+            item.campaign.event.startsAt,
+          ),
+      )
+      .map((item) => item.id);
+    const signatures =
+      minorIds.length && (await this.guardianAuthorizationTableReady())
+        ? await this.repo.db.guardianAuthorization.findMany({
+            where: {
+              registrationId: { in: minorIds },
+              signedAt: { not: null },
+            },
+            select: { registrationId: true },
+          })
+        : [];
+    const signedIds = new Set(signatures.map((item) => item.registrationId));
+    const minors = new Set(minorIds);
+    return items.map((item) => {
+      if (item.origin !== "IMPORT") return item;
+      const pending = (item.importData as { pending?: unknown } | null)
+        ?.pending;
+      return {
+        ...item,
+        pendingInformation: [
+          ...new Set([
+            ...(Array.isArray(pending)
+              ? pending.filter(
+                  (value): value is string => typeof value === "string",
+                )
+              : []),
+            ...(minors.has(item.id) && !signedIds.has(item.id)
+              ? [guardianPendingInformation]
+              : []),
+            ...(!acceptedIds.has(item.id)
+              ? ["Termos gerais atuais não confirmados"]
+              : []),
+          ]),
+        ],
+      };
+    });
+  }
   async createDraft(campaignId: string) {
     const campaign = await this.repo.db.campaign.findUnique({
       where: { id: campaignId },
@@ -406,8 +481,10 @@ export class RegistrationsService {
           items.map((item) => item.id),
         )
       : new Map();
+    const itemsWithPendingInformation =
+      await this.withPendingInformation(items);
     return {
-      items: items.map((item) => ({
+      items: itemsWithPendingInformation.map((item) => ({
         ...item,
         decisionSummary: summaries.get(item.id) ?? {
           ready: false,
@@ -427,7 +504,7 @@ export class RegistrationsService {
       404,
       "Inscrição indisponível.",
     );
-    return result;
+    return (await this.withPendingInformation([result]))[0];
   }
   async transition(
     organizationId: string,
@@ -440,6 +517,10 @@ export class RegistrationsService {
     const departmentsRepo = new DepartmentsRepository(this.repo.db);
     const departmentsReady = await departmentsRepo.ready();
     let decisionNoticeMissing = false;
+    let confirmedWithPendingInformation = false;
+    const guardianAuthorizationsReady =
+      data.status === "CONFIRMED" &&
+      (await this.guardianAuthorizationTableReady());
     const result = await this.repo.db.$transaction(
       async (tx) => {
         const candidate = await tx.registration.findFirst({
@@ -463,6 +544,7 @@ export class RegistrationsService {
             campaign: { include: { event: true } },
             team: { select: basicTeam },
             consent: true,
+            person: { select: { birthDate: true } },
           },
         });
         assert(
@@ -485,24 +567,10 @@ export class RegistrationsService {
             "Esta campanha não possui lista de espera.",
           );
         if (status === "CONFIRMED") {
-          if (registration.origin === "IMPORT") {
-            const pending = (
-              registration.importData as { pending?: unknown } | null
-            )?.pending;
-            assert(
-              Array.isArray(pending) &&
-                pending.length === 0 &&
-                registration.consent?.accepted === true,
-              409,
-              "Esta candidatura importada precisa de complementação e aceite dos termos antes da confirmação final. A aprovação e a reserva do departamento podem ser mantidas.",
-              "IMPORT_COMPLETION_REQUIRED",
-            );
-          }
-          const snapshot = registration.snapshot as { birthDate?: string };
           if (
-            snapshot.birthDate &&
+            registration.origin !== "IMPORT" &&
             requiresGuardian(
-              snapshot.birthDate,
+              registration.person.birthDate.toISOString().slice(0, 10),
               registration.campaign.event.startsAt,
             )
           ) {
@@ -556,6 +624,33 @@ export class RegistrationsService {
           else
             await tx.$queryRaw`SELECT equipe_id FROM eventos.equipes WHERE equipe_id = ${registration.teamId}::uuid FOR UPDATE`;
         }
+        const minorImported =
+          registration.origin === "IMPORT" &&
+          requiresGuardian(
+            registration.person.birthDate.toISOString().slice(0, 10),
+            registration.campaign.event.startsAt,
+          );
+        const guardianSigned =
+          status === "CONFIRMED" && minorImported && guardianAuthorizationsReady
+            ? Boolean(
+                (
+                  await tx.guardianAuthorization.findUnique({
+                    where: { registrationId },
+                    select: { signedAt: true },
+                  })
+                )?.signedAt,
+              )
+            : false;
+        const pending = (
+          registration.importData as { pending?: unknown } | null
+        )?.pending;
+        confirmedWithPendingInformation =
+          status === "CONFIRMED" &&
+          registration.origin === "IMPORT" &&
+          (!Array.isArray(pending) ||
+            pending.length > 0 ||
+            registration.consent?.accepted !== true ||
+            (minorImported && !guardianSigned));
         const historyId = randomUUID();
         const updated = await tx.registration.update({
           where: { id: registrationId },
@@ -571,7 +666,9 @@ export class RegistrationsService {
                 actorId,
                 fromStatus: registration.status,
                 toStatus: status,
-                reason: data.reason,
+                reason: confirmedWithPendingInformation
+                  ? `${data.reason}\nVaga confirmada com informações pendentes de candidatura importada. A complementação continua obrigatória.${minorImported && !guardianSigned ? ` ${guardianPendingInformation}` : ""}`
+                  : data.reason,
               },
             },
           },
@@ -584,6 +681,15 @@ export class RegistrationsService {
             entityId: registrationId,
           },
         });
+        if (confirmedWithPendingInformation)
+          await tx.auditLog.create({
+            data: {
+              organizationId,
+              actorId,
+              action: "REGISTRATION_CONFIRMED_WITH_PENDING_INFORMATION",
+              entityId: registrationId,
+            },
+          });
         if (["APPROVED", "REJECTED"].includes(status)) {
           if (noticesReady) {
             await this.notices!.prepare(
@@ -612,6 +718,12 @@ export class RegistrationsService {
         ? {
             noticeWarning:
               "Decisão registrada. Os avisos ao candidato aguardam a configuração do banco e dos links.",
+          }
+        : {}),
+      ...(confirmedWithPendingInformation
+        ? {
+            noticeWarning:
+              "Vaga confirmada. As informações pendentes continuam registradas para preenchimento posterior; a autorização do responsável, quando aplicável, permanece obrigatória antes do evento.",
           }
         : {}),
     };

@@ -2674,9 +2674,33 @@ td strong {
   gap: 1.5rem;
   align-items: start;
 }
+.message-editor .field {
+  margin-bottom: 7px;
+}
+.message-editor .field textarea,
 .message-preview {
+  min-height: 24rem;
+}
+.message-preview-label {
+  margin: 0 0 7px;
+  font: 600 12px "DM Sans", "Segoe UI", sans-serif;
+  letter-spacing: normal;
+  color: #626b7f;
+}
+.message-preview {
+  margin: 0;
+  border: 1px solid #dfe2ec;
+  border-radius: 8px;
+  padding: 11px 13px;
+  color: #364055;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.message-insertions {
+  margin-top: 1.5rem;
+}
+.message-insertions > h3 {
+  font-size: 14px;
 }
 @media (max-width: 800px) {
   .message-editor { grid-template-columns: minmax(0, 1fr); }
@@ -3116,6 +3140,52 @@ td strong {
 .review-person > strong {
   font-size: 13px;
   line-height: 1.5;
+}
+.review-person-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+}
+.review-person-heading strong {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.review-pending-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  width: 28px;
+  min-height: 28px;
+  padding: 3px;
+  border: 1px solid #efda9b;
+  border-radius: 50%;
+  color: #8b6114;
+  background: #fff5d6;
+}
+.review-pending-trigger:hover {
+  background: #ffedb3;
+}
+.review-pending-information {
+  padding-left: 22px;
+  line-height: 1.6;
+}
+.review-pending-information li + li {
+  margin-top: 7px;
+}
+@media (max-width: 800px) {
+  .review-person-heading strong {
+    font-size: 16px;
+    line-height: 1.4;
+  }
+  .review-pending-trigger {
+    flex-basis: 44px;
+    width: 44px;
+    min-height: 44px;
+  }
 }
 .review-person > small {
   color: var(--muted);

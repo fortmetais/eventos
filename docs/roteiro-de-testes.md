@@ -1,5 +1,18 @@
 # Roteiro de testes da aplicação Encontro
 
+## Confirmação de importados com pendências — 11/11/2026
+
+- Aceitar e alocar uma candidatura importada incompleta. Sem presença respondida no aviso ativo, a confirmação continua bloqueada. Após a resposta, confirmar a vaga com pendências: não deve exigir foto, saúde ou aceite atual, nem criar essas evidências.
+- Repetir com menor importado sem termo: permite confirmar a vaga e mantém **Autorização do responsável pendente: obrigatória antes do evento** no aviso de pendências. Um menor inscrito pela ficha nativa continua exigindo a assinatura.
+- Conferir que capacidade concorrente, departamento, situação do evento e permissões continuam verificados.
+- A lista mostra exclamação antes do nome em vez de repetir Complementação pendente. Abrir por mouse, toque e teclado mostra as pendências atuais; fechar devolve foco. Candidatura sem pendências não mostra exclamação.
+- WhatsApp de importado aceito/confirmado com pendências abre o aviso. Abrir conversa não registra envio. Quando expirado, permite acessar a renovação sem criar avisos ou enviar mensagens automaticamente.
+- A listagem carrega o estado da autorização em lote e mantém compatibilidade quando o módulo do responsável não está instalado. Não deve expor dados de saúde nem credenciais novas.
+
+A página de complementação fica para uma próxima entrega. Prazo escolhido para os futuros links: **15 dias com renovação**. Não gerar links de complementação nem anunciar que já estão disponíveis.
+
+Verificação desta entrega: suítes completas da API/interface aprovadas com PostgreSQL descartável, incluindo confirmação de adulto/menor importado, ausência de aceites, assinatura existente, vagas e proteção das inscrições nativas. Compilação e tipos aprovados; percurso no navegador passou em desktop e telas de 320, 390 e 430 px, com ícone de pendências e WhatsApp disponível após confirmar. Não há SQL novo a executar.
+
 ## Inscrições por evento — revisão de 11/11/2026
 
 Ajuste de usabilidade no celular: o menu da organização fica recolhido nesta página; busca permanece visível e os demais controles ficam em **Filtros e ordenação**, com aplicação imediata e retorno por **Ver inscrições**. O botão **Limpar filtros** preserva o texto da pesquisa. Os cartões têm ações nomeadas **Ficha** e **WhatsApp**, departamento completo em texto e orientação quando o envio não está disponível. Campos usam 16 px e alvos de toque de pelo menos 44 px; modais respeitam as áreas de segurança da tela.
@@ -49,7 +62,7 @@ Preparação: aplicar SQL 16 após 06/13 no ambiente de teste. Preservar o CSV r
 | Confirmar parte das linhas                  | Cria somente selecionadas prontas; lote parcial pode ser retomado; repetir não duplica           |
 | Reenviar arquivo alterado/reordenado        | Compara com candidaturas existentes; atualização exige escolha explícita                         |
 | Revisar em duas abas                        | Segunda edição desatualizada recebe conflito; nenhuma correção é perdida                         |
-| Aprovar/alocar importada incompleta         | Reserva vaga com capacidade existente; confirmação final é bloqueada                             |
+| Aprovar/alocar importada incompleta         | Reserva vaga com capacidade existente; após presença, permite confirmar mantendo pendências      |
 | Abrir detalhe sem foto/e-mail/saúde/aceites | Exibe ausência, origem, original e pendências sem erro ou dados inventados                       |
 | Confirmar importação                        | Não cria conta, aceite, saúde, foto nem envia avisos                                             |
 | Consultar outra organização                 | Acesso negado; consulta pública não recebe as novas candidaturas                                 |

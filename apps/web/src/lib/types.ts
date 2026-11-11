@@ -229,6 +229,7 @@ export interface RegistrationDecisionSummary {
 }
 export interface Registration {
   decisionSummary?: RegistrationDecisionSummary;
+  pendingInformation?: string[];
   updatedAt?: string;
   origin?: "PUBLIC_FORM" | "IMPORT";
   importData?: {

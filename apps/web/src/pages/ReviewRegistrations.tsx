@@ -10,6 +10,7 @@ import {
   ArrowLeft,
   ArrowUpDown,
   CalendarDays,
+  CircleAlert,
   ChevronRight,
   ClipboardList,
   Eye,
@@ -35,6 +36,7 @@ import type {
   RegistrationStatus,
 } from "../lib/types";
 import { date, statusLabels } from "../lib/types";
+import { registrationPendingInformation } from "../lib/registration-pending";
 import { Empty, Field, Loading, Notice, PageHeading } from "../components/ui";
 
 const statusOptions: Record<RegistrationStatus, RegistrationStatus[]> = {
@@ -168,6 +170,11 @@ export function ReviewRegistrations() {
     id: string;
     whatsapp: boolean;
   } | null>(null);
+  const [pendingRegistration, setPendingRegistration] =
+    useState<Registration | null>(null);
+  useEffect(() => {
+    setPendingRegistration(null);
+  }, [selectedQuery, eventId, tab]);
   const [dirty, setDirty] = useState(false);
   const [teamName, setTeamName] = useState("");
   const [teamCapacity, setTeamCapacity] = useState("");
@@ -246,6 +253,15 @@ export function ReviewRegistrations() {
       ? `/organizations/${organizationId}/registrations?${params}`
       : null,
   );
+  useEffect(() => {
+    if (!pendingRegistration || list.loading || !list.data) return;
+    const current = list.data.items.find(
+      (item) => item.id === pendingRegistration.id,
+    );
+    if (!current || registrationPendingInformation(current).length === 0)
+      setPendingRegistration(null);
+    else if (current !== pendingRegistration) setPendingRegistration(current);
+  }, [pendingRegistration, list.data, list.loading]);
   const refresh = () => {
     list.refreshInBackground();
     events.refreshInBackground();
@@ -322,10 +338,15 @@ export function ReviewRegistrations() {
             }
           : {
               info:
-                changed.noticeWarning ||
-                (operation === "team"
-                  ? "Departamento salvo."
-                  : "Decisão salva."),
+                operation === "status" &&
+                value === "CONFIRMED" &&
+                changed.status === "CONFIRMED" &&
+                registration.origin === "IMPORT"
+                  ? "Vaga confirmada."
+                  : changed.noticeWarning ||
+                    (operation === "team"
+                      ? "Departamento salvo."
+                      : "Decisão salva."),
             },
       }));
     } catch (error) {
@@ -361,9 +382,11 @@ export function ReviewRegistrations() {
   }
   function openEvent(id: string) {
     setInvite(null);
+    setPendingRegistration(null);
     setSearch({ evento: id, aba: "inscricoes" });
   }
   function openDetail(id: string) {
+    setPendingRegistration(null);
     setDirty(false);
     changeSearch({ inscricao: id });
   }
@@ -428,19 +451,32 @@ export function ReviewRegistrations() {
       !eventClosed &&
       (pending || allocatedStates.includes(registration.status));
     const notice = registration.decisionSummary?.notice;
+    const pendingInformation = registrationPendingInformation(registration);
     const canWhatsApp =
       editable &&
       allocatedStates.includes(registration.status) &&
       registration.decisionSummary?.ready &&
-      notice?.active &&
-      !notice.expired;
+      notice?.active;
     const choices = statusOptions[registration.status].filter(
       (choice) => choice !== "WAITLIST" || registration.campaign.allowWaitlist,
     );
     return (
       <tr key={registration.id} aria-busy={feedback?.busy || undefined}>
         <td className="review-person" data-label="Participante">
-          <strong>{registration.person.name}</strong>
+          <div className="review-person-heading">
+            {pendingInformation.length > 0 && (
+              <button
+                type="button"
+                className="review-pending-trigger"
+                aria-label={`Ver pendências de ${registration.person.name}`}
+                title="Complementação pendente"
+                onClick={() => setPendingRegistration(registration)}
+              >
+                <CircleAlert size={19} aria-hidden="true" />
+              </button>
+            )}
+            <strong>{registration.person.name}</strong>
+          </div>
           <small className="review-person-protocol">
             {registration.protocol}
           </small>
@@ -448,13 +484,6 @@ export function ReviewRegistrations() {
             {registration.campaign.kind === "VOLUNTEER" ? "Servo" : "Campista"}
             {registration.origin === "IMPORT" ? " · Importada" : ""}
           </small>
-          {registration.origin === "IMPORT" && (
-            <small className="review-pending">
-              {(registration.importData?.pending?.length ?? 0) > 0
-                ? "Complementação pendente"
-                : "Conferir complementação"}
-            </small>
-          )}
           {feedback?.busy && <small role="status">Salvando…</small>}
           {feedback?.error && (
             <small className="field-error" role="alert">
@@ -547,21 +576,12 @@ export function ReviewRegistrations() {
               <option
                 key={choice}
                 value={choice}
-                disabled={
-                  (eventClosed && choice !== "CANCELLED") ||
-                  (choice === "CONFIRMED" && registration.origin === "IMPORT")
-                }
+                disabled={eventClosed && choice !== "CANCELLED"}
               >
                 {decisionLabel(choice, registration)}
               </option>
             ))}
           </select>
-          {registration.origin === "IMPORT" &&
-            registration.status === "APPROVED" && (
-              <small className="muted">
-                Confirmação final após complementação
-              </small>
-            )}
         </td>
         <td className="review-cell-invite" data-label="Convite / presença">
           {invitation(registration)}
@@ -574,7 +594,9 @@ export function ReviewRegistrations() {
             aria-label={`Enviar convite por WhatsApp para ${registration.person.name}`}
             title={
               canWhatsApp
-                ? "Preparar conversa no WhatsApp"
+                ? notice?.expired
+                  ? "Renovar o link para preparar a conversa"
+                  : "Preparar conversa no WhatsApp"
                 : "Disponível para convites ativos de candidaturas aceitas"
             }
             onClick={() => setInvite({ id: registration.id, whatsapp: true })}
@@ -1144,6 +1166,38 @@ export function ReviewRegistrations() {
             onChanged={refresh}
             onDirtyChange={setDirty}
           />
+        </Modal>
+      )}
+      {pendingRegistration && (
+        <Modal
+          title="Informações pendentes"
+          onClose={() => setPendingRegistration(null)}
+        >
+          <h3>{pendingRegistration.person.name}</h3>
+          <p>
+            {pendingRegistration.status === "CONFIRMED"
+              ? "A vaga está confirmada. "
+              : "A vaga pode ser confirmada antes da complementação. "}
+            As informações abaixo continuam pendentes e serão coletadas
+            posteriormente.
+          </p>
+          <ul className="review-pending-information">
+            {registrationPendingInformation(pendingRegistration).map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <p className="muted">
+            A confirmação da vaga não registra aceites nem autorizações. Quando
+            exigida, a autorização do responsável deve ser obtida antes do
+            evento.
+          </p>
+          <button
+            type="button"
+            className="button outline"
+            onClick={() => openDetail(pendingRegistration.id)}
+          >
+            Abrir ficha
+          </button>
         </Modal>
       )}
       {invite && (

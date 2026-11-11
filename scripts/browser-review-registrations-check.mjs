@@ -134,7 +134,21 @@ try {
       protocol: `INS-TESTE-${index + 1}`,
       person: { name },
       status: index === 2 ? "REJECTED" : index === 1 ? "APPROVED" : "RECEIVED",
-      origin: "PUBLIC_FORM",
+      origin: index === 1 ? "IMPORT" : "PUBLIC_FORM",
+      ...(index === 1
+        ? {
+            importData: {
+              pending: [
+                "Adicionar foto do participante.",
+                "Aceitar os termos atuais da inscrição.",
+              ],
+            },
+            pendingInformation: [
+              "Adicionar foto do participante.",
+              "Aceitar os termos atuais da inscrição.",
+            ],
+          }
+        : {}),
       accountId: user.id,
       team: index === 1 ? event.teams[0] : null,
       createdAt: `2026-10-${index + 10}T12:00:00Z`,
@@ -403,14 +417,48 @@ try {
         0,
         "A tabela não deve carregar ficha individual por linha.",
       );
+      const importedCandidate = page
+        .locator("tbody tr")
+        .filter({ has: page.getByText("Bruno Souza", { exact: true }) });
+      await expect(
+        importedCandidate.getByText("Complementação pendente", { exact: true }),
+      ).toHaveCount(0);
+      await importedCandidate
+        .getByRole("button", {
+          name: "Ver pendências de Bruno Souza",
+          exact: true,
+        })
+        .click();
+      const pendingDialog = page.getByRole("dialog", {
+        name: "Informações pendentes",
+        exact: true,
+      });
+      await expect(pendingDialog).toContainText(
+        "Adicionar foto do participante.",
+      );
+      await expect(pendingDialog).toContainText(
+        "Aceitar os termos atuais da inscrição.",
+      );
+      await page.screenshot({
+        path: `.local/screenshots/review-pending-${screenLabel}.png`,
+        fullPage: true,
+      });
+      await page.keyboard.press("Escape");
+      await expect(pendingDialog).toHaveCount(0);
+      await expect(
+        importedCandidate.getByRole("button", {
+          name: /Enviar convite por WhatsApp/,
+        }),
+      ).toBeEnabled();
       if (mobile) {
+        await page.evaluate(() => window.scrollTo(0, 0));
         const firstDepartment = page.getByRole("combobox", {
           name: "Departamento de Ágata Silva",
           exact: true,
         });
         const bounds = await firstDepartment.boundingBox();
         assert(
-          bounds && bounds.y + bounds.height < viewport.height,
+          bounds && bounds.y >= 0 && bounds.y + bounds.height < viewport.height,
           "O primeiro departamento deve estar acessível na primeira tela.",
         );
         assert.equal(
@@ -506,9 +554,13 @@ try {
         fullPage: true,
       });
       if (mobile) {
-        await page.getByText("Daniel Lima", { exact: true }).scrollIntoViewIfNeeded();
+        await page
+          .getByText("Daniel Lima", { exact: true })
+          .scrollIntoViewIfNeeded();
         await expect(search).toBeInViewport();
-        await expect(page.getByRole("button", { name: /^Filtros e ordenação/ })).toBeInViewport();
+        await expect(
+          page.getByRole("button", { name: /^Filtros e ordenação/ }),
+        ).toBeInViewport();
       }
       await candidate.getByRole("button", { name: /ficha/i }).click();
       const dialog = page.getByRole("dialog");
@@ -558,6 +610,30 @@ try {
         .click();
       await closeFilters();
       await expect(candidate).toContainText("Presença confirmada");
+      notices.get(rows[1].id).confirmedAt = new Date().toISOString();
+      await importedCandidate
+        .getByRole("combobox", { name: /Decisão de/ })
+        .selectOption("CONFIRMED");
+      await expect(
+        importedCandidate.getByRole("combobox", { name: /Decisão de/ }),
+      ).toHaveValue("CONFIRMED");
+      assert.equal(rows[1].status, "CONFIRMED");
+      assert.equal(
+        rows[1].importData.pending.length,
+        2,
+        "Confirmar vaga não apaga pendências.",
+      );
+      await expect(
+        importedCandidate.getByRole("button", {
+          name: "Ver pendências de Bruno Souza",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        importedCandidate.getByRole("button", {
+          name: /Enviar convite por WhatsApp/,
+        }),
+      ).toBeEnabled();
       await page.screenshot({
         path: `.local/screenshots/review-presence-${screenLabel}.png`,
         fullPage: true,

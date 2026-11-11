@@ -10,6 +10,7 @@ import type {
   RegistrationStatus,
 } from "../lib/types";
 import { date, dateTime, statusLabels } from "../lib/types";
+import { registrationPendingInformation } from "../lib/registration-pending";
 import { Badge, Field, Loading, Notice } from "./ui";
 import { GuardianNotice } from "./GuardianNotice";
 import { DecisionNotice } from "./DecisionNotice";
@@ -44,6 +45,9 @@ export function RegistrationDetail({
     `/organizations/${organizationId}/events`,
   );
   const registration = detail.data;
+  const pendingInformation = registration
+    ? registrationPendingInformation(registration)
+    : [];
   const edition = events.data?.find(
     (event) => event.id === registration?.campaign.event.id,
   );
@@ -201,6 +205,7 @@ export function RegistrationDetail({
           key={registration.id}
           organizationId={organizationId}
           registrationId={registration.id}
+          allowPendingConfirmation={registration.origin === "IMPORT"}
         />
       )}
       {detail.loading ? (
@@ -223,20 +228,25 @@ export function RegistrationDetail({
             {registration.origin === "IMPORT" && (
               <section aria-label="Origem e pendências da importação">
                 <Notice kind="info">
-                  Candidatura importada. É possível avaliar, aprovar e reservar
-                  departamento. A confirmação final exige a complementação pelo
-                  participante, disponível na próxima entrega.
+                  {registration.status === "CONFIRMED"
+                    ? "Vaga confirmada. "
+                    : "Candidatura importada. É possível avaliar, aprovar, alocar departamento e confirmar a vaga. "}
+                  {pendingInformation.length > 0 &&
+                    "As informações pendentes serão coletadas posteriormente. "}
+                  A confirmação da vaga não registra aceites ou autorizações.
+                  Quando exigida, a autorização do responsável deve ser obtida
+                  antes do evento.
                 </Notice>
                 {registration.importData?.source?.fileName && (
                   <p>
                     Arquivo de origem: {registration.importData.source.fileName}
                   </p>
                 )}
-                {!!registration.importData?.pending?.length && (
+                {pendingInformation.length > 0 && (
                   <details open>
-                    <summary>Pendências para confirmação</summary>
+                    <summary>Informações pendentes</summary>
                     <ul>
-                      {registration.importData.pending.map((item) => (
+                      {pendingInformation.map((item) => (
                         <li key={item}>{item}</li>
                       ))}
                     </ul>
@@ -497,14 +507,7 @@ export function RegistrationDetail({
                           registration.campaign.allowWaitlist,
                       )
                       .map((s) => (
-                        <option
-                          key={s}
-                          value={s}
-                          disabled={
-                            s === "CONFIRMED" &&
-                            registration.origin === "IMPORT"
-                          }
-                        >
+                        <option key={s} value={s}>
                           {s === "APPROVED"
                             ? registration.campaign.kind === "CAMPER"
                               ? "Aprovar inscrição"

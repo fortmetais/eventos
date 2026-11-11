@@ -2,7 +2,7 @@
 
 A ficha identifica menoridade na data do preenchimento (horário de Brasília) ou no início do evento. O contato do responsável é solicitado na etapa Saúde e emergência. Ao enviar, a inscrição é recebida e um termo separado fica pendente; marcar um aceite na ficha não autoriza o menor.
 
-O responsável abre `/autorizacao/:id#token=...` sem login, confere o participante, informa cidade, CPF, contato familiar, medicamentos e alergias, preenche sua identificação, aceita o termo e desenha a assinatura com dedo, mouse ou caneta. A imagem/voz tem autorização opcional. A inscrição só pode passar para Confirmada depois da assinatura; aprovação e análise continuam disponíveis.
+O responsável abre `/autorizacao/:id#token=...` sem login, confere o participante, informa cidade, CPF, contato familiar, medicamentos e alergias, preenche sua identificação, aceita o termo e desenha a assinatura com dedo, mouse ou caneta. A imagem/voz tem autorização opcional. Inscrições nativas só podem passar para Confirmada depois da assinatura; aprovação e análise continuam disponíveis. Para candidaturas **importadas**, a confirmação administrativa da vaga pode anteceder a assinatura: a autorização permanece como pendência obrigatória antes do evento, visível na exclamação junto ao nome e no detalhe. Essa confirmação não assina o termo, não concede autorização e não fabrica consentimento.
 
 **Celular do contato com DDD** e **Celular do responsável com DDD** usam a máscara `(00) 00000-0000`, incluindo telefone fixo e colagem com código `55`. Os CPFs do participante e do responsável usam `000.000.000-00`; o do participante permanece opcional e a API conserva a verificação dos dígitos. O comprovante também apresenta os documentos e telefones formatados.
 
@@ -37,7 +37,7 @@ Assinaturas repetidas são idempotentes e não substituem o primeiro documento. 
 
 Os dados de saúde permanecem no esquema `saude`; o painel de inscrições não recebe medicamentos/alergias do termo. Após assinar, as informações de medicamentos e alergias confirmadas pelo responsável atualizam a ficha de saúde, preservando as demais respostas. As tabelas têm RLS e nenhum acesso direto por `anon`, `authenticated` ou `PUBLIC`.
 
-Para inscrições antigas de menores sem termo, a confirmação é bloqueada. A organização pode iniciar a solicitação pelo botão de criar o termo no painel, usando os dados preservados da ficha e os dados atuais do evento; é necessário já possuir contato válido do responsável.
+Para inscrições nativas antigas de menores sem termo, a confirmação é bloqueada. A organização pode iniciar a solicitação pelo botão de criar o termo no painel, usando os dados preservados da ficha e os dados atuais do evento; é necessário já possuir contato válido do responsável. Em importadas, a vaga pode ser confirmada enquanto a autorização continua pendente, sem alterar os requisitos de preenchimento e assinatura do termo.
 
 ## Verificação
 

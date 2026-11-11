@@ -34,13 +34,15 @@ Os textos de nomes, edições, formação e cônjuge não são convertidos autom
 
 A confirmação da importação cria candidaturas **Recebidas**, sem envio de mensagens. A gestão permite analisar, aprovar e alocar nos departamentos, respeitando as vagas. Aprovar/rejeitar explicitamente segue os avisos existentes; ausência de e-mail é informada e não é substituída por contato inventado.
 
-As candidaturas importadas têm origem e pendências identificadas na lista e no detalhe. A confirmação final exige complementação e aceite efetivo, além das regras de presença e autorização aplicáveis. A primeira entrega não inclui a tela de complementação: as reservas podem ser feitas e a confirmação permanece bloqueada enquanto faltarem os requisitos.
+As candidaturas importadas podem ter a **vaga confirmada mesmo com complementação pendente**, mantendo confirmação de presença pelo link ativo, departamento válido e capacidade disponível. O botão de WhatsApp está disponível para aceitos/confirmados com aviso válido, independentemente da origem e das pendências; links expirados precisam de renovação explícita. Aprovar, confirmar ou compartilhar não preenche respostas nem registra aceites que não foram obtidos.
+
+A exclamação antes do nome abre as informações pendentes por clique, toque ou teclado, substituindo o texto repetido na listagem. Para menores importados, a vaga também pode ser confirmada com termo pendente, mas a autorização do responsável continua obrigatória antes do evento e sinalizada no aviso. A confirmação administrativa da vaga não equivale à autorização do responsável. Inscrições nativas mantêm a exigência de assinatura antes da confirmação. A tela de complementação permanece fora desta entrega.
 
 Data/idade da origem servem para conferência. A idade no evento e as proteções atuais de menores continuam sendo verificadas. Respostas sobre formação profissional não são respostas sobre a saúde do participante. Concordâncias antigas do Google Forms não são aceites dos termos atuais. Campos ocultos/excluídos permanecem no original, separados das respostas vigentes.
 
 ## Recuperação futura
 
-O novo modo não alimenta a consulta pública de autopreenchimento. A segunda entrega terá comprovação por link específico de uso único ou revisão documentada, vínculo à conta e complementação da mesma candidatura. Nome/nascimento não liberarão dados privados. O vínculo deverá manter protocolo, situação e vaga; não confirmará presença, autorização, aprovação ou medalha.
+O novo modo não alimenta a consulta pública de autopreenchimento. A etapa futura de complementação terá link individual com validade padrão de **15 dias**, renovação explícita e invalidação da credencial anterior. O acesso será separado do link de presença; não foi implementado nesta entrega. A complementação deverá manter protocolo, situação, vaga e respostas originais, registrando somente os dados e aceites efetivamente fornecidos. Nome/nascimento não liberarão dados privados nem provocarão vínculo automático com conta. Recuperação e vínculo de conta continuarão exigindo comprovação, sem gerar presença, autorização, aprovação ou medalha.
 
 ## Contratos administrativos
 

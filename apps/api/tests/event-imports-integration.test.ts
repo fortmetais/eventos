@@ -5,6 +5,8 @@ import request from "supertest";
 import { createApp } from "../src/app.js";
 import { volunteerTemplate } from "../src/modules/events/volunteer-template.js";
 import { defaultLayout } from "@fac/form-layout";
+import { RegistrationsService } from "../src/modules/registrations/registrations.service.js";
+import { RegistrationsRepository } from "../src/modules/registrations/registrations.repository.js";
 
 const url = process.env.TEST_EVENT_IMPORT_DATABASE_URL;
 (url ? describe : describe.skip)(
@@ -348,8 +350,9 @@ const url = process.env.TEST_EVENT_IMPORT_DATABASE_URL;
         .expect(409);
       expect(before.rows[0].original).toEqual(batch.rows[0].original);
     });
-    it("permite aprovação/reserva, bloqueia confirmação e entrega origem/pendências sem foto", async () => {
+    it("confirma vaga importada com pendências sem fabricar dados, saúde ou aceites", async () => {
       const reg = await db.registration.findFirstOrThrow();
+      const pendingBefore = reg.importData;
       const path = `/api/v1/organizations/${org}/registrations/${reg.id}`;
       for (const status of ["REVIEW", "APPROVED"])
         await request(app)
@@ -362,12 +365,28 @@ const url = process.env.TEST_EVENT_IMPORT_DATABASE_URL;
         .set(auth())
         .send({ teamId: teams[0].id })
         .expect(200);
-      const denied = await request(app)
+      const confirmed = await request(app)
         .patch(path + "/status")
         .set(auth())
         .send({ status: "CONFIRMED", reason: "Confirmar após avaliação" })
-        .expect(409);
-      expect(denied.body.error.code).toBe("IMPORT_COMPLETION_REQUIRED");
+        .expect(200);
+      expect(confirmed.body.status).toBe("CONFIRMED");
+      expect(confirmed.body.noticeWarning).toContain("informações pendentes");
+      expect(
+        await db.auditLog.count({
+          where: {
+            entityId: reg.id,
+            action: "REGISTRATION_CONFIRMED_WITH_PENDING_INFORMATION",
+          },
+        }),
+      ).toBe(1);
+      expect(
+        (
+          await db.statusHistory.findFirstOrThrow({
+            where: { registrationId: reg.id, toStatus: "CONFIRMED" },
+          })
+        ).reason,
+      ).toContain("com informações pendentes");
       expect(
         (await db.registration.findUniqueOrThrow({ where: { id: reg.id } }))
           .teamId,
@@ -381,6 +400,10 @@ const url = process.env.TEST_EVENT_IMPORT_DATABASE_URL;
       expect(detail.consent).toBeNull();
       expect(detail.origin).toBe("IMPORT");
       expect(detail.importData.pending.length).toBeGreaterThan(0);
+      expect(detail.importData).toEqual(pendingBefore);
+      expect(detail.pendingInformation).toEqual(detail.importData.pending);
+      expect(await db.healthSubmission.count()).toBe(0);
+      expect(await db.consent.count()).toBe(0);
       const list = await request(app)
         .get(
           `/api/v1/organizations/${org}/registrations?origin=IMPORT&completeness=PENDING`,
@@ -451,7 +474,7 @@ const url = process.env.TEST_EVENT_IMPORT_DATABASE_URL;
         where: { id: registration.id },
       });
       expect(after).toMatchObject({
-        status: "APPROVED",
+        status: "CONFIRMED",
         teamId: teams[0].id,
         accountId: users.organizer.id,
       });
@@ -844,6 +867,264 @@ const url = process.env.TEST_EVENT_IMPORT_DATABASE_URL;
           where: { person: { name: "Pessoa Conferida" } },
         }),
       ).toBe(0);
+    });
+    it("preserva presença, departamento e capacidade ao confirmar importados e mantém autorização nativa", async () => {
+      const secret = "segredo-importacao-presenca-responsavel-1234567890";
+      const noticesApp = createApp({
+        db,
+        eventsEnabled: true,
+        rateLimits: false,
+        resolveIdentity: async (token) => users[token] ?? null,
+        decisionNotificationsEnabled: true,
+        decisionLinkSecret: secret,
+        decisionEmail: { send },
+      });
+      const type = await db.eventType.create({
+        data: { organizationId: org, name: "Validação de vagas importadas" },
+      });
+      const event = await db.event.create({
+        data: {
+          organizationId: org,
+          typeId: type.id,
+          name: "Vagas com cadastro pendente",
+          description: "Evento fictício isolado",
+          location: "Local teste",
+          city: "Loanda",
+          startsAt: new Date("2027-08-01"),
+          endsAt: new Date("2027-08-03"),
+          status: "PUBLISHED",
+        },
+      });
+      const campaign = await db.campaign.create({
+        data: {
+          eventId: event.id,
+          kind: "VOLUNTEER",
+          opensAt: new Date("2020-01-01"),
+          closesAt: new Date("2021-01-01"),
+          capacity: 1,
+        },
+      });
+      const form = await db.formVersion.create({
+        data: {
+          campaignId: campaign.id,
+          version: 1,
+          publishedAt: new Date(),
+          config: JSON.parse(
+            JSON.stringify(volunteerTemplate("FAC", ["SECRETARIA"])),
+          ),
+        },
+      });
+      const team = await db.team.create({
+        data: { eventId: event.id, name: "SECRETARIA", capacity: 2 },
+      });
+      async function candidate(
+        birthDate: string,
+        native = false,
+        pending = ["Adicionar foto", "Aceitar os termos atuais"],
+      ) {
+        const person = await db.person.create({
+          data: {
+            organizationId: org,
+            name: `Pessoa ${randomUUID()}`,
+            phone: "44999999999",
+            birthDate: new Date(birthDate),
+          },
+        });
+        const draft = native
+          ? await db.draft.create({
+              data: {
+                campaignId: campaign.id,
+                formVersionId: form.id,
+                tokenHash: randomUUID().replaceAll("-", "").repeat(2),
+                expiresAt: new Date("2090-01-01"),
+              },
+            })
+          : null;
+        return db.registration.create({
+          data: {
+            personId: person.id,
+            campaignId: campaign.id,
+            formVersionId: form.id,
+            protocol: `PEND-${randomUUID()}`,
+            origin: native ? "PUBLIC_FORM" : "IMPORT",
+            draftId: draft?.id ?? null,
+            ...(native
+              ? {}
+              : {
+                  importData: {
+                    pending,
+                  },
+                }),
+            snapshot: {
+              name: person.name,
+              birthDate,
+              phone: person.phone,
+              answers: {},
+            },
+          },
+        });
+      }
+      const path = (id: string) =>
+        `/api/v1/organizations/${org}/registrations/${id}`;
+      const change = (id: string, status: string) =>
+        request(noticesApp)
+          .patch(`${path(id)}/status`)
+          .set(auth())
+          .send({ status, reason: "Confirmação da vaga com dados pendentes" });
+      const adult = await candidate("2000-01-01");
+      await change(adult.id, "APPROVED").expect(200);
+      const unconfirmed = await change(adult.id, "CONFIRMED").expect(409);
+      expect(unconfirmed.body.error.code).toBe(
+        "CANDIDATE_CONFIRMATION_REQUIRED",
+      );
+      async function confirmPresence(id: string) {
+        const notice = (
+          await request(noticesApp)
+            .get(`${path(id)}/decision-notice`)
+            .set(auth())
+            .expect(200)
+        ).body.notice;
+        expect(notice.whatsappLink).toContain("wa.me/");
+        const token = new URLSearchParams(
+          new URL(notice.link).hash.slice(1),
+        ).get("token");
+        await request(noticesApp)
+          .post(`/api/v1/public/decision-responses/${notice.id}`)
+          .send({ token })
+          .expect(200);
+      }
+      await confirmPresence(adult.id);
+      expect(
+        (await change(adult.id, "CONFIRMED").expect(409)).body.error.message,
+      ).toContain("departamento");
+      await request(noticesApp)
+        .put(`${path(adult.id)}/team`)
+        .set(auth())
+        .send({ teamId: team.id })
+        .expect(200);
+      await change(adult.id, "CONFIRMED").expect(200);
+      const minor = await candidate("2011-01-01");
+      await change(minor.id, "APPROVED").expect(200);
+      await confirmPresence(minor.id);
+      await request(noticesApp)
+        .put(`${path(minor.id)}/team`)
+        .set(auth())
+        .send({ teamId: team.id })
+        .expect(200);
+      expect(
+        (await change(minor.id, "CONFIRMED").expect(409)).body.error.code,
+      ).toBe("CAPACITY_REACHED");
+      await db.campaign.update({
+        where: { id: campaign.id },
+        data: { capacity: 2 },
+      });
+      const confirmedMinor = await change(minor.id, "CONFIRMED").expect(200);
+      expect(confirmedMinor.body.noticeWarning).toContain(
+        "autorização do responsável",
+      );
+      const detail = (
+        await request(noticesApp).get(path(minor.id)).set(auth()).expect(200)
+      ).body;
+      expect(detail.pendingInformation).toContain(
+        "Autorização do responsável pendente: obrigatória antes do evento.",
+      );
+      expect(detail.consent).toBeNull();
+      expect(
+        await db.guardianAuthorization.count({
+          where: { registrationId: minor.id },
+        }),
+      ).toBe(0);
+      expect(
+        (await db.registration.findUniqueOrThrow({ where: { id: minor.id } }))
+          .importData,
+      ).toEqual(minor.importData);
+      const listed = (
+        await request(noticesApp)
+          .get(`/api/v1/organizations/${org}/registrations`)
+          .set(auth())
+          .query({ eventId: event.id, sort: "NAME_ASC" })
+          .expect(200)
+      ).body.items;
+      expect(
+        listed.find((item: { id: string }) => item.id === minor.id)
+          .pendingInformation,
+      ).toEqual(detail.pendingInformation);
+      const native = await candidate("2011-01-01", true);
+      await change(native.id, "APPROVED").expect(200);
+      expect(
+        (await change(native.id, "CONFIRMED").expect(409)).body.error.code,
+      ).toBe("GUARDIAN_SIGNATURE_REQUIRED");
+      await db.guardianAuthorization.create({
+        data: {
+          registrationId: minor.id,
+          tokenHash: randomUUID(),
+          expiresAt: new Date("2090-01-01"),
+          termsText: "Termo fictício assinado",
+          snapshot: {},
+          signedAt: new Date(),
+          signedData: { name: "Responsável de teste" },
+          signature: [
+            [
+              { x: 0, y: 0 },
+              { x: 100, y: 100 },
+            ],
+          ],
+          receiptHash: "f".repeat(64),
+        },
+      });
+      // Reading a real signature must not depend on a configured sending secret.
+      const serviceWithoutLinks = new RegistrationsService(
+        new RegistrationsRepository(db),
+      );
+      const signedDetail = await serviceWithoutLinks.detail(org, minor.id);
+      expect(
+        "pendingInformation" in signedDetail && signedDetail.pendingInformation,
+      ).not.toContain(
+        "Autorização do responsável pendente: obrigatória antes do evento.",
+      );
+      expect(signedDetail.importData).toEqual(minor.importData);
+      expect(
+        await db.consent.findUnique({ where: { registrationId: minor.id } }),
+      ).toBeNull();
+      const emptyPending = await candidate("2000-01-01", false, []);
+      const emptyDetail = await serviceWithoutLinks.detail(
+        org,
+        emptyPending.id,
+      );
+      expect(
+        "pendingInformation" in emptyDetail && emptyDetail.pendingInformation,
+      ).toEqual(["Termos gerais atuais não confirmados"]);
+      await db.consent.create({
+        data: {
+          registrationId: emptyPending.id,
+          version: "TEST_TERMS",
+          termsText: "Termos fictícios do teste",
+          accepted: false,
+          guardianAuthorized: false,
+          imageAuthorized: false,
+        },
+      });
+      const refusedDetail = await serviceWithoutLinks.detail(
+        org,
+        emptyPending.id,
+      );
+      expect(
+        "pendingInformation" in refusedDetail &&
+          refusedDetail.pendingInformation,
+      ).toEqual(["Termos gerais atuais não confirmados"]);
+      await db.consent.update({
+        where: { registrationId: emptyPending.id },
+        data: { accepted: true },
+      });
+      const completedDetail = await serviceWithoutLinks.detail(
+        org,
+        emptyPending.id,
+      );
+      expect(
+        "pendingInformation" in completedDetail &&
+          completedDetail.pendingInformation,
+      ).toEqual([]);
+      expect(send).not.toHaveBeenCalled();
     });
   },
 );
