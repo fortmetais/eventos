@@ -11,6 +11,7 @@ import {
   ArrowUpDown,
   CalendarDays,
   CircleAlert,
+  ChevronDown,
   ChevronRight,
   ClipboardList,
   Eye,
@@ -545,27 +546,33 @@ export function ReviewRegistrations() {
           </button>
         </td>
         <td className="review-cell-decision" data-label="Decisão">
-          <select
-            aria-label={`Decisão de ${registration.person.name}`}
-            value={registration.status}
-            disabled={!canDecide || !choices.length || feedback?.busy}
-            onChange={(event) =>
-              void mutateRow(registration, "status", event.target.value)
-            }
-          >
-            <option value={registration.status}>
-              {decisionLabel(registration.status, registration)}
-            </option>
-            {choices.map((choice) => (
-              <option
-                key={choice}
-                value={choice}
-                disabled={eventClosed && choice !== "CANCELLED"}
-              >
-                {decisionLabel(choice, registration)}
+          <div className="review-decision-control">
+            <select
+              aria-label={`Decisão de ${registration.person.name}`}
+              value={registration.status}
+              disabled={!canDecide || !choices.length || feedback?.busy}
+              onChange={(event) =>
+                void mutateRow(registration, "status", event.target.value)
+              }
+            >
+              <option value={registration.status}>
+                {decisionLabel(registration.status, registration)}
               </option>
-            ))}
-          </select>
+              {choices.map((choice) => (
+                <option
+                  key={choice}
+                  value={choice}
+                  disabled={eventClosed && choice !== "CANCELLED"}
+                >
+                  {decisionLabel(choice, registration)}
+                </option>
+              ))}
+            </select>
+            <span className="review-decision-value" aria-hidden="true">
+              <span>{decisionLabel(registration.status, registration)}</span>
+              <ChevronDown size={12} />
+            </span>
+          </div>
         </td>
         <td className="review-cell-invite" data-label="Convite / presença">
           {invitation(registration)}

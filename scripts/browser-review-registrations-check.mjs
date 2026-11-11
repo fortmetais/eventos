@@ -607,8 +607,55 @@ try {
         assert(
           Math.abs(whatsappBounds.y - copyBounds.y) <= 1 &&
             whatsappBounds.y > fichaBounds.y + fichaBounds.height,
-          "WhatsApp e cópia devem ficar juntos no rodapé, separados da ficha.",
+          "WhatsApp e cópia devem ficar juntos abaixo do cabeçalho, separados da ficha.",
         );
+        const mainControls = await Promise.all([
+          importedCandidate
+            .getByRole("combobox", {
+              name: "Decisão de Bruno Souza",
+              exact: true,
+            })
+            .boundingBox(),
+          importedCandidate
+            .getByRole("button", {
+              name: "Enviar convite: Bruno Souza",
+              exact: true,
+            })
+            .boundingBox(),
+          importedCandidate
+            .getByRole("button", {
+              name: "Enviar convite por WhatsApp para Bruno Souza",
+              exact: true,
+            })
+            .boundingBox(),
+          importedCandidate
+            .getByRole("button", {
+              name: "Copiar link do candidato Bruno Souza",
+              exact: true,
+            })
+            .boundingBox(),
+        ]);
+        assert(
+          mainControls.every(Boolean),
+          "Decisão, convite e compartilhamento devem permanecer acessíveis.",
+        );
+        for (let index = 0; index < mainControls.length; index += 1) {
+          const control = mainControls[index];
+          assert(
+            control.width >= 44 && control.height >= 44 && control.height <= 48,
+            "Os quatro controles precisam manter área de toque de 44 px.",
+          );
+          assert(
+            Math.abs(control.y - mainControls[0].y) <= 1,
+            "Decisão, convite, WhatsApp e cópia devem ocupar a mesma linha no celular.",
+          );
+          if (index > 0)
+            assert(
+              control.x >=
+                mainControls[index - 1].x + mainControls[index - 1].width,
+              "Os controles da linha não devem se sobrepor.",
+            );
+        }
         assert.equal(
           await firstCard
             .locator(".review-cell-detail .review-action-label")
@@ -656,7 +703,7 @@ try {
           "O ícone de pendências deve continuar depois do nome.",
         );
         await page.screenshot({
-          path: `.local/screenshots/review-ficha-top-${screenLabel}.png`,
+          path: `.local/screenshots/review-mobile-inline-actions-${screenLabel}.png`,
           fullPage: true,
         });
       }

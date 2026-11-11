@@ -3170,6 +3170,9 @@ td strong {
   outline-offset: 2px;
   border-color: var(--purple);
 }
+.review-decision-value {
+  display: none;
+}
 .review-registration-table td > small,
 .review-person > small {
   display: block;
@@ -3852,6 +3855,7 @@ td strong {
     padding: 0 8px;
   }
   .registrations-workspace .review-registration-table tr {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) 94px;
     padding: 10px;
     margin-bottom: 8px;
     gap: 7px 8px;
@@ -3911,7 +3915,7 @@ td strong {
     display: inline;
   }
   .registrations-workspace .review-registration-table td.review-cell-detail {
-    grid-column: 2;
+    grid-column: 3;
     grid-row: 1;
     align-self: start;
     justify-self: end;
@@ -3921,8 +3925,67 @@ td strong {
     display: none;
   }
   .registrations-workspace .review-registration-table td.review-cell-whatsapp {
-    grid-column: 2;
-    grid-row: 4;
+    grid-column: 3;
+    grid-row: 3;
+    align-self: start;
+    padding-top: 31px !important;
+  }
+  .registrations-workspace .review-registration-table td.review-cell-decision,
+  .registrations-workspace .review-registration-table td.review-cell-invite {
+    align-self: start;
+  }
+  .registrations-workspace .review-cell-decision::before,
+  .registrations-workspace .review-cell-invite::before {
+    display: flex;
+    align-items: flex-end;
+    height: 28px;
+    line-height: 14px;
+  }
+  .registrations-workspace .review-decision-control {
+    position: relative;
+    height: 44px;
+  }
+  .registrations-workspace .review-decision-control select {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 44px;
+    opacity: 0;
+    z-index: 1;
+    cursor: pointer;
+  }
+  .registrations-workspace .review-decision-value {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2px;
+    height: 44px;
+    padding: 4px;
+    border: 1px solid #dfe2ec;
+    border-radius: 9px;
+    background: white;
+    color: #283346;
+    font-size: 12px;
+    line-height: 1.15;
+  }
+  .registrations-workspace .review-decision-value > span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .registrations-workspace .review-decision-control select:focus-visible + span {
+    outline: 3px solid #a299ea;
+    outline-offset: 2px;
+  }
+  .registrations-workspace .review-decision-control select:disabled + span {
+    opacity: 0.5;
+  }
+  .registrations-workspace .review-cell-invite > .muted {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .registrations-workspace .review-share {
+    min-width: 0;
   }
   .registrations-workspace .review-share-buttons {
     display: flex;
@@ -3950,8 +4013,10 @@ td strong {
   .registrations-workspace .review-invite {
     width: 100%;
     min-height: 44px;
+    height: 44px;
     font-size: 11px;
-    padding: 5px;
+    padding: 4px;
+    line-height: 1.15;
   }
   .registrations-workspace .pagination {
     padding: 10px 8px;
