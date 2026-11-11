@@ -795,29 +795,31 @@ export function ReviewRegistrations() {
         </>
       ) : (
         <>
-          <button
-            type="button"
-            className="text-button review-back"
-            onClick={() => {
-              setSearch({});
-              setInvite(null);
-            }}
-          >
-            <ArrowLeft size={17} />
-            Voltar aos eventos
-          </button>
-          <PageHeading
-            title={
-              edition?.name ??
-              direct.data?.campaign.event.name ??
-              "Inscrições do evento"
-            }
-            eyebrow="Inscrições e departamentos"
-          >
-            {edition
-              ? `${date(edition.startsAt)} · ${edition.city} · ${eventLabels[edition.status]}`
-              : "Organize as candidaturas e acompanhe cada participação."}
-          </PageHeading>
+          <header className="review-event-header">
+            <button
+              type="button"
+              className="text-button review-back"
+              onClick={() => {
+                setSearch({});
+                setInvite(null);
+              }}
+            >
+              <ArrowLeft size={17} />
+              Voltar aos eventos
+            </button>
+            <div className="review-event-heading">
+              <h1>
+                {edition?.name ??
+                  direct.data?.campaign.event.name ??
+                  "Inscrições do evento"}
+              </h1>
+              <p>
+                {edition
+                  ? `${date(edition.startsAt)} · ${edition.city} · ${eventLabels[edition.status]}`
+                  : "Organize as candidaturas e acompanhe cada participação."}
+              </p>
+            </div>
+          </header>
           {events.error && <Notice>{events.error}</Notice>}
           {!events.loading && events.data && !edition && (
             <Notice>
