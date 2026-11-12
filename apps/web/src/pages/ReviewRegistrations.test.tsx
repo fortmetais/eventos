@@ -218,6 +218,25 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Gestão de inscrições por evento", () => {
+  it("mostra a orientação do WhatsApp antes do aceite somente ao clicar, sem carregar aviso", async () => {
+    show();
+    await ready();
+    expect(
+      screen.queryByText("Disponível após o aceite"),
+    ).not.toBeInTheDocument();
+    const button = screen.getByRole("button", {
+      name: "Enviar convite por WhatsApp para Maria Teste",
+    });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).not.toBeDisabled();
+    mocks.api.mockClear();
+    fireEvent.click(button);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "Disponível após o aceite",
+    );
+    expect(mocks.api).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
   it.each([
     "APPROVED",
     "CONFIRMED",
@@ -297,7 +316,7 @@ describe("Gestão de inscrições por evento", () => {
       screen.getByRole("button", {
         name: "Enviar convite por WhatsApp para Maria Teste",
       }),
-    ).toBeDisabled();
+    ).toHaveAttribute("aria-disabled", "true");
     expect(
       screen.queryByRole("button", { name: "Enviar convite: Maria Teste" }),
     ).not.toBeInTheDocument();
@@ -364,7 +383,9 @@ describe("Gestão de inscrições por evento", () => {
         name: "Enviar convite por WhatsApp para Maria Teste",
       }),
     ).toHaveTextContent("WhatsApp");
-    expect(screen.getByText("Disponível após o aceite")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Disponível após o aceite"),
+    ).not.toBeInTheDocument();
     fireEvent.click(
       screen.getByRole("button", { name: /Filtros e ordenação/ }),
     );

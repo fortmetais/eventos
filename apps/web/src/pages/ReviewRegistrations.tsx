@@ -442,6 +442,10 @@ export function ReviewRegistrations() {
     const canWhatsApp =
       canShare &&
       /^\d{10,13}$/.test(registration.person.phone?.replace(/\D/g, "") ?? "");
+    const whatsappBlockedMessage =
+      editable && !allocatedStates.includes(registration.status)
+        ? "Disponível após o aceite"
+        : undefined;
     const choices = statusOptions[registration.status].filter(
       (choice) => choice !== "WAITLIST" || registration.campaign.allowWaitlist,
     );
@@ -584,9 +588,10 @@ export function ReviewRegistrations() {
             disabled={Boolean(feedback?.busy)}
             canWhatsApp={canWhatsApp}
             canCopy={canShare}
+            whatsappBlockedMessage={whatsappBlockedMessage}
             onChanged={refresh}
           />
-          {!canWhatsApp && (
+          {!canWhatsApp && !whatsappBlockedMessage && (
             <small className="review-whatsapp-hint">
               {!editable
                 ? "Sem permissão de envio"

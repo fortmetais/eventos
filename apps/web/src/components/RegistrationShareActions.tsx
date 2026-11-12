@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Copy } from "lucide-react";
 import { api } from "../lib/api";
 import type { Registration } from "../lib/types";
@@ -33,6 +33,7 @@ export function RegistrationShareActions({
   disabled,
   canWhatsApp,
   canCopy,
+  whatsappBlockedMessage,
   onChanged,
 }: {
   organizationId: string;
@@ -40,6 +41,7 @@ export function RegistrationShareActions({
   disabled: boolean;
   canWhatsApp: boolean;
   canCopy: boolean;
+  whatsappBlockedMessage?: string;
   onChanged: () => void;
 }) {
   const path = `/organizations/${organizationId}/registrations/${registration.id}/decision-notice`;
@@ -48,12 +50,42 @@ export function RegistrationShareActions({
   const [info, setInfo] = useState("");
   const [openedNoticeId, setOpenedNoticeId] = useState<string | null>(null);
   const [manualLink, setManualLink] = useState("");
+  const [blockedHint, setBlockedHint] = useState(false);
+  const hintId = useId();
+  const whatsappControl = useRef<HTMLDivElement>(null);
   const running = useRef(false);
   const request = useRef<{
     controller: AbortController;
     popup: Window | null;
   } | null>(null);
   const summary = registration.decisionSummary?.notice;
+  useEffect(() => {
+    setBlockedHint(false);
+  }, [
+    registration.id,
+    registration.status,
+    canWhatsApp,
+    whatsappBlockedMessage,
+    disabled,
+  ]);
+  useEffect(() => {
+    if (!blockedHint) return;
+    const timer = window.setTimeout(() => setBlockedHint(false), 3500);
+    const outside = (event: PointerEvent) => {
+      if (!whatsappControl.current?.contains(event.target as Node))
+        setBlockedHint(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setBlockedHint(false);
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [blockedHint]);
   useEffect(() => {
     setOpenedNoticeId(null);
     setManualLink("");
@@ -209,17 +241,43 @@ export function RegistrationShareActions({
   return (
     <div className="review-share" aria-busy={busy || undefined}>
       <div className="review-share-buttons">
-        <button
-          type="button"
-          className="review-whatsapp"
-          disabled={disabled || busy || !canWhatsApp}
-          aria-label={`Enviar convite por WhatsApp para ${registration.person.name}`}
-          title="Abrir mensagem no WhatsApp em outra aba"
-          onClick={() => void share("whatsapp")}
-        >
-          <WhatsAppIcon />
-          <span className="review-action-label">WhatsApp</span>
-        </button>
+        <div className="review-whatsapp-control" ref={whatsappControl}>
+          <button
+            type="button"
+            className="review-whatsapp"
+            disabled={
+              disabled || busy || (!canWhatsApp && !whatsappBlockedMessage)
+            }
+            aria-disabled={disabled || busy || !canWhatsApp || undefined}
+            aria-label={`Enviar convite por WhatsApp para ${registration.person.name}`}
+            aria-describedby={blockedHint ? hintId : undefined}
+            title={
+              canWhatsApp
+                ? "Abrir mensagem no WhatsApp em outra aba"
+                : undefined
+            }
+            onBlur={() => setBlockedHint(false)}
+            onClick={() => {
+              if (!canWhatsApp && whatsappBlockedMessage) {
+                setBlockedHint(true);
+                return;
+              }
+              void share("whatsapp");
+            }}
+          >
+            <WhatsAppIcon />
+            <span className="review-action-label">WhatsApp</span>
+          </button>
+          {blockedHint && whatsappBlockedMessage && (
+            <span
+              id={hintId}
+              className="review-whatsapp-tooltip"
+              role="tooltip"
+            >
+              {whatsappBlockedMessage}
+            </span>
+          )}
+        </div>
         <button
           type="button"
           className="review-icon-button review-copy-link"

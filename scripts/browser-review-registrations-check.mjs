@@ -444,6 +444,66 @@ try {
         0,
         "A tabela não deve carregar ficha individual por linha.",
       );
+      const pendingCandidate = page.locator("tbody tr").filter({
+        has: page.getByText("Ágata Silva", { exact: true }),
+      });
+      const pendingWhatsApp = pendingCandidate.getByRole("button", {
+        name: "Enviar convite por WhatsApp para Ágata Silva",
+        exact: true,
+      });
+      await expect(page.getByRole("tooltip")).toHaveCount(0);
+      await expect(
+        page.getByText("Disponível após o aceite", { exact: true }),
+      ).toHaveCount(0);
+      await expect(pendingWhatsApp).toHaveAttribute("aria-disabled", "true");
+      const pendingCardBefore = await pendingCandidate.boundingBox();
+      const pendingNoticeReads = noticeReads;
+      const pendingPageCount = context.pages().length;
+      // aria-disabled describes the blocked action, while the native button
+      // still receives a click to explain why no conversation can be opened.
+      if (mobile) await pendingWhatsApp.tap({ force: true });
+      else await pendingWhatsApp.click({ force: true });
+      const blockedHint = page.getByRole("tooltip");
+      await expect(blockedHint).toHaveText("Disponível após o aceite");
+      const hintBounds = await blockedHint.boundingBox();
+      const pendingCardAfter = await pendingCandidate.boundingBox();
+      assert(
+        hintBounds &&
+          hintBounds.x >= 0 &&
+          hintBounds.y >= 0 &&
+          hintBounds.x + hintBounds.width <= viewport.width &&
+          hintBounds.y + hintBounds.height <= viewport.height,
+        "O aviso pequeno deve permanecer dentro da tela.",
+      );
+      assert(
+        pendingCardBefore &&
+          pendingCardAfter &&
+          Math.abs(pendingCardAfter.height - pendingCardBefore.height) <= 1,
+        "O aviso não deve aumentar a altura do cartão.",
+      );
+      assert.equal(
+        noticeReads,
+        pendingNoticeReads,
+        "Tentar abrir WhatsApp antes do aceite não consulta o convite.",
+      );
+      assert.equal(
+        context.pages().length,
+        pendingPageCount,
+        "O aviso não deve abrir outra aba.",
+      );
+      await page.screenshot({
+        path: `.local/screenshots/review-whatsapp-blocked-${screenLabel}.png`,
+        fullPage: false,
+      });
+      await page.keyboard.press("Escape");
+      await expect(blockedHint).toHaveCount(0);
+      if (mobile) await pendingWhatsApp.tap({ force: true });
+      else await pendingWhatsApp.click({ force: true });
+      await expect(blockedHint).toBeVisible();
+      await pendingCandidate.getByText("Ágata Silva", { exact: true }).click();
+      await expect(blockedHint).toHaveCount(0);
+      assert.equal(noticeReads, pendingNoticeReads);
+      assert.equal(context.pages().length, pendingPageCount);
       if (!mobile) {
         const toolbar = page.locator(".review-toolbar");
         const controls = [
@@ -938,7 +998,7 @@ try {
       await expect(candidate).toContainText("Indicado — sem reserva");
       await expect(
         candidate.getByRole("button", { name: /Enviar convite por WhatsApp/ }),
-      ).toBeDisabled();
+      ).toHaveAttribute("aria-disabled", "true");
       assert.equal(
         notices.get(rows[0].id).active,
         false,

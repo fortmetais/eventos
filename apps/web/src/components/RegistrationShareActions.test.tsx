@@ -93,11 +93,65 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 describe("Compartilhamento direto do convite", () => {
+  it("mostra a orientação somente ao tentar abrir o WhatsApp antes do aceite, sem consultar ou enviar convite", () => {
+    show({
+      registration: { ...candidate, status: "RECEIVED" },
+      canWhatsApp: false,
+      canCopy: false,
+      whatsappBlockedMessage: "Disponível após o aceite",
+    });
+    expect(
+      screen.queryByText("Disponível após o aceite"),
+    ).not.toBeInTheDocument();
+    expect(whatsapp()).not.toBeDisabled();
+    expect(whatsapp()).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(whatsapp());
+    expect(screen.getByRole("tooltip")).toHaveTextContent(
+      "Disponível após o aceite",
+    );
+    expect(whatsapp()).toHaveAccessibleDescription("Disponível após o aceite");
+    expect(mocks.api).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    expect(onChanged).not.toHaveBeenCalled();
+    expect(copy()).toBeDisabled();
+    fireEvent.keyDown(whatsapp(), { key: "Escape" });
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  });
+  it.each(["blur", "outside"])(
+    "fecha a orientação de bloqueio ao ocorrer %s",
+    (event) => {
+      show({
+        canWhatsApp: false,
+        whatsappBlockedMessage: "Disponível após o aceite",
+      });
+      fireEvent.click(whatsapp());
+      expect(screen.getByRole("tooltip")).toBeVisible();
+      if (event === "blur") fireEvent.blur(whatsapp());
+      else fireEvent.pointerDown(document.body);
+      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+      expect(mocks.api).not.toHaveBeenCalled();
+      expect(open).not.toHaveBeenCalled();
+    },
+  );
+  it("oculta automaticamente a orientação de bloqueio após alguns segundos", () => {
+    vi.useFakeTimers();
+    show({
+      canWhatsApp: false,
+      whatsappBlockedMessage: "Disponível após o aceite",
+    });
+    fireEvent.click(whatsapp());
+    expect(screen.getByRole("tooltip")).toBeVisible();
+    act(() => vi.advanceTimersByTime(5000));
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    expect(mocks.api).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+  });
   it("carrega o convite apenas ao clicar e abre o WhatsApp sem declarar envio", async () => {
     show();
     expect(mocks.api).not.toHaveBeenCalled();

@@ -3073,6 +3073,34 @@ td strong {
 .review-whatsapp:not(:disabled):hover {
   background: #0e7038;
 }
+.review-whatsapp[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: help;
+}
+.review-whatsapp-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  flex: 0 0 44px;
+}
+.review-whatsapp-tooltip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 5;
+  width: max-content;
+  max-width: 180px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: #283346;
+  color: #fff;
+  box-shadow: 0 3px 10px #17213626;
+  font-size: 11px;
+  line-height: 1.4;
+  pointer-events: none;
+}
 .review-share {
   min-width: 96px;
 }
