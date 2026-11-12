@@ -3,29 +3,7 @@ import { Copy } from "lucide-react";
 import { api } from "../lib/api";
 import type { Registration } from "../lib/types";
 import type { DecisionNoticeState } from "./DecisionNotice";
-
-function WhatsAppIcon() {
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M20.5 11.7a8.5 8.5 0 0 1-12.6 7.5L3 20.6l1.3-4.9a8.5 8.5 0 1 1 16.2-4Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path
-        d="m8.6 7.5 1.2 2-1 1.2c.8 1.7 1.9 2.8 3.7 3.6l1.1-1 2.1 1.2c.1 1.5-1 2.1-2.2 1.8-3.6-.9-6.6-3.9-7.3-7.1-.2-1.2.9-2.2 2.4-1.7Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
+import { WhatsAppIcon } from "./NoticeActions";
 
 export function RegistrationShareActions({
   organizationId,

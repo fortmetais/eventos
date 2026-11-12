@@ -4,6 +4,16 @@ Ao aceitar uma candidatura de servo, a aplicação registra a decisão e cria um
 
 O candidato abre o link e clica em **Confirmar minha presença**, sem obrigação de criar conta. Abrir o link não confirma automaticamente, inclusive quando um serviço de e-mail gera uma prévia. A confirmação final da inscrição permanece com o organizador, depois da resposta do candidato e da alocação em equipe. As regras de vagas continuam aplicadas.
 
+## Consulta organizada da ficha
+
+A ficha do participante começa com um resumo de identificação operacional: foto quando disponível, nome, protocolo, evento/campanha, situação da vaga, departamento, presença e quantidade de pendências. Contatos, documentos e respostas ficam em seções recolhidas inicialmente. As seções podem ser abertas independentemente; recolher uma seção não descarta uma edição em andamento. A saúde continua na área de cuidados, sujeita à autorização específica por evento.
+
+Os botões de WhatsApp e de copiar link seguem o padrão da listagem. O endereço pessoal não é mostrado permanentemente: **Copiar link** copia diretamente; se o navegador impedir a cópia, uma ação explícita permite exibir o endereço para cópia manual. **Ver mensagem** abre a consulta intencional ao texto completo. O destinatário das ações é identificado como participante ou responsável, evitando confusão entre os dois fluxos.
+
+Renovar exige confirmação de que o link anterior será invalidado. Abrir a conversa não registra envio e consultar uma mensagem não dispara nenhuma comunicação. A presença confirmada pelo participante não substitui a decisão da organização, a complementação de dados ou a autorização do responsável quando exigida.
+
+Esta entrega reorganiza a interface e mantém os contratos e permissões existentes, sem migração. Recolher conteúdo não impede que os dados já retornados pela API sejam inspecionados no navegador. A segunda entrega de privacidade deverá reduzir as respostas de listagem, separar consultas de documentos, auditar acessos relevantes e revisar a validade da consulta pública de termos assinados. A conservação de documentos, a base legal por finalidade e os direitos dos titulares exigem regras próprias; não decorrem apenas do novo layout. Referências: [LGPD](https://www.planalto.gov.br/ccivil_03/_ato2015-2018/2018/lei/l13709.htm), [orientações da ANPD sobre controle de acesso](https://www.gov.br/anpd/pt-br/centrais-de-conteudo/materiais-educativos-e-publicacoes/anonimizado___guia_orientat-_seg_da_inf_p_atpp.pdf) e [padrão de seções recolhíveis da W3C](https://www.w3.org/WAI/ARIA/apg/patterns/accordion/).
+
 ## Ativar a estrutura gradual
 
 1. Conectado a `eventos_beta` no DBeaver, execute uma única vez `database/manual/07_avisos_e_confirmacao_servos.sql`, depois de concluir o SQL 06. O novo script cria somente `inscricoes.avisos_decisao`. Não altera fichas nem inscrições antigas. Se houver erro, faça `ROLLBACK` antes de corrigir.

@@ -33,9 +33,12 @@ beforeEach(() => {
   mocks.api.mockReset();
   mocks.api.mockResolvedValue(fixture());
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 describe("Aviso ao candidato", () => {
-  it("mostra e copia o link compacto quando disponível", async () => {
+  it("copia o link compacto sem montar um campo ou mensagem permanentemente", async () => {
     const user = userEvent.setup();
     const state = {
       ...fixture(),
@@ -48,10 +51,14 @@ describe("Aviso ao candidato", () => {
     render(
       <DecisionNotice organizationId="org" registrationId="registration" />,
     );
+    await screen.findByRole("button", { name: "Copiar link do candidato" });
     expect(
-      await screen.findByRole("textbox", { name: "Link do candidato" }),
-    ).toHaveValue(state.notice.shortLink);
-    await user.click(screen.getByRole("button", { name: "Copiar link" }));
+      screen.queryByRole("textbox", { name: "Link do candidato" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(state.notice.message)).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Copiar link do candidato" }),
+    );
     expect(await navigator.clipboard.readText()).toBe(state.notice.shortLink);
   });
   it("abrir mensagem não declara envio; registro exige ação explícita", async () => {
@@ -99,7 +106,7 @@ describe("Aviso ao candidato", () => {
       <DecisionNotice organizationId="org" registrationId="registration" />,
     );
     await screen.findByRole("heading", { name: "Aviso de recusa" });
-    await userEvent.click(screen.getByText("Mensagem para o candidato"));
+    await userEvent.click(screen.getByRole("button", { name: "Ver mensagem" }));
     expect(screen.getByText(/Não foi dessa vez!/)).toBeVisible();
     expect(
       screen.queryByText(/Aguardando o candidato confirmar presença/),
@@ -128,6 +135,18 @@ describe("Aviso ao candidato", () => {
     });
     await userEvent.click(link);
     await userEvent.click(screen.getByRole("button", { name: "Renovar link" }));
+    expect(
+      mocks.api.mock.calls.some(
+        ([path, options]) =>
+          path.endsWith("/renew") && options?.method === "POST",
+      ),
+    ).toBe(false);
+    expect(
+      screen.getByText(/o link anterior deixará de funcionar/),
+    ).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Confirmar renovação" }),
+    );
     expect(mocks.api).toHaveBeenCalledWith(expect.stringContaining("/renew"), {
       method: "POST",
     });
@@ -143,6 +162,59 @@ describe("Aviso ao candidato", () => {
       ),
     ).toBe(false);
   });
+  it("falha ao copiar exige ação explícita antes de exibir o link para cópia manual", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValueOnce(
+      new Error("Clipboard bloqueado"),
+    );
+    const onError = vi.fn();
+    render(
+      <DecisionNotice
+        organizationId="org"
+        registrationId="registration"
+        onError={onError}
+        embedded
+      />,
+    );
+    await user.click(
+      await screen.findByRole("button", { name: "Copiar link do candidato" }),
+    );
+    expect(onError).toHaveBeenCalledWith(
+      "Não foi possível copiar automaticamente o link.",
+    );
+    expect(
+      screen.queryByRole("textbox", { name: "Link do candidato" }),
+    ).not.toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", {
+        name: "Exibir link para copiar manualmente",
+      }),
+    );
+    expect(
+      screen.getByRole("textbox", { name: "Link do candidato" }),
+    ).toHaveValue(fixture().notice.link);
+    expect(
+      screen.queryByRole("heading", { name: "Aviso de aceite e presença" }),
+    ).not.toBeInTheDocument();
+  });
+  it("cancelar renovação não altera aviso e notifica estado ao resumo sem repetir consultas", async () => {
+    const onStateChange = vi.fn();
+    render(
+      <DecisionNotice
+        organizationId="org"
+        registrationId="registration"
+        onStateChange={onStateChange}
+      />,
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Renovar link" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Manter link atual" }),
+    );
+    expect(onStateChange).toHaveBeenCalledWith(fixture());
+    expect(mocks.api).toHaveBeenCalledTimes(1);
+  });
   it("e-mail só é enviado ao acionar seu botão e atualiza a lista", async () => {
     const state = fixture();
     const withEmail = {
@@ -153,16 +225,14 @@ describe("Aviso ao candidato", () => {
         emailStatus: "PENDENTE",
       },
     };
-    mocks.api
-      .mockResolvedValueOnce(withEmail)
-      .mockResolvedValueOnce({
-        ...withEmail,
-        notice: {
-          ...withEmail.notice,
-          emailStatus: "ENVIADA",
-          emailSentAt: "2026-11-11T12:00:00Z",
-        },
-      });
+    mocks.api.mockResolvedValueOnce(withEmail).mockResolvedValueOnce({
+      ...withEmail,
+      notice: {
+        ...withEmail.notice,
+        emailStatus: "ENVIADA",
+        emailSentAt: "2026-11-11T12:00:00Z",
+      },
+    });
     const onChanged = vi.fn();
     render(
       <DecisionNotice

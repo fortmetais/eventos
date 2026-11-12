@@ -42,11 +42,13 @@ export function ImportedRegistrationCorrection({
   organizationId,
   onSaved,
   onDirtyChange,
+  onError,
 }: {
   registration: Registration & { updatedAt?: string };
   organizationId: string;
   onSaved: (registration: Registration) => void | Promise<void>;
   onDirtyChange?: (dirty: boolean) => void;
+  onError?: (message: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [overrides, setOverrides] = useState<Record<string, EventImportValue>>(
@@ -116,11 +118,12 @@ export function ImportedRegistrationCorrection({
       setOpen(false);
       setInfo("Correção registrada no histórico da candidatura.");
     } catch (e) {
-      setError(
+      const message =
         e instanceof ApiError && e.status === 409
           ? `${e.message} Recarregue a candidatura antes de corrigir novamente.`
-          : (e as Error).message,
-      );
+          : (e as Error).message;
+      setError(message);
+      onError?.(message);
     } finally {
       setBusy(false);
     }

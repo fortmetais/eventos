@@ -503,12 +503,40 @@ const organizerContext = await browser.newContext({
   viewport: { width: 1366, height: 1000 },
 });
 await organizerContext.addInitScript((value) => {
-  if (["localhost", "127.0.0.1"].includes(location.hostname))
+  if (["localhost", "127.0.0.1"].includes(location.hostname)) {
     localStorage.setItem("sb-auth-auth-token", JSON.stringify(value));
+    // Área de transferência isolada deste teste, sem tocar na área real.
+    let copied = "";
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async (text) => {
+          copied = text;
+        },
+        readText: async () => copied,
+      },
+    });
+  }
 }, session);
 await fixtures(organizerContext);
 const admin = await organizerContext.newPage();
 admin.setDefaultTimeout(15000);
+async function openDetailSection(title) {
+  const control = admin.getByRole("button", { name: title, exact: true });
+  await control.waitFor();
+  if ((await control.getAttribute("aria-expanded")) !== "true")
+    await control.click();
+}
+async function copiedCandidateLink() {
+  assert.equal(
+    await admin.getByLabel("Link do candidato", { exact: true }).count(),
+    0,
+  );
+  await admin
+    .getByRole("button", { name: "Copiar link do candidato", exact: true })
+    .click();
+  return admin.evaluate(() => navigator.clipboard.readText());
+}
 let visitor;
 try {
   await admin.goto(
@@ -944,7 +972,8 @@ try {
   await admin.goto(
     `${target}/organizacao/${id}/inscricoes?evento=${eventId}&inscricao=registration-test`,
   );
-  await admin.getByText("Respostas da ficha de intenção").click();
+  await openDetailSection("Participação e respostas");
+  await openDetailSection("Departamento e decisão");
   await admin.getByLabel("Decisão sobre a candidatura").selectOption("REVIEW");
   await admin
     .getByLabel("Motivo", { exact: false })
@@ -963,6 +992,7 @@ try {
   await admin.getByLabel("Alocar em departamento").waitFor();
   assert.equal(registration.status, "APPROVED");
   assert.equal(registration.team, null);
+  await openDetailSection("Convite e presença");
   const whatsapp = await admin
     .getByRole("link", { name: "Abrir mensagem no WhatsApp" })
     .getAttribute("href");
@@ -977,7 +1007,7 @@ try {
   await admin
     .getByText("Envio pelo WhatsApp registrado em", { exact: false })
     .waitFor();
-  const responseLink = await admin.getByLabel("Link do candidato").inputValue();
+  const responseLink = await copiedCandidateLink();
   assert.equal(responseLink, decisionNotice.shortLink);
   assert(responseLink.length < decisionNotice.link.length);
   await visitor.goto(responseLink);
@@ -1018,7 +1048,7 @@ try {
     .getByLabel("Motivo", { exact: false })
     .fill("Critério de teste de recusa, sem exposição na mensagem.");
   await admin.getByRole("button", { name: "Salvar decisão" }).click();
-  await admin.getByRole("heading", { name: "Aviso de recusa" }).waitFor();
+  await openDetailSection("Convite e presença");
   const refusalWhatsapp = await admin
     .getByRole("link", { name: "Abrir mensagem no WhatsApp" })
     .getAttribute("href");
@@ -1027,7 +1057,7 @@ try {
       .get("text")
       .includes("Não foi dessa vez!"),
   );
-  await visitor.goto(await admin.getByLabel("Link do candidato").inputValue());
+  await visitor.goto(await copiedCandidateLink());
   await visitor.getByRole("heading", { name: "Não foi dessa vez!" }).waitFor();
   assert.equal(
     await visitor

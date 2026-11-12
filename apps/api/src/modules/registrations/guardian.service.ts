@@ -357,7 +357,8 @@ export class GuardianService {
         },
       });
     });
-    await this.deliver(registrationId);
+    // Creating or rotating an administrative link must not send a message.
+    // Delivery remains an explicit action through the existing email endpoint.
     return this.state(organizationId, registrationId);
   }
   private async authorized(

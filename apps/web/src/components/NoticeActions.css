@@ -1,0 +1,77 @@
+.notice-share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 14px 0;
+}
+.notice-share-actions .review-whatsapp {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 10px;
+}
+.notice-share-actions .button {
+  min-height: 44px;
+}
+.notice-copy-control {
+  min-width: 0;
+  max-width: 100%;
+}
+.notice-copy-success {
+  display: block;
+  color: var(--green);
+  font-size: 12px;
+  margin-top: 6px;
+}
+.notice-manual-copy {
+  margin-top: 10px;
+  width: min(100%, 520px);
+}
+.notice-manual-copy .field {
+  margin-top: 12px;
+}
+.notice-manual-copy input {
+  width: 100%;
+}
+.notice-message,
+.notice-term {
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fafbfe;
+  overflow-wrap: anywhere;
+}
+.notice-message p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.notice-renew {
+  margin: 14px 0;
+}
+.notice-renew-confirm {
+  padding: 14px;
+  border: 1px solid #eddaa0;
+  border-radius: 10px;
+  background: #fff9e8;
+}
+.notice-renew-confirm p {
+  margin: 0 0 12px;
+}
+@media (max-width: 800px) {
+  .notice-share-actions .review-whatsapp,
+  .notice-share-actions .review-icon-button {
+    width: 48px;
+    height: 48px;
+    min-height: 48px;
+  }
+  .notice-share-actions .button,
+  .notice-renew .button,
+  .notice-renew .text-button {
+    min-height: 48px;
+  }
+  .notice-manual-copy input {
+    font-size: 16px;
+  }
+}

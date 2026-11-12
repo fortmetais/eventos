@@ -92,12 +92,13 @@ beforeEach(() => {
   mocks.saved.mockReset().mockResolvedValue(undefined);
 });
 afterEach(cleanup);
-function view() {
+function view(onError?: (message: string) => void) {
   render(
     <ImportedRegistrationCorrection
       organizationId="org"
       registration={registration}
       onSaved={mocks.saved}
+      onError={onError}
     />,
   );
 }
@@ -121,9 +122,7 @@ describe("Correção de candidatura importada", () => {
       target: { value: "Maria Exemplo Corrigida" },
     });
     for (const size of ["G1", "G2", "G3", "G4"])
-      expect(
-        screen.getByRole("option", { name: size }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: size })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Tamanho da camiseta"), {
       target: { value: "G4" },
     });
@@ -152,10 +151,11 @@ describe("Correção de candidatura importada", () => {
     expect(mocks.saved).toHaveBeenCalledWith(registration);
   });
   it("aplica máscara de telefone e preserva os dados digitados quando há conflito", async () => {
+    const onError = vi.fn();
     mocks.api.mockRejectedValue(
       new ApiError("Dados alterados em outra tela.", 409),
     );
-    view();
+    view(onError);
     fireEvent.click(
       screen.getByRole("button", { name: "Corrigir dados importados" }),
     );
@@ -175,6 +175,9 @@ describe("Correção de candidatura importada", () => {
     );
     expect(await screen.findByRole("alert")).toHaveTextContent(
       /Recarregue a candidatura/,
+    );
+    expect(onError).toHaveBeenCalledWith(
+      "Dados alterados em outra tela. Recarregue a candidatura antes de corrigir novamente.",
     );
     expect(screen.getByLabelText("Telefone/WhatsApp")).toHaveValue(
       "(44) 98888-7777",

@@ -756,6 +756,23 @@ const url = process.env.TEST_DATABASE_URL;
         ).emailStatus,
       ).toBe("ENVIADA");
     });
+    it("renova o link do responsável sem enviar e-mail até a ação explícita", async () => {
+      const c = await candidate();
+      const sentBeforeRenewal = messages.length;
+      const renewed = await request(app)
+        .post(`${base(c.id)}/guardian/renew`)
+        .set(auth)
+        .expect(200);
+      expect(messages).toHaveLength(sentBeforeRenewal);
+      expect(renewed.body.authorization.emailStatus).toBe("PENDENTE");
+      expect(renewed.body.authorization.link).not.toBe(c.guardian.link);
+      await view(c).expect(401);
+      await request(app)
+        .post(`${base(c.id)}/guardian/email`)
+        .set(auth)
+        .expect(200);
+      expect(messages).toHaveLength(sentBeforeRenewal + 1);
+    });
     it("permite criar termo para menor de uma inscrição antiga sem confiar no aceite antigo", async () => {
       const c = await candidate();
       await db.guardianTermHealth.delete({
@@ -770,11 +787,14 @@ const url = process.env.TEST_DATABASE_URL;
             .expect(200)
         ).body.needsAuthorization,
       ).toBe(true);
+      const sentBeforeCreation = messages.length;
       const created = await request(app)
         .post(`${base(c.id)}/guardian/renew`)
         .set(auth)
         .expect(200);
       expect(created.body.authorization.signedAt).toBeNull();
+      expect(created.body.authorization.emailStatus).toBe("PENDENTE");
+      expect(messages).toHaveLength(sentBeforeCreation);
     });
   },
 );

@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { useRemote } from "../lib/hooks";
 import { dateTime } from "../lib/types";
-import { Field, Loading, Notice } from "./ui";
+import { Loading, Notice } from "./ui";
+import { CopyNoticeLink, RenewNoticeLink, WhatsAppIcon } from "./NoticeActions";
 
 export interface DecisionNoticeState {
   ready: boolean;
@@ -37,11 +38,19 @@ export function DecisionNotice({
   registrationId,
   onChanged,
   initialWhatsApp = false,
+  embedded = false,
+  onStateChange,
+  onBusyChange,
+  onError,
 }: {
   organizationId: string;
   registrationId: string;
   onChanged?: () => void;
   initialWhatsApp?: boolean;
+  embedded?: boolean;
+  onStateChange?: (state: DecisionNoticeState) => void;
+  onBusyChange?: (busy: boolean) => void;
+  onError?: (message: string) => void;
 }) {
   const path = `/organizations/${organizationId}/registrations/${registrationId}/decision-notice`;
   const state = useRemote<DecisionNoticeState>(path);
@@ -49,12 +58,37 @@ export function DecisionNotice({
     [error, setError] = useState(""),
     [info, setInfo] = useState("");
   const [whatsappOpened, setWhatsappOpened] = useState(false);
+  const [showMessage, setShowMessage] = useState(false);
+  const messageId = useId();
+  const running = useRef(false);
+  const callbacks = useRef({ onStateChange, onBusyChange, onError });
+  callbacks.current = { onStateChange, onBusyChange, onError };
+  const notice = state.data?.notice;
+  const noticeKey = `${notice?.id}:${notice?.expiresAt}:${notice?.active}:${notice?.expired}:${notice?.confirmedAt}`;
+  useEffect(() => {
+    if (state.data) callbacks.current.onStateChange?.(state.data);
+  }, [state.data]);
+  useLayoutEffect(() => {
+    callbacks.current.onBusyChange?.(busy);
+  }, [busy]);
+  useEffect(() => () => callbacks.current.onBusyChange?.(false), []);
+  useEffect(() => {
+    if (state.error) callbacks.current.onError?.(state.error);
+  }, [state.error]);
+  useEffect(() => {
+    setWhatsappOpened(false);
+    setShowMessage(false);
+    setError("");
+    setInfo("");
+  }, [registrationId, noticeKey]);
   const whatsappButton = useRef<HTMLAnchorElement>(null);
   useEffect(() => {
     if (initialWhatsApp && state.data?.notice?.whatsappLink)
       whatsappButton.current?.focus();
   }, [initialWhatsApp, state.data?.notice?.whatsappLink]);
   async function action(suffix: string) {
+    if (running.current) return false;
+    running.current = true;
     setBusy(true);
     setError("");
     setInfo("");
@@ -64,19 +98,15 @@ export function DecisionNotice({
       );
       if (suffix === "renew") setWhatsappOpened(false);
       onChanged?.();
+      return true;
     } catch (error) {
-      setError((error as Error).message);
+      const message = (error as Error).message;
+      setError(message);
+      callbacks.current.onError?.(message);
+      return false;
     } finally {
+      running.current = false;
       setBusy(false);
-    }
-  }
-  async function copy() {
-    try {
-      const notice = state.data!.notice!;
-      await navigator.clipboard.writeText((notice.shortLink ?? notice.link)!);
-      setInfo("Link copiado.");
-    } catch {
-      setError("Selecione e copie o link abaixo.");
     }
   }
   if (state.loading) return <Loading />;
@@ -88,7 +118,6 @@ export function DecisionNotice({
         registrada.
       </Notice>
     );
-  const notice = state.data.notice;
   if (!notice)
     return (
       <Notice kind="info">
@@ -98,12 +127,16 @@ export function DecisionNotice({
     );
   return (
     <section className="decision-notice">
-      <hr />
-      <h3>
-        {notice.kind === "ACEITE"
-          ? "Aviso de aceite e presença"
-          : "Aviso de recusa"}
-      </h3>
+      {!embedded && (
+        <>
+          <hr />
+          <h3>
+            {notice.kind === "ACEITE"
+              ? "Aviso de aceite e presença"
+              : "Aviso de recusa"}
+          </h3>
+        </>
+      )}
       {error && <Notice>{error}</Notice>}
       {info && <Notice kind="success">{info}</Notice>}
       {notice.kind === "ACEITE" && (
@@ -139,38 +172,29 @@ export function DecisionNotice({
             </Notice>
           ) : (
             <>
-              <Field label="Link do candidato">
-                <input
-                  readOnly
-                  value={notice.shortLink ?? notice.link ?? ""}
-                  onFocus={(e) => e.target.select()}
-                />
-              </Field>
-              <details>
-                <summary>Mensagem para o candidato</summary>
-                <p className="description">{notice.message}</p>
-              </details>
-              <div className="button-row">
+              <div className="notice-share-actions">
                 {notice.whatsappLink && (
                   <a
                     ref={whatsappButton}
-                    className="button outline"
+                    className="review-whatsapp"
                     href={notice.whatsappLink}
                     target="_blank"
                     rel="noopener noreferrer"
+                    aria-label="Abrir mensagem no WhatsApp"
+                    title="Abrir mensagem no WhatsApp"
                     onClick={() => setWhatsappOpened(true)}
                   >
-                    Abrir mensagem no WhatsApp
+                    <WhatsAppIcon />
                   </a>
                 )}
-                <button
-                  type="button"
-                  className="button outline"
-                  disabled={busy || !notice.link}
-                  onClick={() => void copy()}
-                >
-                  Copiar link
-                </button>
+                <CopyNoticeLink
+                  key={noticeKey}
+                  link={notice.shortLink ?? notice.link}
+                  inputLabel="Link do candidato"
+                  buttonLabel="Copiar link do candidato"
+                  disabled={busy}
+                  onError={(message) => callbacks.current.onError?.(message)}
+                />
                 {!notice.whatsappSentAt &&
                   notice.whatsappLink &&
                   whatsappOpened && (
@@ -194,6 +218,29 @@ export function DecisionNotice({
                   </button>
                 )}
               </div>
+              {notice.message && (
+                <>
+                  <button
+                    type="button"
+                    className="text-button"
+                    aria-expanded={showMessage}
+                    aria-controls={messageId}
+                    onClick={() => setShowMessage((value) => !value)}
+                  >
+                    {showMessage ? "Ocultar mensagem" : "Ver mensagem"}
+                  </button>
+                  {showMessage && (
+                    <div
+                      id={messageId}
+                      className="notice-message"
+                      role="region"
+                      aria-label="Mensagem para o candidato"
+                    >
+                      <p>{notice.message}</p>
+                    </div>
+                  )}
+                </>
+              )}
               <p className="muted">
                 Abrir o WhatsApp prepara a conversa. Envie a mensagem e depois
                 registre o envio aqui.
@@ -207,14 +254,11 @@ export function DecisionNotice({
             </>
           )}
           {!notice.confirmedAt && (
-            <button
-              type="button"
-              className="button outline"
+            <RenewNoticeLink
+              key={noticeKey}
               disabled={busy}
-              onClick={() => void action("renew")}
-            >
-              Renovar link
-            </button>
+              onConfirm={() => action("renew")}
+            />
           )}
           <button
             type="button"

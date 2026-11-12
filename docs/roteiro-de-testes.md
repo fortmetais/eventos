@@ -1,5 +1,18 @@
 # Roteiro de testes da aplicação Encontro
 
+## Ficha do participante recolhível — primeira entrega
+
+- Abrir a ficha pela lista e pelos cards em computador e celular. O resumo inicial deve mostrar somente foto quando disponível, nome uma única vez, protocolo, evento, campanha, situação, departamento e presença. Telefones, CPF, endereço, respostas, contatos, dados do responsável, originais importados e histórico não podem ficar visíveis inicialmente.
+- Conferir as seções **Dados pessoais e contato**, **Participação e respostas**, **Contato de emergência**, **Responsável e autorização** quando aplicável, **Departamento e decisão**, **Convite e presença**, **Importação e pendências** quando importada e **Histórico e vínculo**. Todas começam recolhidas; abrir/recolher por mouse, toque e teclado. A ação **Ver informações pendentes** deve abrir e focar a seção de importação.
+- Digitar uma decisão ou vínculo, recolher e reabrir a seção: a edição deve permanecer. Recolher não salva, descarta ou troca dados. Fechar a ficha com alterações continua pedindo confirmação; Escape e retorno do foco ao acionador devem funcionar.
+- Nos avisos do candidato e do responsável, conferir WhatsApp com ícone branco em botão verde quadrado e cópia de link como ação separada. O link não deve ser exibido inicialmente. Se a cópia automática falhar, mostrar **Exibir link para copiar manualmente** e revelar o campo somente após essa ação explícita. Texto da mensagem também exige **Ver mensagem**; pode ser ocultado novamente.
+- **Renovar link** deve explicar que o anterior será invalidado e oferecer **Confirmar renovação** ou **Manter link atual**. Pedir/cancelar a renovação não faz POST; confirmar a renovação executa uma única ação. Abrir WhatsApp, copiar ou revelar dados não confirma presença nem registra envio automaticamente.
+- Verificar resumos de pendência/autorização, dados ausentes, pessoas menores, permissão da secretaria e saúde; esta reorganização não amplia acesso nem cria novas autorizações. Testar viewport de 320, 390 e 430 px, ausência de rolagem horizontal e leitura com informações longas.
+
+Escopo desta primeira entrega: redução da exposição visual e organização das ações. Os contratos existentes da API continuam sendo utilizados e podem carregar dados completos da ficha e dos avisos mesmo quando uma seção está recolhida. A minimização dos dados retornados, carregamento sob demanda e demais mudanças de privacidade da API ficam para a segunda fase; ocultação na interface não deve ser apresentada como proteção do payload de rede.
+
+Verificação: percurso com serviços e pessoas fictícias aprovado no computador e nas telas de 320, 390 e 430 px. Conferidos resumo inicial, seções fechadas e dados ocultos, abertura intencional, estado da edição ao recolher, ação de pendências, autorização de menor importado, confirmação da renovação e cópia manual explícita. Capturas em `.local/screenshots/review-detail-collapsed-*.png`, `review-detail-expanded-*.png` e `review-import-pending-section-*.png`. Nenhum dado de produção ou envio real de mensagens foi utilizado.
+
 ## Validação do modelo de mensagem — 11/11/2026
 
 - Colar no editor um texto com `{{primeiro_nome}}` e `{{link}}`, com o nome do acampamento e as datas escritos de forma fixa e sem `{{evento}}` ou `{{validade}}`. Conferir que Salvar permanece disponível e grava o texto exatamente como editado, sem acrescentar esses campos opcionais.

@@ -104,7 +104,9 @@ try {
       changes = [];
     let emails = 0,
       detailReads = 0,
-      noticeReads = 0;
+      noticeReads = 0,
+      noticeRenewals = 0,
+      guardianRenewals = 0;
     const event = {
       id: eventId,
       organizationId: orgId,
@@ -182,7 +184,62 @@ try {
       },
       form: { config: { questions: [], terms: "Termos fictícios" } },
     }));
+    Object.assign(rows[0].snapshot, {
+      phone: "44988776655",
+      email: "privado@example.test",
+      cpf: "123.456.789-09",
+      address: "Rua de Testes, 123",
+      emergencyName: "Contato de Emergência Fictício",
+      emergencyPhone: "44985554433",
+      emergencyRelationship: "Mãe",
+      answers: { "test-experience": "Resposta reservada da ficha." },
+    });
+    rows[0].form.config.questions = [
+      {
+        id: "test-experience",
+        label: "Experiência informada",
+        type: "text",
+        required: false,
+      },
+    ];
+    rows[0].history = [
+      {
+        id: "history-fixture",
+        toStatus: "REVIEW",
+        createdAt: "2026-11-10T12:00:00Z",
+        reason: "Análise preliminar fictícia.",
+      },
+    ];
+    rows[1].accountId = null;
+    Object.assign(rows[1].snapshot, {
+      birthDate: "2012-01-01",
+      guardianName: "Responsável Fictício",
+      guardianPhone: "44982221100",
+      guardianRelationship: "Mãe",
+    });
+    rows[1].importData.source = {
+      fileName: "Inscrições anteriores de teste.csv",
+    };
+    rows[1].importData.original = {
+      headers: ["Nome", "Observação original"],
+      cells: [rows[1].person.name, "Resposta original reservada."],
+    };
     const notices = new Map();
+    const guardian = {
+      id: "guardian-fixture",
+      signedAt: null,
+      expiresAt: "2028-01-10T12:00:00Z",
+      emailStatus: "PENDENTE",
+      expired: false,
+      active: true,
+      link: `${target}/autorizacao/guardian-fixture#token=fixture`,
+      whatsappLink: "https://wa.me/5544982221100?text=Autorizacao-ficticia",
+      email: "responsavel@example.test",
+      signedData: null,
+      signature: null,
+      termsText: "Termo fictício reservado.",
+      receiptHash: null,
+    };
     function makeNotice(row) {
       return {
         id: `notice-${row.id}`,
@@ -325,9 +382,18 @@ try {
         if (suffix === "/guardian")
           return json(route, {
             ready: true,
-            needsAuthorization: false,
-            authorization: null,
+            needsAuthorization: row.id === rows[1].id,
+            authorization: row.id === rows[1].id ? guardian : null,
           });
+        if (suffix === "/guardian/renew") {
+          guardianRenewals++;
+          guardian.link = `${target}/autorizacao/guardian-fixture#token=renewed-${guardianRenewals}`;
+          return json(route, {
+            ready: true,
+            needsAuthorization: true,
+            authorization: guardian,
+          });
+        }
         if (suffix === "/team" && request.method() === "PUT") {
           const { teamId: value } = request.postDataJSON();
           row.team = value ? event.teams.find((t) => t.id === value) : null;
@@ -373,8 +439,10 @@ try {
             notice.emailSentAt = new Date().toISOString();
             emails++;
           } else if (suffix.endsWith("/renew")) {
+            noticeRenewals++;
             notice.expired = false;
             notice.expiresAt = "2028-01-11T12:00:00Z";
+            notice.shortLink = `${target}/r#renewed-fixture-${noticeRenewals}`;
           }
           return json(route, { ready: true, notice });
         }
@@ -1075,13 +1143,106 @@ try {
       await expect(
         dialog.getByRole("heading", { name: "Ágata Silva" }),
       ).toBeVisible();
+      await expect(
+        dialog.getByRole("heading", { name: "Ágata Silva", exact: true }),
+      ).toHaveCount(1);
+      for (const title of [
+        "Dados pessoais e contato",
+        "Participação e respostas",
+        "Contato de emergência",
+        "Departamento e decisão",
+        "Convite e presença",
+        "Histórico e vínculo",
+      ]) {
+        await expect(
+          dialog.getByRole("button", { name: title, exact: true }),
+        ).toHaveAttribute("aria-expanded", "false");
+      }
+      for (const value of [
+        "44988776655",
+        "privado@example.test",
+        "123.456.789-09",
+        "Rua de Testes, 123",
+        "Contato de Emergência Fictício",
+        "Resposta reservada da ficha.",
+        "Análise preliminar fictícia.",
+      ])
+        await expect(dialog.getByText(value, { exact: true })).toBeHidden();
+      await expect(
+        dialog.getByRole("textbox", { name: "Link do candidato", exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        dialog.getByRole("region", {
+          name: "Mensagem para o candidato",
+          exact: true,
+        }),
+      ).toBeHidden();
       await page.screenshot({
-        path: `.local/screenshots/review-detail-${screenLabel}.png`,
-        fullPage: true,
+        path: `.local/screenshots/review-detail-collapsed-${screenLabel}.png`,
+        fullPage: false,
+      });
+      const personalSection = dialog.getByRole("button", {
+        name: "Dados pessoais e contato",
+        exact: true,
+      });
+      await personalSection.click();
+      await expect(
+        dialog.getByText("privado@example.test", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        dialog.getByText("123.456.789-09", { exact: true }),
+      ).toBeVisible();
+      await personalSection.click();
+      await expect(
+        dialog.getByText("privado@example.test", { exact: true }),
+      ).toBeHidden();
+      const answersSection = dialog.getByRole("button", {
+        name: "Participação e respostas",
+        exact: true,
+      });
+      await answersSection.click();
+      await expect(
+        dialog.getByText("Resposta reservada da ficha.", { exact: true }),
+      ).toBeVisible();
+      await answersSection.click();
+      const emergencySection = dialog.getByRole("button", {
+        name: "Contato de emergência",
+        exact: true,
+      });
+      await emergencySection.click();
+      await expect(
+        dialog.getByText("Contato de Emergência Fictício", { exact: true }),
+      ).toBeVisible();
+      await emergencySection.click();
+      const historySection = dialog.getByRole("button", {
+        name: "Histórico e vínculo",
+        exact: true,
+      });
+      await historySection.click();
+      await expect(
+        dialog.getByText("Análise preliminar fictícia.", { exact: true }),
+      ).toBeVisible();
+      await historySection.click();
+      const decisionSection = dialog.getByRole("button", {
+        name: "Departamento e decisão",
+        exact: true,
+      });
+      await decisionSection.click();
+      await page.screenshot({
+        path: `.local/screenshots/review-detail-expanded-${screenLabel}.png`,
+        fullPage: false,
       });
       await dialog
         .getByLabel("Decisão sobre a candidatura")
         .selectOption("WAITLIST");
+      await decisionSection.click();
+      await expect(
+        dialog.getByLabel("Decisão sobre a candidatura"),
+      ).toBeHidden();
+      await decisionSection.click();
+      await expect(
+        dialog.getByLabel("Decisão sobre a candidatura"),
+      ).toHaveValue("WAITLIST");
       await page.keyboard.press("Escape");
       await expect(page.getByRole("alertdialog")).toBeVisible();
       await page.getByRole("button", { name: "Continuar editando" }).click();
@@ -1092,6 +1253,98 @@ try {
       await expect(
         candidate.getByRole("button", { name: /ficha/i }),
       ).toBeFocused();
+      await importedCandidate
+        .getByRole("button", {
+          name: "Abrir ficha de Bruno Souza",
+          exact: true,
+        })
+        .click();
+      const importedDialog = page.getByRole("dialog");
+      await expect(
+        importedDialog.getByRole("heading", {
+          name: "Bruno Souza",
+          exact: true,
+        }),
+      ).toHaveCount(1);
+      const importSection = importedDialog.getByRole("button", {
+        name: "Importação e pendências",
+        exact: true,
+      });
+      await expect(importSection).toHaveAttribute("aria-expanded", "false");
+      await expect(
+        importedDialog.getByText("Resposta original reservada.", {
+          exact: true,
+        }),
+      ).toBeHidden();
+      await importedDialog
+        .getByRole("button", { name: "Ver informações pendentes", exact: true })
+        .click();
+      await expect(importSection).toHaveAttribute("aria-expanded", "true");
+      await expect(importSection).toBeFocused();
+      await expect(
+        importedDialog.getByText("Adicionar foto do participante.", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await page.screenshot({
+        path: `.local/screenshots/review-import-pending-section-${screenLabel}.png`,
+        fullPage: false,
+      });
+      await importSection.click();
+      const guardianSection = importedDialog.getByRole("button", {
+        name: "Responsável e autorização",
+        exact: true,
+      });
+      await expect(guardianSection).toHaveAttribute("aria-expanded", "false");
+      await expect(
+        importedDialog.getByRole("textbox", {
+          name: "Link do responsável",
+          exact: true,
+        }),
+      ).toHaveCount(0);
+      await guardianSection.click();
+      const guardianWhatsApp = importedDialog.getByRole("link", {
+        name: "Enviar autorização pelo WhatsApp ao responsável",
+        exact: true,
+      });
+      await expect(guardianWhatsApp).toBeVisible();
+      await expect(
+        importedDialog.getByRole("button", {
+          name: "Copiar link do responsável",
+          exact: true,
+        }),
+      ).toBeVisible();
+      const beforeGuardianRenew = guardianRenewals;
+      await importedDialog
+        .getByRole("button", { name: "Renovar link", exact: true })
+        .click();
+      await expect(
+        importedDialog.getByRole("button", {
+          name: "Confirmar renovação",
+          exact: true,
+        }),
+      ).toBeVisible();
+      assert.equal(guardianRenewals, beforeGuardianRenew);
+      await importedDialog
+        .getByRole("button", { name: "Manter link atual", exact: true })
+        .click();
+      assert.equal(guardianRenewals, beforeGuardianRenew);
+      await guardianSection.click();
+      const importedHistory = importedDialog.getByRole("button", {
+        name: "Histórico e vínculo",
+        exact: true,
+      });
+      await importedHistory.click();
+      const linkEmail = importedDialog.getByRole("textbox", {
+        name: /^E-mail verificado da conta/,
+      });
+      await linkEmail.fill("novo-vinculo@example.test");
+      await importedHistory.click();
+      await importedHistory.click();
+      await expect(linkEmail).toHaveValue("novo-vinculo@example.test");
+      await linkEmail.fill("");
+      await page.keyboard.press("Escape");
+      await expect(importedDialog).toHaveCount(0);
       await candidate
         .getByRole("button", {
           name: "Copiar link do candidato Ágata Silva",
@@ -1133,6 +1386,100 @@ try {
       await expect(
         page.getByRole("dialog").getByText(/Envio pelo WhatsApp registrado/),
       ).toBeVisible();
+      const inviteDialog = page.getByRole("dialog");
+      await expect(
+        inviteDialog.getByRole("textbox", {
+          name: "Link do candidato",
+          exact: true,
+        }),
+      ).toHaveCount(0);
+      await expect(
+        inviteDialog.getByRole("region", {
+          name: "Mensagem para o candidato",
+          exact: true,
+        }),
+      ).toBeHidden();
+      await inviteDialog
+        .getByRole("button", { name: "Ver mensagem", exact: true })
+        .click();
+      await expect(
+        inviteDialog.getByRole("region", {
+          name: "Mensagem para o candidato",
+          exact: true,
+        }),
+      ).toContainText(notices.get(rows[0].id).message);
+      await inviteDialog
+        .getByRole("button", { name: "Ocultar mensagem", exact: true })
+        .click();
+      await expect(
+        inviteDialog.getByRole("region", {
+          name: "Mensagem para o candidato",
+          exact: true,
+        }),
+      ).toBeHidden();
+      await page.evaluate(() => {
+        navigator.clipboard.writeText = async () => {
+          throw new Error("Clipboard indisponível no teste");
+        };
+      });
+      await inviteDialog
+        .getByRole("button", { name: "Copiar link do candidato", exact: true })
+        .click();
+      await expect(
+        inviteDialog.getByRole("button", {
+          name: "Exibir link para copiar manualmente",
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        inviteDialog.getByRole("textbox", {
+          name: "Link do candidato",
+          exact: true,
+        }),
+      ).toHaveCount(0);
+      await inviteDialog
+        .getByRole("button", {
+          name: "Exibir link para copiar manualmente",
+          exact: true,
+        })
+        .click();
+      await expect(
+        inviteDialog.getByRole("textbox", {
+          name: "Link do candidato",
+          exact: true,
+        }),
+      ).toHaveValue(notices.get(rows[0].id).shortLink);
+      await page.evaluate(() => {
+        navigator.clipboard.writeText = async (value) => {
+          window.__fixtureClipboard = value;
+        };
+      });
+      const beforeNoticeRenew = noticeRenewals;
+      await inviteDialog
+        .getByRole("button", { name: "Renovar link", exact: true })
+        .click();
+      await expect(
+        inviteDialog.getByRole("button", {
+          name: "Confirmar renovação",
+          exact: true,
+        }),
+      ).toBeVisible();
+      assert.equal(
+        noticeRenewals,
+        beforeNoticeRenew,
+        "Pedir renovação não pode invalidar o link imediatamente.",
+      );
+      await inviteDialog
+        .getByRole("button", { name: "Manter link atual", exact: true })
+        .click();
+      assert.equal(noticeRenewals, beforeNoticeRenew);
+      await inviteDialog
+        .getByRole("button", { name: "Renovar link", exact: true })
+        .click();
+      await inviteDialog
+        .getByRole("button", { name: "Confirmar renovação", exact: true })
+        .click();
+      await expect.poll(() => noticeRenewals).toBe(beforeNoticeRenew + 1);
       await page.keyboard.press("Escape");
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({
