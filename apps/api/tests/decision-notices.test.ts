@@ -198,7 +198,7 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       const tables = await db.$queryRaw<
         { rowsecurity: boolean }[]
       >`SELECT rowsecurity FROM pg_tables WHERE schemaname IN ('acesso','organizacoes','pessoas','eventos','inscricoes','saude','arquivos')`;
-      expect(tables).toHaveLength(24);
+      expect(tables).toHaveLength(25);
       expect(tables.every((t) => t.rowsecurity)).toBe(true);
     });
     it("aceite direto prepara link sem enviar; envio exige ação explícita", async () => {
@@ -1239,6 +1239,66 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       expect(
         await db.decisionNotice.findMany({ where: { registrationId: id } }),
       ).toEqual(noticesBefore);
+    });
+    it("registra desistência e mudança de resposta sem alterar a candidatura ou enviar mensagens", async () => {
+      const id = await candidate();
+      expect((await status(id, "APPROVED")).status).toBe(200);
+      const notice = (
+        await request(app)
+          .get(`${base(id)}/decision-notice`)
+          .set(auth())
+          .expect(200)
+      ).body.notice;
+      const secret = new URLSearchParams(
+        new URL(notice.link).hash.slice(1),
+      ).get("token")!;
+      const sent = messages.length;
+      const post = () =>
+        request(app)
+          .post(publicPath(notice.id))
+          .send({ token: secret, resposta: "NAO_IREI" });
+      const results = await Promise.all([post(), post()]);
+      expect(results.map((r) => r.status)).toEqual([200, 200]);
+      expect(results[0].body.declinedAt).toBeTruthy();
+      expect(
+        (await db.registration.findUniqueOrThrow({ where: { id } })).status,
+      ).toBe("APPROVED");
+      expect(messages).toHaveLength(sent);
+      expect((await status(id, "CONFIRMED")).status).toBe(409);
+      const filtered = await request(app)
+        .get(`/api/v1/organizations/${org}/registrations`)
+        .query({ eventId, presence: "NAO_IREI" })
+        .set(auth())
+        .expect(200);
+      expect(
+        filtered.body.items.map((item: { id: string }) => item.id),
+      ).toContain(id);
+      const history = () =>
+        db.$queryRaw<
+          { resposta: string }[]
+        >`SELECT resposta FROM inscricoes.respostas_presenca_historico WHERE aviso_id=${notice.id}::uuid ORDER BY respondido_em`;
+      expect(await history()).toEqual([{ resposta: "NAO_IREI" }]);
+      await request(app)
+        .post(publicPath(notice.id))
+        .send({ token: secret, resposta: "VOU" })
+        .expect(200);
+      expect(await history()).toEqual([
+        { resposta: "NAO_IREI" },
+        { resposta: "VOU" },
+      ]);
+      await db.decisionNotice.update({
+        where: { id: notice.id },
+        data: { expiresAt: new Date(Date.now() - 1000) },
+      });
+      await request(app)
+        .post(publicPath(notice.id) + "/view")
+        .send({ token: secret })
+        .expect(200);
+      await request(app)
+        .post(publicPath(notice.id))
+        .send({ token: secret, resposta: "NAO_IREI" })
+        .expect(410);
+      expect(await history()).toHaveLength(2);
     });
     it("cancelamento e suspensão bloqueiam respostas e ações administrativas", async () => {
       await status(registrationId, "CANCELLED").then((r) =>

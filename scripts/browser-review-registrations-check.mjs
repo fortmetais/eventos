@@ -624,7 +624,7 @@ try {
               exact: true,
             }),
             brunoCard.getByRole("button", {
-              name: "Enviar convite: Bruno Souza",
+              name: "Convite não enviado: Bruno Souza",
               exact: true,
             }),
             brunoCard.getByRole("button", {
@@ -951,7 +951,7 @@ try {
             .boundingBox(),
           importedCandidate
             .getByRole("button", {
-              name: "Enviar convite: Bruno Souza",
+              name: "Convite não enviado: Bruno Souza",
               exact: true,
             })
             .boundingBox(),
@@ -1122,7 +1122,7 @@ try {
       await candidate
         .getByRole("combobox", { name: /decis/i })
         .selectOption("APPROVED");
-      await expect(candidate).toContainText("Enviar convite");
+      await expect(candidate).toContainText("Convite não enviado");
       assert.equal(emails, 0, "Aceitar não envia e-mail.");
       assert(changes.includes("APPROVED") && changes.includes("team"));
       await page.screenshot({
@@ -1375,10 +1375,10 @@ try {
       await candidate
         .getByRole("button", { name: /Marcar como enviado/i })
         .click();
-      await expect(candidate).toContainText("Aguardando confirmação");
+      await expect(candidate).toContainText("Aguardando resposta");
       await candidate
         .getByRole("button", {
-          name: "Aguardando confirmação: Ágata Silva",
+          name: "Aguardando resposta: Ágata Silva",
           exact: true,
         })
         .click();
@@ -1509,7 +1509,7 @@ try {
         .getByRole("button", { name: /atualizar (lista|inscri)/i })
         .click();
       await closeFilters();
-      await expect(candidate).toContainText("Presença confirmada");
+      await expect(candidate).toContainText("Vou participar");
       notices.get(rows[1].id).confirmedAt = new Date().toISOString();
       await importedCandidate
         .getByRole("combobox", { name: /Decisão de/ })
@@ -1565,7 +1565,7 @@ try {
       await candidate
         .getByRole("combobox", { name: /Decisão de/ })
         .selectOption("APPROVED");
-      await expect(candidate).toContainText("Enviar convite");
+      await expect(candidate).toContainText("Convite não enviado");
       assert.equal(
         notices.get(rows[0].id).confirmedAt,
         null,

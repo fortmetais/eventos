@@ -14,6 +14,7 @@ export interface DecisionNoticeState {
     emailSentAt: string | null;
     whatsappSentAt: string | null;
     confirmedAt: string | null;
+    declinedAt?: string | null;
     expiresAt: string;
     active: boolean;
     expired: boolean;
@@ -141,11 +142,13 @@ export function DecisionNotice({
       {info && <Notice kind="success">{info}</Notice>}
       {notice.kind === "ACEITE" && (
         <Notice kind={notice.confirmedAt ? "success" : "info"}>
-          {notice.confirmedAt
-            ? `Presença confirmada pelo candidato em ${dateTime(notice.confirmedAt)}.`
-            : notice.whatsappSentAt || notice.emailSentAt
-              ? "Aguardando o candidato confirmar presença pelo link. A confirmação final também exige alocação em equipe."
-              : "Convite ainda não enviado. Escolha WhatsApp ou e-mail para solicitar a confirmação de presença."}
+          {notice.declinedAt
+            ? `O candidato informou que não irá em ${dateTime(notice.declinedAt)}. Revise a candidatura e a vaga.`
+            : notice.confirmedAt
+              ? `Presença confirmada pelo candidato em ${dateTime(notice.confirmedAt)}.`
+              : notice.whatsappSentAt || notice.emailSentAt
+                ? "Aguardando o candidato confirmar presença pelo link. A confirmação final também exige alocação em equipe."
+                : "Convite ainda não enviado. Escolha WhatsApp ou e-mail para solicitar a confirmação de presença."}
         </Notice>
       )}
       <p>

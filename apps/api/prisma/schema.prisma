@@ -527,6 +527,7 @@ model DecisionNotice {
   tokenHash      String        @unique @map("hash_token")
   expiresAt      DateTime      @map("expira_em") @db.Timestamp(3)
   confirmedAt    DateTime?     @map("presenca_confirmada_em") @db.Timestamp(3)
+  declinedAt     DateTime?     @map("presenca_recusada_em") @db.Timestamp(3)
   revokedAt      DateTime?     @map("revogado_em") @db.Timestamp(3)
   emailStatus    String        @default("PENDENTE") @map("situacao_email")
   emailAttempts  Int           @default(0) @map("tentativas_email")

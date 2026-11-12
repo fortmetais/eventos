@@ -2,7 +2,9 @@
 
 Ao aceitar uma candidatura de servo, a aplicação registra a decisão e cria um aviso com link pessoal. O envio depende de uma ação explícita: **Enviar por e-mail** ou **Abrir mensagem no WhatsApp**, com destinatário, texto e link preenchidos. Aceitar ou recusar uma candidatura não envia e-mail automaticamente.
 
-O candidato abre o link e clica em **Confirmar minha presença**, sem obrigação de criar conta. Abrir o link não confirma automaticamente, inclusive quando um serviço de e-mail gera uma prévia. A confirmação final da inscrição permanece com o organizador, depois da resposta do candidato e da alocação em equipe. As regras de vagas continuam aplicadas.
+O candidato abre o link e informa sua resposta sem obrigação de criar conta. Abrir o link não registra resposta automaticamente, inclusive quando um serviço de e-mail gera uma prévia. A confirmação final da inscrição permanece com o organizador, depois da resposta do candidato e da alocação em equipe. As regras de vagas continuam aplicadas.
+
+O convite de aceite oferece **Vou participar** e **Não irei**. A resposta pode ser alterada até o fim da validade do link e é uma previsão, não registro de presença no dia. Uma resposta negativa aparece para revisão, sem alterar a candidatura nem liberar vaga automaticamente; o organizador toma essa decisão. O histórico guarda somente o aviso, a resposta e a data, sem token. Convites de recusa e links anteriores continuam compatíveis.
 
 ## Consulta organizada da ficha
 

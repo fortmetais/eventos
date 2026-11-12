@@ -89,7 +89,8 @@ try {
     let saves = 0,
       putAttempts = 0,
       confirmations = 0,
-      confirmedAt = null;
+      confirmedAt = null,
+      declinedAt = null;
     const context = await browser.newContext({
       viewport: mobile
         ? { width: 390, height: 844 }
@@ -181,12 +182,20 @@ try {
         assert.equal(req.postDataJSON().token, token);
         if (!path.endsWith("/view")) {
           confirmations++;
-          confirmedAt = new Date().toISOString();
+          if (req.postDataJSON().resposta === "NAO_IREI") {
+            declinedAt = new Date().toISOString();
+            confirmedAt = null;
+          } else {
+            confirmedAt = new Date().toISOString();
+            declinedAt = null;
+          }
         }
         return json({
           kind: "ACEITE",
           candidateName: "Maria",
           confirmedAt,
+          declinedAt,
+          canRespond: true,
           expiresAt: "2027-01-30T12:00:00Z",
           event: {
             name: settings.event.name,
@@ -419,23 +428,24 @@ try {
     assert.equal(saves, 4);
     await page.goto(`${target}/r#${code}`);
     await expect(
-      page.getByRole("button", { name: "Confirmar minha presença" }),
+      page.getByRole("button", { name: "Vou participar" }),
     ).toBeVisible();
     assert.equal(new URL(page.url()).pathname, `/resposta/${noticeId}`);
     assert.equal(new URL(page.url()).hash, "");
     assert.equal(confirmations, 0);
     await page.reload();
     await expect(
-      page.getByRole("button", { name: "Confirmar minha presença" }),
+      page.getByRole("button", { name: "Vou participar" }),
     ).toBeVisible();
     assert.equal(confirmations, 0);
-    await page
-      .getByRole("button", { name: "Confirmar minha presença" })
-      .click();
-    await expect(
-      page.getByRole("heading", { name: "Sua presença está confirmada!" }),
-    ).toBeVisible();
+    await page.getByRole("button", { name: "Não irei" }).click();
+    await expect(page.getByText(/informou que não irá/)).toBeVisible();
     assert.equal(confirmations, 1);
+    await page.getByRole("button", { name: "Vou participar" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Você informou que vai participar!" }),
+    ).toBeVisible();
+    assert.equal(confirmations, 2);
     assert.deepEqual(errors, []);
     await context.close();
     console.log(

@@ -9,6 +9,9 @@ import { EventMessagesService } from "./event-messages.service.js";
 const credential = z
   .object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) })
   .strict();
+const responseCredential = credential.extend({
+  resposta: z.enum(["VOU", "NAO_IREI"]).optional(),
+});
 export function decisionNoticesRoutes(
   service: DecisionNoticesService,
   db: PrismaClient,
@@ -91,7 +94,8 @@ export function decisionNoticesRoutes(
     res.json(
       await service.confirm(
         param(req, "noticeId"),
-        credential.parse(req.body).token,
+        responseCredential.parse(req.body).token,
+        responseCredential.parse(req.body).resposta,
       ),
     ),
   );

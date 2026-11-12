@@ -10,6 +10,7 @@ export type RegistrationFilters = {
   status?: RegistrationStatus;
   origin?: "PUBLIC_FORM" | "IMPORT";
   completeness?: "PENDING" | "COMPLETE";
+  presence?: "VOU" | "NAO_IREI";
   q?: string;
   sort?: "NAME_ASC" | "NAME_DESC" | "RECEIVED_ASC" | "ACCEPTED_FIRST";
   includeClosed?: boolean;
@@ -109,6 +110,13 @@ export class RegistrationsRepository {
         Prisma.sql`r.situacao::text = ${storedStatus[filters.status]}`,
       );
     if (filters.origin) clauses.push(Prisma.sql`r.origem = ${filters.origin}`);
+    if (filters.presence)
+      clauses.push(Prisma.sql`EXISTS (
+      SELECT 1 FROM inscricoes.avisos_decisao a
+      WHERE a.inscricao_id = r.inscricao_id AND a.revogado_em IS NULL AND a.tipo = 'ACEITE'
+        AND r.situacao::text IN ('APROVADA', 'CONFIRMADA')
+        AND ${filters.presence === "VOU" ? Prisma.sql`a.presenca_confirmada_em IS NOT NULL` : Prisma.sql`a.presenca_recusada_em IS NOT NULL`}
+    )`);
     if (filters.includeClosed === false)
       clauses.push(
         Prisma.sql`r.situacao::text NOT IN ('RECUSADA', 'CANCELADA')`,

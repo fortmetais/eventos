@@ -127,6 +127,7 @@ export function ReviewRegistrations() {
   const status = search.get("status") ?? "";
   const origin = search.get("origin") ?? "";
   const completeness = search.get("completeness") ?? "";
+  const presence = search.get("presence") ?? "";
   const includeClosed = search.get("includeClosed") === "true";
   const sort = Object.hasOwn(sorts, search.get("sort") ?? "")
     ? (search.get("sort") as Sort)
@@ -138,7 +139,7 @@ export function ReviewRegistrations() {
   const searchQ = search.get("q") ?? "";
   const [query, setQuery] = useState(searchQ);
   const [showFilters, setShowFilters] = useState(
-    Boolean(campaignId || status || origin || completeness),
+    Boolean(campaignId || status || origin || completeness || presence),
   );
   const isMobile = useReviewMedia("(max-width: 800px)");
   const canChooseView = useReviewMedia(
@@ -153,6 +154,7 @@ export function ReviewRegistrations() {
     status,
     origin,
     completeness,
+    presence,
     includeClosed,
   ].filter(Boolean).length;
   useEffect(() => {
@@ -240,6 +242,7 @@ export function ReviewRegistrations() {
     ...(status ? { status } : {}),
     ...(origin ? { origin } : {}),
     ...(completeness ? { completeness } : {}),
+    ...(presence ? { presence } : {}),
   });
   const list = useRemote<Page<Registration>>(
     eventId && tab === "inscricoes"
@@ -409,18 +412,21 @@ export function ReviewRegistrations() {
     let label = "Convite indisponível",
       color = "unavailable";
     if (summary?.ready && notice?.active) {
-      if (notice.confirmedAt) {
-        label = "Presença confirmada";
+      if (notice.declinedAt) {
+        label = "Não irei — revisar vaga";
+        color = "declined";
+      } else if (notice.confirmedAt) {
+        label = "Vou participar";
         color = "confirmed";
       } else if (notice.expired) {
         label = "Link expirado";
         color = "pending";
       } else if (notice.emailSentAt || notice.whatsappSentAt) {
-        label = "Aguardando confirmação";
+        label = "Aguardando resposta";
         color = "waiting";
       } else {
         label =
-          notice.emailStatus === "FALHA" ? "Falha no envio" : "Enviar convite";
+          notice.emailStatus === "FALHA" ? "Falha no envio" : "Convite não enviado";
         color = "pending";
       }
     }
@@ -767,6 +773,16 @@ export function ReviewRegistrations() {
           <option value="">Todas</option>
           <option value="PENDING">Com pendências</option>
           <option value="COMPLETE">Completa</option>
+        </select>
+      </Field>
+      <Field label="Resposta ao convite">
+        <select
+          value={presence}
+          onChange={(event) => filter("presence", event.target.value)}
+        >
+          <option value="">Todas</option>
+          <option value="VOU">Vou participar</option>
+          <option value="NAO_IREI">Não irei</option>
         </select>
       </Field>
     </div>
@@ -1190,6 +1206,7 @@ export function ReviewRegistrations() {
                   status: null,
                   origin: null,
                   completeness: null,
+                  presence: null,
                   includeClosed: null,
                   sort: null,
                   page: null,

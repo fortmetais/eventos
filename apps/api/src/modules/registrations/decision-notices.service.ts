@@ -222,6 +222,7 @@ export class DecisionNoticesService {
         emailSentAt: notice.emailSentAt,
         whatsappSentAt: notice.whatsappSentAt,
         confirmedAt: notice.confirmedAt,
+        declinedAt: notice.declinedAt,
         expiresAt: notice.expiresAt,
         active,
         expired,
@@ -243,6 +244,7 @@ export class DecisionNoticesService {
         emailSentAt: Date | null;
         whatsappSentAt: Date | null;
         confirmedAt: Date | null;
+        declinedAt: Date | null;
         expiresAt: Date;
         active: boolean;
         expired: boolean;
@@ -280,6 +282,7 @@ export class DecisionNoticesService {
         emailSentAt: true,
         whatsappSentAt: true,
         confirmedAt: true,
+        declinedAt: true,
         expiresAt: true,
         revokedAt: true,
         registration: {
@@ -317,6 +320,7 @@ export class DecisionNoticesService {
           emailSentAt: notice.emailSentAt,
           whatsappSentAt: notice.whatsappSentAt,
           confirmedAt: notice.confirmedAt,
+          declinedAt: notice.declinedAt,
           expiresAt: notice.expiresAt,
           active,
           expired: !notice.confirmedAt && notice.expiresAt <= new Date(),
@@ -547,6 +551,8 @@ export class DecisionNoticesService {
       participation: notice.registration.campaign.kind,
       candidateName: notice.registration.person.name.split(" ")[0],
       confirmedAt: notice.confirmedAt,
+      declinedAt: notice.declinedAt,
+      canRespond: notice.expiresAt > new Date(),
       expiresAt: notice.expiresAt,
       event: {
         name: event.name,
@@ -559,7 +565,11 @@ export class DecisionNoticesService {
   async view(noticeId: string, token: string) {
     return this.publicSummary(await this.authorized(noticeId, token));
   }
-  async confirm(noticeId: string, token: string) {
+  async confirm(
+    noticeId: string,
+    token: string,
+    response: "VOU" | "NAO_IREI" = "VOU",
+  ) {
     const candidate = await this.authorized(noticeId, token);
     return this.db.$transaction(async (tx) => {
       // Ordem igual à confirmação administrativa: campanha → inscrição → aviso.
@@ -572,11 +582,35 @@ export class DecisionNoticesService {
         409,
         "Uma candidatura recusada não permite confirmar presença.",
       );
-      if (!current.confirmedAt)
+      assert(
+        current.expiresAt > new Date(),
+        410,
+        "Este link expirou. Procure a organização para alterar sua resposta.",
+      );
+      const previous = current.confirmedAt
+        ? "VOU"
+        : current.declinedAt
+          ? "NAO_IREI"
+          : null;
+      if (previous !== response) {
+        if (current.confirmedAt) {
+          const oldId = randomUUID();
+          await tx.$executeRaw`INSERT INTO inscricoes.respostas_presenca_historico (resposta_id, aviso_id, resposta, respondido_em)
+            SELECT ${oldId}::uuid, ${noticeId}::uuid, 'VOU', ${current.confirmedAt}
+            WHERE NOT EXISTS (SELECT 1 FROM inscricoes.respostas_presenca_historico WHERE aviso_id = ${noticeId}::uuid)`;
+        }
+        const now = new Date();
         await tx.decisionNotice.update({
           where: { id: noticeId },
-          data: { confirmedAt: new Date() },
+          data: {
+            confirmedAt: response === "VOU" ? now : null,
+            declinedAt: response === "NAO_IREI" ? now : null,
+          },
         });
+        const responseId = randomUUID();
+        await tx.$executeRaw`INSERT INTO inscricoes.respostas_presenca_historico (resposta_id, aviso_id, resposta, respondido_em)
+          VALUES (${responseId}::uuid, ${noticeId}::uuid, ${response}, ${now})`;
+      }
       const updated = await tx.decisionNotice.findUniqueOrThrow({
         where: { id: noticeId },
         include: noticeInclude,

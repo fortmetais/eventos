@@ -315,15 +315,17 @@ export function RegistrationDetail({
     registration?.status ?? "",
   )
     ? "Não solicitada"
-    : notice?.confirmedAt
-      ? "Confirmada pelo candidato"
-      : notice?.expired
-        ? "Convite expirado"
-        : notice?.emailSentAt || notice?.whatsappSentAt
-          ? "Aguardando confirmação"
-          : notice?.active
-            ? "Convite não enviado"
-            : "Não informada";
+    : notice?.declinedAt
+      ? "Não irei — revisar vaga"
+      : notice?.confirmedAt
+        ? "Confirmada pelo candidato"
+        : notice?.expired
+          ? "Convite expirado"
+          : notice?.emailSentAt || notice?.whatsappSentAt
+            ? "Aguardando resposta"
+            : notice?.active
+              ? "Convite não enviado"
+              : "Não informada";
   const guardianRelevant = Boolean(
     guardianFailed ||
     guardianState?.needsAuthorization ||

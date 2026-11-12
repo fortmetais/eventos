@@ -56,7 +56,7 @@ describe("Resposta do candidato", () => {
       </MemoryRouter>,
     );
     expect(
-      await screen.findByRole("button", { name: "Confirmar minha presença" }),
+      await screen.findByRole("button", { name: "Vou participar" }),
     ).toBeVisible();
     expect(location.hash).toBe("");
     expect(sessionStorage.getItem(`fac:decision:${id}`)).toBe(token);
@@ -76,11 +76,11 @@ describe("Resposta do candidato", () => {
       </MemoryRouter>,
     );
     await userEvent.click(
-      await screen.findByRole("button", { name: "Confirmar minha presença" }),
+      await screen.findByRole("button", { name: "Vou participar" }),
     );
     expect(mocks.api).toHaveBeenLastCalledWith(
       `/public/decision-responses/${id}`,
-      expect.objectContaining({ body: { token } }),
+      expect.objectContaining({ body: { token, resposta: "VOU" } }),
     );
   });
   it.each(["", "incompleto", "A".repeat(64), "!".repeat(64)])(
@@ -112,7 +112,7 @@ describe("Resposta do candidato", () => {
       confirmedAt: "2026-10-14T12:00:00Z",
     });
     await userEvent.click(
-      screen.getByRole("button", { name: "Confirmar minha presença" }),
+      screen.getByRole("button", { name: "Vou participar" }),
     );
     expect(
       await screen.findByText(
@@ -123,7 +123,7 @@ describe("Resposta do candidato", () => {
   it("abrir link não confirma; botão envia resposta e conserva protocolo de confirmação", async () => {
     view();
     const button = await screen.findByRole("button", {
-      name: "Confirmar minha presença",
+      name: "Vou participar",
     });
     expect(mocks.api.mock.calls).toHaveLength(1);
     expect(mocks.api.mock.calls[0][0]).toMatch(/\/view$/);
@@ -135,14 +135,14 @@ describe("Resposta do candidato", () => {
     await userEvent.click(button);
     expect(
       await screen.findByRole("heading", {
-        name: "Sua presença está confirmada!",
+        name: "Você informou que vai participar!",
       }),
     ).toBeVisible();
     expect(mocks.api.mock.calls.at(-1)![0]).toBe(
       "/public/decision-responses/notice",
     );
     expect(
-      screen.queryByRole("button", { name: "Confirmar minha presença" }),
+      screen.queryByRole("button", { name: "Vou participar" }),
     ).not.toBeInTheDocument();
   });
   it("link de recusa acolhe e não oferece confirmar presença", async () => {
@@ -152,8 +152,28 @@ describe("Resposta do candidato", () => {
       await screen.findByRole("heading", { name: "Não foi dessa vez!" }),
     ).toBeVisible();
     expect(
-      screen.queryByRole("button", { name: "Confirmar minha presença" }),
+      screen.queryByRole("button", { name: "Vou participar" }),
     ).not.toBeInTheDocument();
     expect(mocks.api.mock.calls).toHaveLength(1);
+  });
+  it("registra a resposta negativa e permite alterá-la dentro do prazo", async () => {
+    view();
+    const no = await screen.findByRole("button", { name: "Não irei" });
+    mocks.api.mockResolvedValue({
+      ...summary,
+      declinedAt: "2026-11-12T12:00:00Z",
+      canRespond: true,
+    });
+    await userEvent.click(no);
+    expect(mocks.api).toHaveBeenLastCalledWith(
+      "/public/decision-responses/notice",
+      expect.objectContaining({
+        body: { token: "t".repeat(43), resposta: "NAO_IREI" },
+      }),
+    );
+    expect(await screen.findByText(/informou que não irá/)).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Vou participar" }),
+    ).toBeVisible();
   });
 });

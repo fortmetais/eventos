@@ -1011,15 +1011,11 @@ try {
   assert.equal(responseLink, decisionNotice.shortLink);
   assert(responseLink.length < decisionNotice.link.length);
   await visitor.goto(responseLink);
-  await visitor
-    .getByRole("button", { name: "Confirmar minha presença" })
-    .waitFor();
+  await visitor.getByRole("button", { name: "Vou participar" }).waitFor();
   assert.equal(decisionNotice.confirmedAt, null);
+  await visitor.getByRole("button", { name: "Vou participar" }).click();
   await visitor
-    .getByRole("button", { name: "Confirmar minha presença" })
-    .click();
-  await visitor
-    .getByRole("heading", { name: "Sua presença está confirmada!" })
+    .getByRole("heading", { name: "Você informou que vai participar!" })
     .waitFor();
   assert(
     await visitor.evaluate(
@@ -1060,9 +1056,7 @@ try {
   await visitor.goto(await copiedCandidateLink());
   await visitor.getByRole("heading", { name: "Não foi dessa vez!" }).waitFor();
   assert.equal(
-    await visitor
-      .getByRole("button", { name: "Confirmar minha presença" })
-      .count(),
+    await visitor.getByRole("button", { name: "Vou participar" }).count(),
     0,
   );
   await visitor.screenshot({

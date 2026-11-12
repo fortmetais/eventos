@@ -482,7 +482,9 @@ describe("Gestão de inscrições por evento", () => {
       }),
     ).toHaveAttribute("aria-disabled", "true");
     expect(
-      screen.queryByRole("button", { name: "Enviar convite: Maria Teste" }),
+      screen.queryByRole("button", {
+        name: "Convite não enviado: Maria Teste",
+      }),
     ).not.toBeInTheDocument();
   });
   it("preserva a decisão aceita quando a API recusa a reabertura", async () => {
@@ -885,10 +887,10 @@ describe("Gestão de inscrições por evento", () => {
     show();
     await ready();
     expect(
-      screen.getByRole("button", { name: "Enviar convite: Maria Teste" }),
+      screen.getByRole("button", { name: "Convite não enviado: Maria Teste" }),
     ).toHaveClass("pending");
     fireEvent.click(
-      screen.getByRole("button", { name: "Enviar convite: Maria Teste" }),
+      screen.getByRole("button", { name: "Convite não enviado: Maria Teste" }),
     );
     expect(await screen.findByText("Convite registration")).toBeVisible();
     expect(items[0].decisionSummary.notice!.whatsappSentAt).toBeNull();
@@ -899,16 +901,25 @@ describe("Gestão de inscrições por evento", () => {
     );
     expect(
       await screen.findByRole("button", {
-        name: "Aguardando confirmação: Maria Teste",
+        name: "Aguardando resposta: Maria Teste",
       }),
     ).toHaveClass("waiting");
     items[0].decisionSummary.notice!.confirmedAt = "2026-11-12";
     fireEvent(window, new Event("focus"));
     expect(
       await screen.findByRole("button", {
-        name: "Presença confirmada: Maria Teste",
+        name: "Vou participar: Maria Teste",
       }),
     ).toHaveClass("confirmed");
+    items[0].decisionSummary.notice!.confirmedAt = null;
+    items[0].decisionSummary.notice!.declinedAt = "2026-11-12";
+    fireEvent(window, new Event("focus"));
+    expect(
+      await screen.findByRole("button", {
+        name: "Não irei — revisar vaga: Maria Teste",
+      }),
+    ).toHaveClass("declined");
+    expect(items[0].status).toBe("APPROVED");
     expect(
       mocks.api.mock.calls.some(([path]) =>
         String(path).includes("decision-notice"),

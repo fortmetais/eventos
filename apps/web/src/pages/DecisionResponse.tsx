@@ -10,6 +10,8 @@ interface ResponseSummary {
   participation?: "CAMPER" | "VOLUNTEER";
   candidateName: string;
   confirmedAt: string | null;
+  declinedAt?: string | null;
+  canRespond?: boolean;
   expiresAt: string;
   event: {
     name: string;
@@ -82,14 +84,14 @@ function ResponseForm({ noticeId }: { noticeId: string }) {
     void view();
     return () => controller.abort();
   }, [noticeId, token]);
-  async function confirm() {
+  async function confirm(resposta: "VOU" | "NAO_IREI") {
     setBusy(true);
     setError("");
     try {
       setData(
         await api<ResponseSummary>(`/public/decision-responses/${noticeId}`, {
           method: "POST",
-          body: { token },
+          body: { token, resposta },
         }),
       );
     } catch (error) {
@@ -112,11 +114,13 @@ function ResponseForm({ noticeId }: { noticeId: string }) {
               <h1>
                 {data.kind === "RECUSA"
                   ? "Não foi dessa vez!"
-                  : data.confirmedAt
-                    ? "Sua presença está confirmada!"
-                    : data.participation === "CAMPER"
-                      ? "Sua inscrição foi aprovada!"
-                      : "Sua candidatura foi aceita!"}
+                  : data.declinedAt
+                    ? "Sua resposta foi registrada"
+                    : data.confirmedAt
+                      ? "Você informou que vai participar!"
+                      : data.participation === "CAMPER"
+                        ? "Sua inscrição foi aprovada!"
+                        : "Sua candidatura foi aceita!"}
               </h1>
               <h2>{data.event.name}</h2>
               <p>
@@ -132,10 +136,18 @@ function ResponseForm({ noticeId }: { noticeId: string }) {
                     : "agradecemos sua disponibilidade para servir. Sua candidatura não foi selecionada para esta edição."}
                   Esperamos contar com você em uma próxima oportunidade!
                 </p>
+              ) : data.declinedAt ? (
+                <>
+                  <Notice kind="info">
+                    Você informou que não irá em {dateTime(data.declinedAt)}.
+                  </Notice>
+                  <p>A organização foi informada e avaliará sua vaga.</p>
+                </>
               ) : data.confirmedAt ? (
                 <>
                   <Notice kind="success">
-                    Confirmamos sua resposta em {dateTime(data.confirmedAt)}.
+                    Você informou que vai participar em{" "}
+                    {dateTime(data.confirmedAt)}.
                   </Notice>
                   <p>
                     {data.participation === "CAMPER"
@@ -155,13 +167,6 @@ function ResponseForm({ noticeId }: { noticeId: string }) {
                     Responda até {dateTime(data.expiresAt)} (horário de
                     Brasília).
                   </p>
-                  <button
-                    className="button primary full"
-                    disabled={busy}
-                    onClick={() => void confirm()}
-                  >
-                    {busy ? "Confirmando…" : "Confirmar minha presença"}
-                  </button>
                   <p className="muted">
                     Você pode confirmar sem criar conta.{" "}
                     {data.participation === "CAMPER"
@@ -169,6 +174,44 @@ function ResponseForm({ noticeId }: { noticeId: string }) {
                       : "A organização definirá sua equipe."}
                   </p>
                 </>
+              )}
+              {data.kind === "ACEITE" &&
+                (data.canRespond ??
+                  new Date(data.expiresAt).getTime() > Date.now()) && (
+                  <div>
+                    {(data.confirmedAt || data.declinedAt) && (
+                      <p>
+                        Você pode alterar sua resposta até{" "}
+                        {dateTime(data.expiresAt)} (horário de Brasília).
+                      </p>
+                    )}
+                    <div className="button-row">
+                      {!data.confirmedAt && (
+                        <button
+                          className="button primary"
+                          disabled={busy}
+                          onClick={() => void confirm("VOU")}
+                        >
+                          Vou participar
+                        </button>
+                      )}
+                      {!data.declinedAt && (
+                        <button
+                          className="button outline"
+                          disabled={busy}
+                          onClick={() => void confirm("NAO_IREI")}
+                        >
+                          Não irei
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              {data.kind === "ACEITE" && data.canRespond === false && (
+                <p className="muted">
+                  O prazo para alterar sua resposta terminou. Procure a
+                  organização.
+                </p>
               )}
             </>
           )}

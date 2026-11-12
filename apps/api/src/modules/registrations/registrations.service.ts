@@ -470,6 +470,7 @@ export class RegistrationsService {
     };
     const [items, total] =
       filters.q !== undefined ||
+      filters.presence !== undefined ||
       filters.sort !== undefined ||
       filters.includeClosed !== undefined
         ? await this.repo.reviewList(

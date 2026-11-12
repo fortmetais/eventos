@@ -229,6 +229,7 @@ try {
     "14_banners_e_url_evento.sql",
     "06_fichas_servos_e_inscricoes.sql",
     "07_avisos_e_confirmacao_servos.sql",
+    "18_respostas_presenca.sql",
     "08_departamentos_e_vagas.sql",
   ]) {
     run(binary("psql"), [

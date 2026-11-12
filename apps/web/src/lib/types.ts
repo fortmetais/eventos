@@ -222,6 +222,7 @@ export interface RegistrationDecisionSummary {
     emailSentAt: string | null;
     whatsappSentAt: string | null;
     confirmedAt: string | null;
+    declinedAt?: string | null;
     expiresAt: string;
     active: boolean;
     expired: boolean;
