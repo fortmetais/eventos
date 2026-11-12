@@ -16,6 +16,8 @@ import {
   ClipboardList,
   Eye,
   EyeOff,
+  LayoutGrid,
+  List,
   Plus,
   RefreshCw,
   Search,
@@ -40,6 +42,7 @@ import type {
 import { date, statusLabels } from "../lib/types";
 import { registrationPendingInformation } from "../lib/registration-pending";
 import { Empty, Field, Loading, Notice, PageHeading } from "../components/ui";
+import "../components/RegistrationCards.css";
 
 const statusOptions: Record<RegistrationStatus, RegistrationStatus[]> = {
   RECEIVED: ["REVIEW", "APPROVED", "REJECTED", "CANCELLED"],
@@ -71,14 +74,14 @@ const sorts = {
 };
 type Sort = keyof typeof sorts;
 type RowFeedback = { busy?: boolean; error?: string; info?: string };
-function useMobileReview() {
-  const [mobile, setMobile] = useState(
-    () => window.matchMedia?.("(max-width: 800px)").matches ?? false,
+function useReviewMedia(media: string) {
+  const [matches, setMatches] = useState(
+    () => window.matchMedia?.(media).matches ?? false,
   );
   useEffect(() => {
-    const query = window.matchMedia?.("(max-width: 800px)");
+    const query = window.matchMedia?.(media);
     if (!query) return;
-    const update = () => setMobile(query.matches);
+    const update = () => setMatches(query.matches);
     update();
     if (query.addEventListener) {
       query.addEventListener("change", update);
@@ -86,8 +89,8 @@ function useMobileReview() {
     }
     query.addListener(update);
     return () => query.removeListener(update);
-  }, []);
-  return mobile;
+  }, [media]);
+  return matches;
 }
 const pendingStates = ["RECEIVED", "REVIEW", "WAITLIST"];
 const allocatedStates = ["APPROVED", "CONFIRMED"];
@@ -137,7 +140,13 @@ export function ReviewRegistrations() {
   const [showFilters, setShowFilters] = useState(
     Boolean(campaignId || status || origin || completeness),
   );
-  const isMobile = useMobileReview();
+  const isMobile = useReviewMedia("(max-width: 800px)");
+  const canChooseView = useReviewMedia(
+    "(min-width: 1280px) and (orientation: landscape)",
+  );
+  const view = search.get("exibicao") === "cards" ? "cards" : "lista";
+  const desktopCards = canChooseView && view === "cards";
+  const cardLayout = isMobile || desktopCards;
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const filterCount = [
     campaignId,
@@ -364,7 +373,11 @@ export function ReviewRegistrations() {
   function openEvent(id: string) {
     setInvite(null);
     setPendingRegistration(null);
-    setSearch({ evento: id, aba: "inscricoes" });
+    setSearch({
+      evento: id,
+      aba: "inscricoes",
+      ...(search.has("exibicao") ? { exibicao: view } : {}),
+    });
   }
   function openDetail(id: string) {
     setPendingRegistration(null);
@@ -424,6 +437,7 @@ export function ReviewRegistrations() {
     );
   }
   function row(registration: Registration) {
+    const cellRole = cardLayout ? "presentation" : undefined;
     const feedback = rows[registration.id];
     const pending = pendingStates.includes(registration.status);
     const teamAllowed =
@@ -450,8 +464,12 @@ export function ReviewRegistrations() {
       (choice) => choice !== "WAITLIST" || registration.campaign.allowWaitlist,
     );
     return (
-      <tr key={registration.id} aria-busy={feedback?.busy || undefined}>
-        <td className="review-person" data-label="Participante">
+      <tr
+        key={registration.id}
+        role={cardLayout ? "listitem" : undefined}
+        aria-busy={feedback?.busy || undefined}
+      >
+        <td role={cellRole} className="review-person" data-label="Participante">
           <div className="review-person-heading">
             <strong>{registration.person.name}</strong>
             {pendingInformation.length > 0 && (
@@ -485,7 +503,11 @@ export function ReviewRegistrations() {
             </small>
           )}
         </td>
-        <td className="review-cell-department" data-label="Departamento">
+        <td
+          role={cellRole}
+          className="review-cell-department"
+          data-label="Departamento"
+        >
           {registration.campaign.kind === "VOLUNTEER" ? (
             <>
               <select
@@ -537,7 +559,7 @@ export function ReviewRegistrations() {
             <span className="muted">Não se aplica</span>
           )}
         </td>
-        <td className="review-cell-detail" data-label="Ficha">
+        <td role={cellRole} className="review-cell-detail" data-label="Ficha">
           <button
             type="button"
             className="review-icon-button"
@@ -549,7 +571,11 @@ export function ReviewRegistrations() {
             <span className="review-action-label">Ver ficha</span>
           </button>
         </td>
-        <td className="review-cell-decision" data-label="Decisão">
+        <td
+          role={cellRole}
+          className="review-cell-decision"
+          data-label="Decisão"
+        >
           <div className="review-decision-control">
             <select
               aria-label={`Decisão de ${registration.person.name}`}
@@ -578,10 +604,18 @@ export function ReviewRegistrations() {
             </span>
           </div>
         </td>
-        <td className="review-cell-invite" data-label="Convite / presença">
+        <td
+          role={cellRole}
+          className="review-cell-invite"
+          data-label="Convite / presença"
+        >
           {invitation(registration)}
         </td>
-        <td className="review-cell-whatsapp" data-label="Compartilhar">
+        <td
+          role={cellRole}
+          className="review-cell-whatsapp"
+          data-label="Compartilhar"
+        >
           <RegistrationShareActions
             organizationId={organizationId}
             registration={registration}
@@ -739,7 +773,9 @@ export function ReviewRegistrations() {
   );
 
   return (
-    <div className="registrations-workspace">
+    <div
+      className={`registrations-workspace${desktopCards && eventId && tab === "inscricoes" ? " is-card-view" : ""}`}
+    >
       {!eventId ? (
         <>
           <PageHeading title="Inscrições e departamentos">
@@ -820,7 +856,7 @@ export function ReviewRegistrations() {
               type="button"
               className="text-button review-back"
               onClick={() => {
-                setSearch({});
+                setSearch(search.has("exibicao") ? { exibicao: view } : {});
                 setInvite(null);
               }}
             >
@@ -846,60 +882,86 @@ export function ReviewRegistrations() {
               Evento indisponível ou sem acesso nesta organização.
             </Notice>
           )}
-          <div
-            className="review-tabs"
-            role="tablist"
-            aria-label="Gestão do evento"
-            onKeyDown={(event) => {
-              if (
-                !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)
-              )
-                return;
-              event.preventDefault();
-              const next =
-                event.key === "Home"
-                  ? "inscricoes"
-                  : event.key === "End"
-                    ? "departamentos"
-                    : tab === "inscricoes"
-                      ? "departamentos"
-                      : "inscricoes";
-              changeSearch({ aba: next, inscricao: null });
-              document
-                .getElementById(
-                  next === "inscricoes"
-                    ? "review-registrations-tab"
-                    : "review-departments-tab",
+          <div className="review-section-navigation">
+            <div
+              className="review-tabs"
+              role="tablist"
+              aria-label="Gestão do evento"
+              onKeyDown={(event) => {
+                if (
+                  !["ArrowLeft", "ArrowRight", "Home", "End"].includes(
+                    event.key,
+                  )
                 )
-                ?.focus();
-            }}
-          >
-            <button
-              id="review-registrations-tab"
-              type="button"
-              role="tab"
-              aria-controls="review-registrations-panel"
-              aria-selected={tab === "inscricoes"}
-              tabIndex={tab === "inscricoes" ? 0 : -1}
-              onClick={() =>
-                changeSearch({ aba: "inscricoes", inscricao: null })
-              }
+                  return;
+                event.preventDefault();
+                const next =
+                  event.key === "Home"
+                    ? "inscricoes"
+                    : event.key === "End"
+                      ? "departamentos"
+                      : tab === "inscricoes"
+                        ? "departamentos"
+                        : "inscricoes";
+                changeSearch({ aba: next, inscricao: null });
+                document
+                  .getElementById(
+                    next === "inscricoes"
+                      ? "review-registrations-tab"
+                      : "review-departments-tab",
+                  )
+                  ?.focus();
+              }}
             >
-              Inscrições
-            </button>
-            <button
-              id="review-departments-tab"
-              type="button"
-              role="tab"
-              aria-controls="review-departments-panel"
-              aria-selected={tab === "departamentos"}
-              tabIndex={tab === "departamentos" ? 0 : -1}
-              onClick={() =>
-                changeSearch({ aba: "departamentos", inscricao: null })
-              }
-            >
-              Departamentos e vagas
-            </button>
+              <button
+                id="review-registrations-tab"
+                type="button"
+                role="tab"
+                aria-controls="review-registrations-panel"
+                aria-selected={tab === "inscricoes"}
+                tabIndex={tab === "inscricoes" ? 0 : -1}
+                onClick={() =>
+                  changeSearch({ aba: "inscricoes", inscricao: null })
+                }
+              >
+                Inscrições
+              </button>
+              <button
+                id="review-departments-tab"
+                type="button"
+                role="tab"
+                aria-controls="review-departments-panel"
+                aria-selected={tab === "departamentos"}
+                tabIndex={tab === "departamentos" ? 0 : -1}
+                onClick={() =>
+                  changeSearch({ aba: "departamentos", inscricao: null })
+                }
+              >
+                Departamentos e vagas
+              </button>
+            </div>
+            {canChooseView && tab === "inscricoes" && (
+              <div
+                role="group"
+                aria-label="Modo de exibição"
+                className="review-view-switch"
+              >
+                <button
+                  type="button"
+                  aria-pressed={view === "lista"}
+                  onClick={() => changeSearch({ exibicao: "lista" })}
+                >
+                  <List size={17} aria-hidden="true" /> Lista
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={view === "cards"}
+                  onClick={() => changeSearch({ exibicao: "cards" })}
+                >
+                  <LayoutGrid size={17} aria-hidden="true" /> Cards
+                </button>
+              </div>
+            )}
           </div>
           {tab === "departamentos" ? (
             <section
@@ -1054,7 +1116,10 @@ export function ReviewRegistrations() {
                         final pela organização.
                       </small>
                     </div>
-                    <table className="review-registration-table">
+                    <table
+                      role={cardLayout ? "presentation" : undefined}
+                      className={`review-registration-table${cardLayout ? " review-card-list" : ""}`}
+                    >
                       <thead>
                         <tr>
                           <th>Participante</th>
@@ -1065,7 +1130,14 @@ export function ReviewRegistrations() {
                           <th>Compartilhar</th>
                         </tr>
                       </thead>
-                      <tbody>{list.data.items.map(row)}</tbody>
+                      <tbody
+                        role={cardLayout ? "list" : undefined}
+                        aria-label={
+                          cardLayout ? "Inscrições em cards" : undefined
+                        }
+                      >
+                        {list.data.items.map(row)}
+                      </tbody>
                     </table>
                     <div className="pagination">
                       <button

@@ -136,6 +136,7 @@ const candidate = {
 } as Registration;
 let events: EventEdition[], items: Registration[], total: number;
 let mobileViewport = false;
+let wideLandscapeViewport = false;
 const mediaListeners = new Set<() => void>();
 
 function Location() {
@@ -167,12 +168,17 @@ function queries() {
 
 beforeEach(() => {
   mobileViewport = false;
+  wideLandscapeViewport = false;
   mediaListeners.clear();
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
     value: vi.fn((media: string) => ({
       get matches() {
-        return mobileViewport;
+        return media.includes("min-width: 1280px")
+          ? wideLandscapeViewport
+          : media.includes("max-width: 800px")
+            ? mobileViewport
+            : false;
       },
       media,
       addEventListener: (_: string, listener: () => void) =>
@@ -218,6 +224,164 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Gestão de inscrições por evento", () => {
+  it("alterna Lista e Cards em tela grande sem perder filtros, página ou recarregar inscrições", async () => {
+    wideLandscapeViewport = true;
+    total = 45;
+    show(
+      "/organizacao/org/inscricoes?evento=event&q=Maria&sort=NAME_DESC&origin=IMPORT&page=2",
+    );
+    await ready();
+    const modes = screen.getByRole("group", { name: "Modo de exibição" });
+    expect(
+      within(modes).getByRole("button", { name: "Lista" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("table")).toBeVisible();
+    const before = queries().length;
+    fireEvent.click(within(modes).getByRole("button", { name: "Cards" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        "exibicao=cards",
+      ),
+    );
+    const cards = screen.getByRole("list", { name: "Inscrições em cards" });
+    expect(within(cards).getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(
+      within(modes).getByRole("button", { name: "Cards" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    const params = new URLSearchParams(
+      screen.getByTestId("location").textContent ?? "",
+    );
+    expect(params.get("q")).toBe("Maria");
+    expect(params.get("sort")).toBe("NAME_DESC");
+    expect(params.get("origin")).toBe("IMPORT");
+    expect(params.get("page")).toBe("2");
+    expect(queries()).toHaveLength(before);
+    fireEvent.click(within(modes).getByRole("button", { name: "Lista" }));
+    expect(screen.getByRole("table")).toBeVisible();
+    expect(
+      screen.queryByRole("list", { name: "Inscrições em cards" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(modes).getByRole("button", { name: "Lista" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(queries()).toHaveLength(before);
+  });
+  it("restaura Cards pela URL e preserva a escolha ao reduzir e ampliar a tela", async () => {
+    wideLandscapeViewport = true;
+    show("/organizacao/org/inscricoes?evento=event&exibicao=cards");
+    await ready();
+    expect(
+      screen.getByRole("list", { name: "Inscrições em cards" }),
+    ).toBeVisible();
+    act(() => {
+      wideLandscapeViewport = false;
+      for (const listener of mediaListeners) listener();
+    });
+    expect(
+      screen.queryByRole("group", { name: "Modo de exibição" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("table")).toBeVisible();
+    expect(screen.getByTestId("location")).toHaveTextContent("exibicao=cards");
+    act(() => {
+      wideLandscapeViewport = true;
+      for (const listener of mediaListeners) listener();
+    });
+    expect(
+      screen.getByRole("list", { name: "Inscrições em cards" }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Cards" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(window.matchMedia).toHaveBeenCalledWith(
+      expect.stringContaining("orientation: landscape"),
+    );
+  });
+  it("mantém cards compactos no celular sem mostrar o seletor de computador", async () => {
+    mobileViewport = true;
+    show("/organizacao/org/inscricoes?evento=event&exibicao=lista");
+    await ready();
+    expect(
+      screen.queryByRole("group", { name: "Modo de exibição" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("list", { name: "Inscrições em cards" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("exibicao=lista");
+  });
+  it("mantém lista em computador menor ou vertical mesmo com Cards na URL", async () => {
+    show("/organizacao/org/inscricoes?evento=event&exibicao=cards");
+    await ready();
+    expect(
+      screen.queryByRole("group", { name: "Modo de exibição" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("table")).toBeVisible();
+    expect(
+      screen.queryByRole("list", { name: "Inscrições em cards" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("location")).toHaveTextContent("exibicao=cards");
+  });
+  it("usa Lista quando a URL informa um modo desconhecido", async () => {
+    wideLandscapeViewport = true;
+    show("/organizacao/org/inscricoes?evento=event&exibicao=desconhecido");
+    await ready();
+    expect(screen.getByRole("button", { name: "Lista" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("table")).toBeVisible();
+  });
+  it("preserva a escolha de Cards ao voltar aos eventos e reabrir um evento", async () => {
+    wideLandscapeViewport = true;
+    show("/organizacao/org/inscricoes?evento=event&exibicao=cards");
+    await ready();
+    fireEvent.click(screen.getByRole("button", { name: /Voltar aos eventos/ }));
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).not.toHaveTextContent("evento="),
+    );
+    expect(screen.getByTestId("location")).toHaveTextContent("exibicao=cards");
+    fireEvent.click(
+      await screen.findByRole("button", { name: /3º Acampamento FAC/ }),
+    );
+    await ready();
+    expect(screen.getByTestId("location")).toHaveTextContent("exibicao=cards");
+    expect(
+      screen.getByRole("list", { name: "Inscrições em cards" }),
+    ).toBeVisible();
+  });
+  it.each([false, true])(
+    "mantém a escolha de exibição disponível sem resultados ou durante o carregamento (%s)",
+    async (loading) => {
+      wideLandscapeViewport = true;
+      items = [];
+      total = 0;
+      if (loading) {
+        const normal = mocks.api.getMockImplementation()!;
+        mocks.api.mockImplementation((path: string, options) =>
+          path.includes("/registrations?")
+            ? new Promise(() => {})
+            : normal(path, options),
+        );
+      }
+      show();
+      const group = await screen.findByRole("group", {
+        name: "Modo de exibição",
+      });
+      fireEvent.click(within(group).getByRole("button", { name: "Cards" }));
+      expect(
+        within(group).getByRole("button", { name: "Cards" }),
+      ).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        "exibicao=cards",
+      );
+      if (!loading)
+        expect(
+          await screen.findByText("Nenhuma inscrição neste filtro"),
+        ).toBeVisible();
+    },
+  );
   it("mostra a orientação do WhatsApp antes do aceite somente ao clicar, sem carregar aviso", async () => {
     show();
     await ready();

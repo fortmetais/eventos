@@ -1,0 +1,287 @@
+/* One compact card layout for phones and the optional desktop grid. */
+.review-card-list,
+.review-card-list tbody {
+  display: block;
+}
+.review-card-list thead {
+  display: none;
+}
+.review-card-list td {
+  border: 0;
+  width: auto !important;
+  padding: 0 !important;
+  min-width: 0;
+}
+.review-card-list td:first-child::before {
+  display: none;
+}
+.review-card-list td:nth-child(3) {
+  grid-column: 2;
+  grid-row: 4;
+}
+.review-card-list td:nth-child(2) {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+.review-card-list td:nth-child(4) {
+  grid-column: 1;
+  grid-row: 3;
+}
+.review-card-list td:nth-child(5) {
+  grid-column: 2;
+  grid-row: 3;
+}
+.review-card-list td:nth-child(6) {
+  grid-column: 1;
+  grid-row: 4;
+}
+.review-card-list tbody {
+  padding: 0 8px;
+}
+.review-card-list tr {
+  display: grid;
+  border: 1px solid var(--border);
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) 94px;
+  padding: 10px;
+  margin-bottom: 8px;
+  gap: 7px 8px;
+  border-radius: 10px;
+}
+.review-card-list td:first-child {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  min-height: 44px;
+  padding-right: 56px !important;
+  padding-bottom: 5px !important;
+  border-bottom: 1px solid var(--border);
+}
+.review-card-list .review-person > strong {
+  display: block;
+  font-size: 14px;
+  line-height: 1.4;
+  margin-bottom: 3px;
+}
+.review-card-list .review-person-protocol,
+.review-card-list .review-person-campaign {
+  display: inline;
+  font-size: 11px;
+  margin-top: 0;
+  margin-right: 8px;
+}
+.review-card-list td::before {
+  content: attr(data-label);
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-bottom: 3px;
+}
+.review-card-list .review-cell-detail::before,
+.review-card-list .review-cell-whatsapp::before {
+  display: none;
+}
+.review-card-list .review-current-department {
+  display: none;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+  font-size: 12px;
+  color: var(--muted);
+}
+.review-card-list .review-whatsapp-hint {
+  display: block;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+  margin-top: 5px;
+}
+.review-card-list .review-icon-button,
+.review-card-list .review-whatsapp {
+  width: 100%;
+  min-height: 44px;
+  height: 44px;
+  padding: 7px 6px;
+  gap: 5px;
+  font-size: 12px;
+}
+.review-card-list .review-action-label {
+  display: inline;
+}
+.review-card-list td.review-cell-detail {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: start;
+  justify-self: end;
+  width: 44px !important;
+}
+.review-card-list .review-cell-detail .review-action-label {
+  display: none;
+}
+.review-card-list td.review-cell-whatsapp {
+  grid-column: 3;
+  grid-row: 3;
+  align-self: start;
+  padding-top: 31px !important;
+}
+.review-card-list td.review-cell-decision,
+.review-card-list td.review-cell-invite {
+  align-self: start;
+}
+.review-card-list .review-cell-decision::before,
+.review-card-list .review-cell-invite::before {
+  display: flex;
+  align-items: flex-end;
+  height: 28px;
+  line-height: 14px;
+}
+.review-card-list .review-decision-control {
+  position: relative;
+  height: 44px;
+}
+.review-card-list .review-decision-control select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 44px;
+  opacity: 0;
+  z-index: 1;
+  cursor: pointer;
+}
+.review-card-list .review-decision-value {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+  height: 44px;
+  padding: 4px;
+  border: 1px solid #dfe2ec;
+  border-radius: 9px;
+  background: white;
+  color: #283346;
+  font-size: 12px;
+  line-height: 1.15;
+}
+.review-card-list .review-decision-value > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.review-card-list .review-decision-control select:focus-visible + span {
+  outline: 3px solid #a299ea;
+  outline-offset: 2px;
+}
+.review-card-list .review-decision-control select:disabled + span {
+  opacity: 0.5;
+}
+.review-card-list .review-cell-invite > .muted {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+.review-card-list .review-share {
+  min-width: 0;
+}
+.review-card-list .review-share-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.review-card-list .review-share .review-action-label {
+  display: none;
+}
+.review-card-list .review-share-buttons button {
+  width: 44px;
+  flex: 0 0 44px;
+  padding: 0;
+}
+.review-card-list .review-person-heading strong {
+  font-size: 14px;
+  line-height: 1.35;
+}
+.review-card-list .review-share > small {
+  max-width: none;
+}
+.review-card-list .review-mark-sent {
+  font-size: 12px;
+}
+.review-card-list .review-invite {
+  width: 100%;
+  min-height: 44px;
+  height: 44px;
+  font-size: 11px;
+  padding: 4px;
+  line-height: 1.15;
+}
+
+.review-card-list {
+  width: 100%;
+}
+.review-card-list tbody {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+.review-card-list input,
+.review-card-list select,
+.review-card-list textarea {
+  font-size: 16px;
+  min-height: 44px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+.review-section-navigation {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+.registrations-workspace .review-section-navigation .review-tabs {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+  border-bottom: 0;
+}
+.review-view-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: white;
+}
+.review-view-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.review-view-switch button[aria-pressed="true"] {
+  background: var(--purple-light);
+  color: var(--purple);
+}
+@media (min-width: 1280px) and (orientation: landscape) {
+  .admin-shell--registrations:has(.registrations-workspace.is-card-view) {
+    max-width: none;
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  .is-card-view .review-card-list tbody {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 12px;
+    padding: 0 16px 16px;
+  }
+  .is-card-view .review-card-list tr {
+    margin-bottom: 0;
+  }
+}
+@media (max-width: 800px) {
+  .review-section-navigation {
+    margin-bottom: 8px;
+  }
+}

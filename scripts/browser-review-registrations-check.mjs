@@ -444,6 +444,211 @@ try {
         0,
         "A tabela não deve carregar ficha individual por linha.",
       );
+      const displayMode = page.getByRole("group", {
+        name: "Modo de exibição",
+        exact: true,
+      });
+      if (mobile) {
+        await expect(displayMode).toHaveCount(0);
+        await expect(
+          page.getByRole("list", { name: "Inscrições em cards", exact: true }),
+        ).toBeVisible();
+      } else {
+        await expect(displayMode).toBeVisible();
+        await expect(
+          displayMode.getByRole("button", { name: "Lista", exact: true }),
+        ).toHaveAttribute("aria-pressed", "true");
+        await expect(page.getByRole("table")).toBeVisible();
+        const beforeModeParams = new URL(page.url()).searchParams;
+        const beforeModeReads = queries.length;
+        await displayMode
+          .getByRole("button", { name: "Cards", exact: true })
+          .click();
+        const cardList = page.getByRole("list", {
+          name: "Inscrições em cards",
+          exact: true,
+        });
+        await expect(cardList).toBeVisible();
+        await expect(
+          displayMode.getByRole("button", { name: "Cards", exact: true }),
+        ).toHaveAttribute("aria-pressed", "true");
+        assert.equal(new URL(page.url()).searchParams.get("exibicao"), "cards");
+        const afterModeParams = new URL(page.url()).searchParams;
+        afterModeParams.delete("exibicao");
+        assert.equal(afterModeParams.toString(), beforeModeParams.toString());
+        assert.equal(
+          queries.length,
+          beforeModeReads,
+          "Trocar a exibição não deve consultar novamente as inscrições.",
+        );
+        assert(
+          queries.every((query) => !new URLSearchParams(query).has("exibicao")),
+        );
+        await expect(cardList.getByRole("listitem")).toHaveCount(3);
+        const brunoCard = cardList.getByRole("listitem").filter({
+          has: page.getByText("Bruno Souza", { exact: true }),
+        });
+        const originalRowCount = rows.length;
+        for (const [index, name] of [
+          "Eduardo Lima",
+          "Fernanda Alves",
+          "Gabriel Costa",
+          "Helena Santos",
+          "Igor Nunes",
+          "Júlia Rocha",
+        ].entries()) {
+          const extra = structuredClone(rows[3]);
+          extra.id = `00000000-0000-4000-8000-${String(index + 100).padStart(12, "0")}`;
+          extra.protocol = `INS-GRADE-${index + 1}`;
+          extra.person.name = name;
+          extra.snapshot.name = name;
+          rows.push(extra);
+        }
+        await page
+          .getByRole("button", { name: "Atualizar inscrições", exact: true })
+          .click();
+        await expect(cardList.getByRole("listitem")).toHaveCount(9);
+        for (const [width, height, columns] of [
+          [1366, 900, 3],
+          [1600, 1000, 4],
+          [1920, 1080, 5],
+        ]) {
+          await page.setViewportSize({ width, height });
+          await expect(cardList).toBeVisible();
+          await expect
+            .poll(async () =>
+              cardList.evaluate(
+                (node) =>
+                  getComputedStyle(node)
+                    .gridTemplateColumns.split(/\s+/)
+                    .filter(Boolean).length,
+              ),
+            )
+            .toBe(columns);
+          const cardBounds = await brunoCard.boundingBox();
+          assert(
+            cardBounds && cardBounds.width >= 299,
+            "Os cartões devem conservar largura confortável.",
+          );
+          const firstGridCard = await cardList
+            .getByRole("listitem")
+            .first()
+            .boundingBox();
+          const lastFirstRow = await cardList
+            .getByRole("listitem")
+            .nth(columns - 1)
+            .boundingBox();
+          const firstSecondRow = await cardList
+            .getByRole("listitem")
+            .nth(columns)
+            .boundingBox();
+          assert(
+            firstGridCard &&
+              lastFirstRow &&
+              firstSecondRow &&
+              Math.abs(firstGridCard.y - lastFirstRow.y) <= 1 &&
+              firstSecondRow.y >= firstGridCard.y + firstGridCard.height,
+            "A grade deve ocupar as colunas disponíveis antes de iniciar a próxima linha.",
+          );
+          const controls = [
+            brunoCard.getByRole("combobox", {
+              name: "Decisão de Bruno Souza",
+              exact: true,
+            }),
+            brunoCard.getByRole("button", {
+              name: "Enviar convite: Bruno Souza",
+              exact: true,
+            }),
+            brunoCard.getByRole("button", {
+              name: "Enviar convite por WhatsApp para Bruno Souza",
+              exact: true,
+            }),
+            brunoCard.getByRole("button", {
+              name: "Copiar link do candidato Bruno Souza",
+              exact: true,
+            }),
+          ];
+          const bounds = await Promise.all(
+            controls.map((control) => control.boundingBox()),
+          );
+          assert(
+            bounds.every(Boolean),
+            "Os controles devem permanecer disponíveis no cartão de computador.",
+          );
+          for (let index = 0; index < bounds.length; index++) {
+            const box = bounds[index];
+            assert(
+              box.height >= 44 && box.width >= 44,
+              "Os controles devem manter área de clique adequada.",
+            );
+            assert(
+              Math.abs(box.y - bounds[0].y) <= 1,
+              "Decisão, convite e compartilhamento devem permanecer alinhados nos cards do computador.",
+            );
+            if (index)
+              assert(
+                box.x >= bounds[index - 1].x + bounds[index - 1].width - 1,
+                "Controles não podem se sobrepor.",
+              );
+          }
+          const detail = await brunoCard
+            .getByRole("button", {
+              name: "Abrir ficha de Bruno Souza",
+              exact: true,
+            })
+            .boundingBox();
+          assert(
+            detail &&
+              detail.x > cardBounds.x + cardBounds.width / 2 &&
+              detail.y - cardBounds.y <= 16,
+            "A ficha deve ficar no canto superior direito também no computador.",
+          );
+          assert(
+            await page.evaluate(
+              () =>
+                document.documentElement.scrollWidth <= window.innerWidth + 1,
+            ),
+            "A grade não pode causar rolagem horizontal.",
+          );
+          await page.evaluate(() => window.scrollTo(0, 0));
+          await page.screenshot({
+            path: `.local/screenshots/review-desktop-cards-${columns}-columns.png`,
+            fullPage: true,
+          });
+        }
+        await page.setViewportSize({ width: 1200, height: 800 });
+        await expect(displayMode).toHaveCount(0);
+        await expect(page.getByRole("table")).toBeVisible();
+        assert.equal(new URL(page.url()).searchParams.get("exibicao"), "cards");
+        await page.setViewportSize({ width: 1280, height: 1400 });
+        await expect(displayMode).toHaveCount(0);
+        await expect(page.getByRole("table")).toBeVisible();
+        await page.setViewportSize(viewport);
+        await expect(cardList).toBeVisible();
+        await expect(
+          displayMode.getByRole("button", { name: "Cards", exact: true }),
+        ).toHaveAttribute("aria-pressed", "true");
+        rows.splice(originalRowCount);
+        await page
+          .getByRole("button", { name: "Atualizar inscrições", exact: true })
+          .click();
+        await expect(cardList.getByRole("listitem")).toHaveCount(3);
+        const listReads = queries.length;
+        await displayMode
+          .getByRole("button", { name: "Lista", exact: true })
+          .click();
+        await expect(page.getByRole("table")).toBeVisible();
+        assert.equal(
+          queries.length,
+          listReads,
+          "Voltar à lista não consulta novamente as inscrições.",
+        );
+        await displayMode
+          .getByRole("button", { name: "Cards", exact: true })
+          .click();
+        await expect(cardList).toBeVisible();
+        // The remaining desktop journey exercises all existing actions in cards.
+      }
       const pendingCandidate = page.locator("tbody tr").filter({
         has: page.getByText("Ágata Silva", { exact: true }),
       });

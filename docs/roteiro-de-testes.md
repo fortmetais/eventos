@@ -1,5 +1,15 @@
 # Roteiro de testes da aplicação Encontro
 
+## Lista e Cards no computador — 11/11/2026
+
+- Em tela horizontal com pelo menos 1280 px, abrir um evento e usar **Lista / Cards** ao lado das abas. Lista mantém a tabela; Cards reaproveita os cartões compactos do celular. O seletor deve continuar disponível sem resultados e durante recarregamento.
+- Conferir a grade automática com várias linhas: cartões com pelo menos 300 px e intervalo de 12 px. Nas larguras testadas, 1366 px comporta três colunas, 1600 px quatro e 1920 px cinco; telas mais largas podem comportar mais. Não reduzir os controles nem gerar rolagem horizontal para caber mais cartões.
+- Alternar preserva pesquisa, filtros, ordenação, página e ficha selecionada. A URL usa `exibicao=lista` ou `exibicao=cards`; atualizar, compartilhar e voltar aos eventos preserva a escolha. Não há consulta adicional da API só para mudar a apresentação.
+- Diminuir a janela ou usar orientação vertical oculta o seletor e mantém a apresentação adequada à tela; voltar à tela horizontal grande restaura a preferência do endereço. No celular, os cartões permanecem ativos sem seletor.
+- Nos dois modos, verificar departamento, decisão, pendências, abertura da ficha, cópia, WhatsApp, aviso antes do aceite e presença. Preservar foco, proteção de alterações não salvas e permissões. A apresentação em cards deve ser anunciada como lista, sem duplicar controles.
+
+Verificação: testes da interface e tipos aprovados, compilação concluída e percurso no navegador em desktop e celulares de 320, 390 e 430 px. As verificações de grade usam candidatos fictícios em mais de uma linha. Não há alteração na API, no banco ou nas regras de candidatura.
+
 ## Densidade da gestão no celular — 11/11/2026
 
 - Conferir cabeçalho, menu da organização e abas compactos; nomes de candidatos em 14 px e rótulos menores. O ícone de pendências fica depois do nome, com desenho de 16 px e área de toque ampliada no celular.
