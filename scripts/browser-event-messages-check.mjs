@@ -4,6 +4,8 @@ import { chromium, expect } from "@playwright/test";
 import {
   defaultMessageTemplate,
   messageFields,
+  requiredMessageFields,
+  validateMessageTemplate,
 } from "../apps/api/dist/modules/registrations/event-messages.service.js";
 
 // Browser-only mocks. Never uses the production database, credentials or messaging providers.
@@ -75,6 +77,7 @@ try {
       defaultTemplate: defaultMessageTemplate,
       customized: false,
       fields: messageFields,
+      ...(mobile ? {} : { requiredFields: requiredMessageFields }),
       previewValues: {
         ...Object.fromEntries(messageFields.map((f) => [f.key, f.example])),
         evento: "FAC dos testes",
@@ -82,7 +85,9 @@ try {
         link: `${target}/r#${code}`,
       },
     };
+    const savedBodies = [];
     let saves = 0,
+      putAttempts = 0,
       confirmations = 0,
       confirmedAt = null;
     const context = await browser.newContext({
@@ -148,12 +153,24 @@ try {
         path === `/api/v1/organizations/${org}/events/${event}/accept-message`
       ) {
         if (req.method() === "PUT") {
+          putAttempts++;
           const body = req.postDataJSON();
           assert.equal(body.revision, settings.revision);
+          try {
+            if (body.template !== null) validateMessageTemplate(body.template);
+          } catch (error) {
+            return route.fulfill({
+              status: error.status ?? 422,
+              json: {
+                error: { code: error.code, message: error.message },
+              },
+            });
+          }
           settings.template = body.template ?? defaultMessageTemplate;
           settings.customized = body.template !== null;
           settings.revision++;
           saves++;
+          savedBodies.push(body);
         }
         return json(settings);
       }
@@ -199,6 +216,10 @@ try {
     const previewBox = await preview.locator(".message-preview").boundingBox();
     const insertionsBox = await insertions.boundingBox();
     assert(editorBox && previewBox && insertionsBox);
+    await page.screenshot({
+      path: `.local/screenshots/event-messages-layout-${mobile ? "mobile" : "desktop"}.png`,
+      fullPage: true,
+    });
     if (mobile) {
       assert(
         previewBox.y >= editorBox.y + editorBox.height,
@@ -265,14 +286,137 @@ try {
       path: `.local/screenshots/event-messages-${mobile ? "mobile" : "desktop"}.png`,
       fullPage: true,
     });
+    const saveButton = page.getByRole("button", { name: "Salvar mensagem" });
+    const draft =
+      "Olá, {{primeiro_nome}}! A Paz de Jesus! Recebemos sua inscrição para servir no 3º Acampamento FAC. Confirme sua presença pelo link: {{link}}";
+    const savedBeforeUserDraft = settings.template;
+    const attemptsBeforeUserDraft = putAttempts;
+    await editor.fill(draft);
+    const missingFields = page.getByRole("region", {
+      name: "Informações obrigatórias para salvar",
+      exact: true,
+    });
+    await expect(missingFields).toHaveCount(0);
+    await expect(saveButton).toBeEnabled();
+    await expect(page.getByText(/Alterações ainda não salvas/)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Inserir nome do evento", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: "Inserir validade do link",
+        exact: true,
+      }),
+    ).toBeVisible();
+    assert.equal(putAttempts, attemptsBeforeUserDraft);
+    assert.equal(settings.template, savedBeforeUserDraft);
+    await page.screenshot({
+      path: `.local/screenshots/event-messages-optional-${mobile ? "mobile" : "desktop"}.png`,
+      fullPage: true,
+    });
+    await saveButton.click();
+    await expect(
+      page.getByText(/Mensagem salva para este evento/),
+    ).toBeVisible();
+    await expect(page.getByText(/Alterações ainda não salvas/)).toHaveCount(0);
+    assert.equal(saves, 2);
+    assert.equal(
+      savedBodies.at(-1).template,
+      draft,
+      "O texto do usuário deve ser salvo exatamente como foi escrito.",
+    );
+    assert(!settings.template.includes("{{evento}}"));
+    assert(!settings.template.includes("{{validade}}"));
+    await page.reload();
+    await expect(editor).toHaveValue(draft);
+    const incomplete =
+      "Sua candidatura foi aceita! Confirme sua presença com a organização.";
+    const attemptsBeforeIncompleteDraft = putAttempts;
+    await editor.fill(incomplete);
+    await expect(missingFields).toBeVisible();
+    await expect(missingFields.locator("li")).toHaveCount(2);
+    await expect(missingFields).toContainText("{{primeiro_nome}}");
+    await expect(missingFields).toContainText("{{link}}");
+    await expect(missingFields).not.toContainText("{{evento}}");
+    await expect(missingFields).not.toContainText("{{validade}}");
+    await expect(saveButton).toBeDisabled();
+    await expect(page.getByText(/Alterações ainda não salvas/)).toBeVisible();
+    await saveButton.evaluate((button) => button.click());
+    assert.equal(
+      putAttempts,
+      attemptsBeforeIncompleteDraft,
+      "Rascunho incompleto não pode enviar PUT.",
+    );
+    assert.equal(settings.template, draft);
+    await page.screenshot({
+      path: `.local/screenshots/event-messages-required-${mobile ? "mobile" : "desktop"}.png`,
+      fullPage: true,
+    });
+    await page
+      .getByRole("button", {
+        name: "Adicionar informações obrigatórias",
+        exact: true,
+      })
+      .click();
+    const completed =
+      "Olá, {{primeiro_nome}}!\n\n" +
+      incomplete +
+      "\n\nConfirme sua presença pelo link: {{link}}";
+    await expect(editor).toHaveValue(completed);
+    await expect(missingFields).toHaveCount(0);
+    await expect(saveButton).toBeEnabled();
+    await expect(page.getByText(/Alterações ainda não salvas/)).toBeVisible();
+    assert.equal(
+      settings.template,
+      draft,
+      "Completar informações altera somente a edição local.",
+    );
+    assert.equal(putAttempts, attemptsBeforeIncompleteDraft);
+    await expect(preview).toContainText("Olá, Maria!");
+    await expect(preview).toContainText(incomplete);
+    await expect(preview).not.toContainText("{{");
+    await page.screenshot({
+      path: `.local/screenshots/event-messages-completed-draft-${mobile ? "mobile" : "desktop"}.png`,
+      fullPage: true,
+    });
+    await saveButton.click();
+    await expect(
+      page.getByText(/Mensagem salva para este evento/),
+    ).toBeVisible();
+    await expect(page.getByText(/Alterações ainda não salvas/)).toHaveCount(0);
+    assert.equal(saves, 3);
+    assert.equal(savedBodies.at(-1).template, completed);
+    for (const variable of ["primeiro_nome", "link"])
+      assert(
+        settings.template.includes(`{{${variable}}}`),
+        `O modelo salvo deve preservar {{${variable}}}.`,
+      );
+    assert(!settings.template.includes("{{evento}}"));
+    assert(!settings.template.includes("{{validade}}"));
+    await page.reload();
+    await expect(editor).toHaveValue(completed);
+    await expect(page.getByText(/Alterações ainda não salvas/)).toHaveCount(0);
+    await editor.fill(completed + "\n{{apelido}}");
+    await expect(saveButton).toBeEnabled();
+    await saveButton.click();
+    await expect(page.getByRole("alert")).toContainText(
+      "informação automática desconhecida",
+    );
+    await expect(editor).toHaveValue(completed + "\n{{apelido}}");
+    await expect(page.getByText(/Alterações ainda não salvas/)).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Recarregar modelo salvo" }),
+    ).toHaveCount(0);
+    assert.equal(saves, 3, "Validação 422 preserva o último modelo salvo.");
+    assert.equal(settings.template, completed);
     await page.getByRole("button", { name: "Restaurar texto padrão" }).click();
     await expect(editor).toHaveValue(defaultMessageTemplate);
-    assert.equal(saves, 1);
+    assert.equal(saves, 3);
     await page.getByRole("button", { name: "Salvar mensagem" }).click();
     await expect(
       page.getByText(/Mensagem salva para este evento/),
     ).toBeVisible();
-    assert.equal(saves, 2);
+    assert.equal(saves, 4);
     await page.goto(`${target}/r#${code}`);
     await expect(
       page.getByRole("button", { name: "Confirmar minha presença" }),
@@ -295,7 +439,7 @@ try {
     assert.deepEqual(errors, []);
     await context.close();
     console.log(
-      `Mensagens ${mobile ? "celular" : "desktop"}: alinhamento, opções abaixo, primeiro nome, edição, prévia, salvamento, retomada, restauração e link compacto aprovados.`,
+      `Mensagens ${mobile ? "celular" : "desktop"}: evento e validade opcionais, texto salvo exatamente, helper somente para nome/link, rascunho sem salvar, validação 422, prévia, retomada, restauração e link compacto aprovados.`,
     );
   }
 } finally {

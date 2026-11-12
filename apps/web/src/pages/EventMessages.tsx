@@ -15,7 +15,12 @@ type MessageSettings = {
   customized: boolean;
   fields: { key: string; label: string; example: string }[];
   previewValues: Record<string, string>;
+  requiredFields?: { keys: string[]; label: string }[];
 };
+const defaultRequiredFields = [
+  { keys: ["nome", "primeiro_nome"], label: "Nome do candidato" },
+  { keys: ["link"], label: "Link pessoal" },
+];
 export function EventMessages() {
   const { organizationId, membership } = useOrganization();
   const [params, setParams] = useSearchParams();
@@ -78,6 +83,7 @@ function MessageEditor({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [info, setInfo] = useState("");
+  const [conflict, setConflict] = useState(false);
   const editor = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (remote.data) setText(remote.data.template);
@@ -86,12 +92,47 @@ function MessageEditor({
   if (remote.loading) return <Loading />;
   if (remote.error) return <Notice>{remote.error}</Notice>;
   if (!data) return null;
+  const variables = new Set(
+    [...text.matchAll(/\{\{\s*([\w]+)\s*\}\}/g)].map((match) => match[1]),
+  );
+  const missing = (data.requiredFields ?? defaultRequiredFields).filter(
+    (field) => !field.keys.some((key) => variables.has(key)),
+  );
+  const unsaved = text !== data.template;
+  function edit(value: string) {
+    setText(value);
+    setError("");
+    setConflict(false);
+    setInfo("");
+  }
+  function completeRequiredFields() {
+    let completed = text.trimEnd();
+    const lines: Record<string, string> = {
+      evento: "Evento: {{evento}}.",
+      link: "Confirme sua presença pelo link: {{link}}",
+      validade: "Link pessoal válido até {{validade}} (horário de Brasília).",
+    };
+    for (const field of missing) {
+      if (field.keys.includes("nome") || field.keys.includes("primeiro_nome")) {
+        const key = field.keys.includes("primeiro_nome")
+          ? "primeiro_nome"
+          : "nome";
+        completed = `Olá, {{${key}}}!\n\n${completed}`;
+      } else {
+        const key = field.keys[0];
+        const line = lines[key] ?? `${field.label}: {{${key}}}.`;
+        completed = completed ? `${completed}\n\n${line}` : line;
+      }
+    }
+    return completed;
+  }
+  const completedText = completeRequiredFields();
   function insert(key: string) {
     const input = editor.current;
     const start = input?.selectionStart ?? text.length,
       end = input?.selectionEnd ?? text.length;
     const variable = `{{${key}}}`;
-    setText(text.slice(0, start) + variable + text.slice(end));
+    edit(text.slice(0, start) + variable + text.slice(end));
     requestAnimationFrame(() => {
       input?.focus();
       input?.setSelectionRange(
@@ -101,8 +142,10 @@ function MessageEditor({
     });
   }
   async function save() {
+    if (missing.length || busy || !data!.ready || text.length > 5000) return;
     setBusy(true);
     setError("");
+    setConflict(false);
     setInfo("");
     try {
       const updated = await api<MessageSettings>(path, {
@@ -116,6 +159,7 @@ function MessageEditor({
       setInfo("Mensagem salva para este evento. Nenhuma mensagem foi enviada.");
     } catch (e) {
       setError((e as Error).message);
+      setConflict((e as { status?: number }).status === 409);
     } finally {
       setBusy(false);
     }
@@ -136,22 +180,66 @@ function MessageEditor({
       {error && (
         <Notice>
           {error}{" "}
-          <button
-            className="text-button"
-            disabled={busy}
-            onClick={remote.refresh}
-          >
-            Recarregar modelo salvo
-          </button>
+          {conflict && (
+            <button
+              className="text-button"
+              disabled={busy}
+              onClick={() => {
+                setError("");
+                setConflict(false);
+                remote.refresh();
+              }}
+            >
+              Recarregar modelo salvo
+            </button>
+          )}
         </Notice>
       )}
       {info && <Notice kind="success">{info}</Notice>}
+      {unsaved && data.ready && (
+        <Notice kind="info">
+          Alterações ainda não salvas. Os envios continuam usando o último
+          modelo salvo.
+        </Notice>
+      )}
       <p>
-        Use os botões para inserir as informações de cada candidato. Mantenha
-        nome completo ou primeiro nome, evento, link pessoal e validade. O
-        departamento será o efetivamente alocado; sem alocação, aparecerá “A
-        definir pela organização”.
+        Use os botões para inserir as informações de cada candidato. O nome
+        (completo ou primeiro nome) e o link pessoal são obrigatórios. Evento e
+        validade são opcionais: você pode escrever essas informações diretamente
+        no texto. O departamento será o efetivamente alocado; sem alocação,
+        aparecerá “A definir pela organização”.
       </p>
+      {data.ready && missing.length > 0 && (
+        <section aria-label="Informações obrigatórias para salvar">
+          <Notice kind="info">
+            Para salvar, inclua todas as informações automáticas abaixo:
+            <ul>
+              {missing.map((field) => (
+                <li key={field.keys.join("/")}>
+                  {field.label}:{" "}
+                  <code>
+                    {field.keys.map((key) => `{{${key}}}`).join(" ou ")}
+                  </code>
+                </li>
+              ))}
+            </ul>
+            <button
+              type="button"
+              className="button outline"
+              disabled={busy || completedText.length > 5000}
+              onClick={() => edit(completedText)}
+            >
+              Adicionar informações obrigatórias
+            </button>
+            {completedText.length > 5000 && (
+              <p>
+                Reduza o texto para incluir as informações obrigatórias dentro
+                de 5.000 caracteres.
+              </p>
+            )}
+          </Notice>
+        </section>
+      )}
       <div className="message-editor">
         <div>
           <Field
@@ -165,8 +253,7 @@ function MessageEditor({
               value={text}
               disabled={busy || !data.ready}
               onChange={(e) => {
-                setText(e.target.value);
-                setInfo("");
+                edit(e.target.value);
               }}
             />
           </Field>
@@ -175,6 +262,10 @@ function MessageEditor({
         <section aria-label="Prévia da mensagem">
           <h3 className="message-preview-label">Prévia com dados fictícios</h3>
           <p className="message-preview">{preview}</p>
+          <p className="muted">
+            Para enviar a mensagem preenchida de um candidato, use o WhatsApp na
+            listagem de inscrições.
+          </p>
         </section>
       </div>
       <section
@@ -203,7 +294,9 @@ function MessageEditor({
             busy ||
             !data.ready ||
             text === data.template ||
-            text.trim().length < 20
+            text.trim().length < 20 ||
+            text.length > 5000 ||
+            missing.length > 0
           }
           onClick={() => void save()}
         >
@@ -213,7 +306,7 @@ function MessageEditor({
           className="button outline"
           disabled={busy || !data.ready}
           onClick={() => {
-            setText(data.defaultTemplate);
+            edit(data.defaultTemplate);
             setInfo(
               "Texto padrão carregado na edição. Salve para aplicar ao evento.",
             );

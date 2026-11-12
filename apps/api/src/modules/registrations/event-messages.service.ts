@@ -24,6 +24,10 @@ export const messageFields = [
     example: "[data e horário de vencimento]",
   },
 ] as const;
+export const requiredMessageFields = [
+  { keys: ["nome", "primeiro_nome"], label: "Nome do candidato" },
+  { keys: ["link"], label: "Link pessoal" },
+] as const;
 export type MessageValues = Record<
   Exclude<(typeof messageFields)[number]["key"], "primeiro_nome">,
   string
@@ -58,17 +62,17 @@ export function validateMessageTemplate(template: string) {
     422,
     "Confira as informações automáticas entre chaves.",
   );
-  assert(
-    variables.includes("nome") || variables.includes("primeiro_nome"),
-    422,
-    "Mantenha a informação automática {{nome}} ou {{primeiro_nome}} na mensagem.",
+  const missing = requiredMessageFields.filter(
+    (field) => !field.keys.some((key) => variables.includes(key)),
   );
-  for (const key of ["evento", "link", "validade"])
-    assert(
-      variables.includes(key),
-      422,
-      `Mantenha a informação automática {{${key}}} na mensagem.`,
-    );
+  assert(
+    missing.length === 0,
+    422,
+    `Inclua as informações automáticas obrigatórias: ${missing
+      .map((field) => field.keys.map((key) => `{{${key}}}`).join(" ou "))
+      .join("; ")}.`,
+    "MESSAGE_REQUIRED_FIELDS",
+  );
   assert(
     variables.filter((key) => key === "link").length === 1,
     422,
@@ -126,6 +130,7 @@ export class EventMessagesService {
       customized: !!row?.content,
       defaultTemplate: defaultMessageTemplate,
       fields: messageFields,
+      requiredFields: requiredMessageFields,
       previewValues: {
         ...Object.fromEntries(
           messageFields.map((field) => [field.key, field.example]),

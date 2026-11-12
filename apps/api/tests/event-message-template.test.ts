@@ -3,6 +3,7 @@ import type { PrismaClient } from "@prisma/client";
 import {
   defaultMessageTemplate,
   messageFields,
+  requiredMessageFields,
   renderMessageTemplate,
   validateMessageTemplate,
   type MessageValues,
@@ -28,6 +29,7 @@ describe("Modelo de mensagem de aceite", () => {
       ready: false,
       customized: false,
       template: defaultMessageTemplate,
+      requiredFields: requiredMessageFields,
       fields: expect.arrayContaining([
         {
           key: "primeiro_nome",
@@ -53,6 +55,40 @@ describe("Modelo de mensagem de aceite", () => {
     const text = renderMessageTemplate(defaultMessageTemplate, values);
     expect(text).toContain("Maria {{link}} <b>Exemplo</b>");
     expect(text).toContain("Departamento alocado: SECRETARIA.");
+  });
+  it("permite evento e datas fixos sem exigir as variáveis opcionais de evento e validade", () => {
+    const draft =
+      "Olá, {{primeiro_nome}}! Recebemos sua inscrição para servir no 3º Acampamento FAC, de 5 a 9 de fevereiro de 2027. Confirme sua presença pelo link: {{link}}";
+    expect(() => validateMessageTemplate(draft)).not.toThrow();
+    expect(() =>
+      validateMessageTemplate(draft.replace("{{primeiro_nome}}", "{{nome}}")),
+    ).not.toThrow();
+    const values = Object.fromEntries(
+      messageFields.map((field) => [field.key, field.example]),
+    ) as MessageValues;
+    expect(
+      renderMessageTemplate(
+        `${draft}\nEvento: {{evento}}. Link válido até {{validade}}.`,
+        values,
+      ),
+    ).toContain(
+      "Evento: Acampamento de exemplo. Link válido até [data e horário de vencimento].",
+    );
+  });
+  it("informa juntos nome e link quando faltam as informações que continuam obrigatórias", () => {
+    const draft =
+      "Recebemos sua inscrição para servir no 3º Acampamento FAC. Confirme sua presença com a organização.";
+    expect(() => validateMessageTemplate(draft)).toThrow(
+      "Inclua as informações automáticas obrigatórias: {{nome}} ou {{primeiro_nome}}; {{link}}.",
+    );
+    try {
+      validateMessageTemplate(draft);
+    } catch (error) {
+      expect(error).toMatchObject({
+        status: 422,
+        code: "MESSAGE_REQUIRED_FIELDS",
+      });
+    }
   });
   it.each([
     ["Maria Clara de Souza", "Maria"],

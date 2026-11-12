@@ -1,5 +1,14 @@
 # Roteiro de testes da aplicação Encontro
 
+## Validação do modelo de mensagem — 11/11/2026
+
+- Colar no editor um texto com `{{primeiro_nome}}` e `{{link}}`, com o nome do acampamento e as datas escritos de forma fixa e sem `{{evento}}` ou `{{validade}}`. Conferir que Salvar permanece disponível e grava o texto exatamente como editado, sem acrescentar esses campos opcionais.
+- Remover nome e link para verificar a lista dos dois campos obrigatórios. Usar **Adicionar informações obrigatórias** e conferir que apenas a edição é completada, preservando o texto existente e as variáveis. Revisar a prévia fictícia e salvar; conferir revisão atualizada, conteúdo persistido com os marcadores e aviso de sucesso. As opções de inserir evento e validade continuam disponíveis para uso opcional.
+- Conferir aviso de alterações não salvas; erro de conteúdo mantém o texto e não oferece recarga desnecessária. Em conflito 409, recarregar o modelo salvo continua disponível. Campos obrigatórios vindos da API e fallback de compatibilidade devem funcionar.
+- As variáveis são esperadas no modelo e são substituídas quando a aplicação prepara a mensagem do candidato. Copiar o texto do editor não realiza essa substituição. Esta entrega não altera o funcionamento do WhatsApp nem envia mensagens automaticamente.
+
+Verificação: testes de validação/salvamento com banco descartável, testes da interface, tipos e compilação. Não há SQL novo ou alteração do modelo salvo em produção.
+
 ## Lista e Cards no computador — 11/11/2026
 
 - Em tela horizontal com pelo menos 1280 px, abrir um evento e usar **Lista / Cards** ao lado das abas. Lista mantém a tabela; Cards reaproveita os cartões compactos do celular. O seletor deve continuar disponível sem resultados e durante recarregamento.
@@ -296,7 +305,7 @@ Os casos a seguir precisam do ambiente de homologação completo. Use sempre nov
 
 O registro de presença do candidato e a confirmação administrativa são ações distintas. Aprovação, alocação e confirmação também são distintas: a vaga do departamento é ocupada na alocação de uma candidatura aprovada; a confirmação não deve contá-la novamente. A capacidade geral de campistas é independente dessas vagas.
 
-Complemento local: aplicar `database/manual/17_mensagens_aceite.sql` para habilitar **Minha organização → Mensagens**. Selecionar um evento; editar o aceite, inserir informações pelo cursor, conferir prévia fictícia, salvar e recarregar. Restaurar o padrão exige salvar. Outro evento deve conservar seu próprio modelo. Testar duas sessões salvando a mesma revisão (uma deve receber conflito), acesso de secretaria/outra organização, remoção de nome/evento/link/validade e variáveis desconhecidas. Nenhuma dessas ações deve enviar mensagens ou mudar candidaturas. Conferir no aceite preparado o nome, departamento efetivo, prazo e link curto do candidato. O percurso focado é `scripts/browser-event-messages-check.mjs`.
+Complemento local: aplicar `database/manual/17_mensagens_aceite.sql` para habilitar **Minha organização → Mensagens**. Selecionar um evento; editar o aceite, inserir informações pelo cursor, conferir prévia fictícia, salvar e recarregar. Restaurar o padrão exige salvar. Outro evento deve conservar seu próprio modelo. Testar duas sessões salvando a mesma revisão (uma deve receber conflito), acesso de secretaria/outra organização e variáveis desconhecidas. Nome e link ausentes devem impedir salvar; a ausência de evento e validade deve ser permitida. Nenhuma dessas ações deve enviar mensagens ou mudar candidaturas. Conferir no aceite preparado o nome, departamento efetivo, link curto e os demais campos opcionais quando usados. O percurso focado é `scripts/browser-event-messages-check.mjs`.
 
 Abrir o link compacto `/r#...` em computador/celular e recarregar a página de resposta; a credencial sai da barra de endereço e é preservada na sessão da aba. Só o botão confirma presença. Link antigo `/resposta/:id#token=...` continua aceito; código inválido/adulterado, expirado ou revogado não libera o aviso. Renovar invalida também o código compacto anterior. O SQL 17 não é necessário para compactar o link; sem a tabela, somente a personalização fica indisponível e os avisos usam o padrão.
 

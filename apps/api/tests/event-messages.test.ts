@@ -128,8 +128,26 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       departamento: "SECRETARIA",
     });
     expect(page.template).toBe(page.defaultTemplate);
+    expect(page.requiredFields).toEqual([
+      { keys: ["nome", "primeiro_nome"], label: "Nome do candidato" },
+      { keys: ["link"], label: "Link pessoal" },
+    ]);
   });
   it("valida informações obrigatórias e salva com revisão sem enviar", async () => {
+    const incomplete = await request(app)
+      .put(path())
+      .set(auth())
+      .send({
+        revision: 0,
+        template:
+          "Recebemos sua inscrição para servir no 3º Acampamento FAC. Confirme sua presença com a organização.",
+      })
+      .expect(422);
+    expect(incomplete.body.error).toMatchObject({
+      code: "MESSAGE_REQUIRED_FIELDS",
+      message:
+        "Inclua as informações automáticas obrigatórias: {{nome}} ou {{primeiro_nome}}; {{link}}.",
+    });
     for (const invalid of [
       template.replace("{{link}}", ""),
       template + " {{senha}}",
@@ -281,5 +299,85 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       (await db.registration.findUniqueOrThrow({ where: { id: registration } }))
         .status,
     ).toBe("APPROVED");
+  });
+  it("salva o texto completo e gera a mensagem pessoal sem manter variáveis", async () => {
+    const current = (await request(app).get(path()).set(auth()).expect(200))
+      .body;
+    const completed =
+      "Olá, {{primeiro_nome}}! A Paz de Jesus! ❤️🙏🏻\n\nRecebemos sua inscrição para servir no {{evento}}! ❤️‍🔥\nPrimeira espiritualidade: 14/11, às 14h.\n\nConfirme sua presença pelo link: {{link}}\nLink pessoal válido até {{validade}} (horário de Brasília).";
+    await request(app)
+      .put(path())
+      .set(auth())
+      .send({ revision: current.revision, template: completed })
+      .expect(200);
+    const notice = (
+      await request(app)
+        .get(
+          `/api/v1/organizations/${org}/registrations/${registration}/decision-notice`,
+        )
+        .set(auth())
+        .expect(200)
+    ).body.notice;
+    expect(notice.message).toContain("Olá, Maria! A Paz de Jesus!");
+    expect(notice.message).toContain("FAC Mensagens");
+    expect(notice.message).toContain(notice.shortLink);
+    expect(notice.message).not.toMatch(/\{\{|\}\}/u);
+    expect(new URL(notice.whatsappLink).searchParams.get("text")).toBe(
+      notice.message,
+    );
+    expect(send).not.toHaveBeenCalled();
+  });
+  it("salva a mensagem fornecida com evento e datas fixos sem acrescentar campos opcionais", async () => {
+    const current = (await request(app).get(path()).set(auth()).expect(200))
+      .body;
+    const draft = `Olá, {{primeiro_nome}}!
+A Paz de Jesus! ❤️🙏🏻
+
+Recebemos com muita alegria sua inscrição para servir no 3º Acampamento FAC! ❤️‍🔥
+
+É uma bênção saber que Deus continua despertando corações dispostos a levar Seu amor a tantos jovens!
+
+Agora queremos confirmar o seu SIM para essa linda missão! ❤️
+
+📅 Acampamento: 5 a 9 de fevereiro de 2027, com disponibilidade integral, inclusive para dormir no local.
+
+🙏🏻 Primeira espiritualidade: neste sábado, 14/11, às 14h.
+🚨 A participação é obrigatória!! 🚨
+
+Lembramos, com carinho, que a participação nas espiritualidades preparatórias é indispensável para todos os servos.
+
+Podemos contar com você nessa missão de amor? ❤️‍🔥
+
+Confirme sua presença pelo link: {{link}}
+
+Que Nossa Senhora conduza seu SIM e que Deus abençoe sua entrega! 🙏🏻❤️`;
+    const saved = (
+      await request(app)
+        .put(path())
+        .set(auth())
+        .send({ revision: current.revision, template: draft })
+        .expect(200)
+    ).body;
+    expect(saved.template).toBe(draft);
+    expect(saved.template).not.toContain("{{evento}}");
+    expect(saved.template).not.toContain("{{validade}}");
+    const notice = (
+      await request(app)
+        .get(
+          `/api/v1/organizations/${org}/registrations/${registration}/decision-notice`,
+        )
+        .set(auth())
+        .expect(200)
+    ).body.notice;
+    expect(notice.message).toContain("Olá, Maria!\nA Paz de Jesus!");
+    expect(notice.message).toContain("3º Acampamento FAC");
+    expect(notice.message).toContain("5 a 9 de fevereiro de 2027");
+    expect(notice.message).toContain(notice.shortLink);
+    expect(notice.message).not.toMatch(/\{\{|\}\}/u);
+    expect(notice.message).not.toContain("Link pessoal válido até");
+    expect(new URL(notice.whatsappLink).searchParams.get("text")).toBe(
+      notice.message,
+    );
+    expect(send).not.toHaveBeenCalled();
   });
 });
