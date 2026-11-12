@@ -123,6 +123,7 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
     expect(page).toMatchObject({ ready: true, revision: 0, customized: false });
     expect(page.previewValues).toMatchObject({
       nome: "Maria Exemplo",
+      primeiro_nome: "Maria",
       evento: "FAC Mensagens",
       departamento: "SECRETARIA",
     });
@@ -251,5 +252,34 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
         where: { entityId: event, action: "EVENT_ACCEPT_MESSAGE_RESET" },
       }),
     ).toBe(1);
+  });
+  it("salva primeiro nome como alternativa e prepara o WhatsApp sem o sobrenome", async () => {
+    const current = (await request(app).get(path()).set(auth()).expect(200))
+      .body;
+    const firstNameTemplate = template.replace("{{nome}}", "{{primeiro_nome}}");
+    await request(app)
+      .put(path())
+      .set(auth())
+      .send({ revision: current.revision, template: firstNameTemplate })
+      .expect(200);
+    const notice = (
+      await request(app)
+        .get(
+          `/api/v1/organizations/${org}/registrations/${registration}/decision-notice`,
+        )
+        .set(auth())
+        .expect(200)
+    ).body.notice;
+    expect(notice.message).toContain("Paz e bem, Maria!");
+    expect(notice.message).not.toContain("Maria Integração");
+    expect(notice.message).not.toContain("{{primeiro_nome}}");
+    expect(new URL(notice.whatsappLink).searchParams.get("text")).toBe(
+      notice.message,
+    );
+    expect(send).not.toHaveBeenCalled();
+    expect(
+      (await db.registration.findUniqueOrThrow({ where: { id: registration } }))
+        .status,
+    ).toBe("APPROVED");
   });
 });

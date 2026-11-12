@@ -27,6 +27,9 @@ O endereço do repositório, sozinho, não configura a autenticação SSH.
 
 ATUALIZAÇÕES FUTURAS
 
+Antes da próxima sincronização, consultar deploy/PROXIMA_SINCRONIZACAO.md
+para incluir os pacotes preparados e registrar a publicação concluída.
+
 Depois que o primeiro envio for confirmado, você poderá enviar atualizações
 pelo terminal na pasta do projeto:
 

@@ -28,10 +28,16 @@ const initial = {
   defaultTemplate: standard,
   customized: false,
   fields: [
+    {
+      key: "primeiro_nome",
+      label: "Primeiro nome do candidato",
+      example: "Maria",
+    },
     { key: "departamento", label: "Departamento alocado", example: "COZINHA" },
   ],
   previewValues: {
     nome: "Maria Exemplo",
+    primeiro_nome: "Maria",
     evento: "FAC Teste",
     departamento: "COZINHA",
     link: "[link pessoal]",
@@ -113,6 +119,35 @@ describe("Editor de mensagem de aceite", () => {
       expect(
         mocks.api.mock.calls.every(([, options]) => !options?.method),
       ).toBe(true),
+    );
+  });
+  it("insere só o primeiro nome e preserva a variável ao salvar", async () => {
+    view();
+    const editor = (await screen.findByRole("textbox", {
+      name: /Texto da mensagem/,
+    })) as HTMLTextAreaElement;
+    await waitFor(() => expect(editor).toHaveValue(standard));
+    const start = standard.indexOf("{{nome}}");
+    editor.focus();
+    editor.setSelectionRange(start, start + "{{nome}}".length);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Inserir primeiro nome do candidato",
+      }),
+    );
+    const updated = standard.replace("{{nome}}", "{{primeiro_nome}}");
+    expect(editor).toHaveValue(updated);
+    const preview = screen.getByRole("region", { name: "Prévia da mensagem" });
+    expect(within(preview).getByText(/Olá, Maria!/)).toBeVisible();
+    expect(preview).not.toHaveTextContent("Maria Exemplo");
+    fireEvent.click(screen.getByRole("button", { name: "Salvar mensagem" }));
+    await screen.findByText(/Mensagem salva para este evento/);
+    expect(mocks.api).toHaveBeenCalledWith(
+      path,
+      expect.objectContaining({
+        method: "PUT",
+        body: { revision: 0, template: updated },
+      }),
     );
   });
 });

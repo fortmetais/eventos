@@ -148,28 +148,12 @@ function MessageEditor({
       {info && <Notice kind="success">{info}</Notice>}
       <p>
         Use os botões para inserir as informações de cada candidato. Mantenha
-        nome, evento, link pessoal e validade. O departamento será o
-        efetivamente alocado; sem alocação, aparecerá “A definir pela
-        organização”.
+        nome completo ou primeiro nome, evento, link pessoal e validade. O
+        departamento será o efetivamente alocado; sem alocação, aparecerá “A
+        definir pela organização”.
       </p>
       <div className="message-editor">
         <div>
-          <div
-            className="button-row"
-            aria-label="Inserir informações automáticas"
-          >
-            {data.fields.map((field) => (
-              <button
-                key={field.key}
-                type="button"
-                className="button outline"
-                disabled={busy || !data.ready}
-                onClick={() => insert(field.key)}
-              >
-                Inserir {field.label.toLocaleLowerCase("pt-BR")}
-              </button>
-            ))}
-          </div>
           <Field
             label="Texto da mensagem"
             hint="Até 5.000 caracteres. Use texto simples e quebras de linha; o mesmo texto é usado no WhatsApp e no e-mail."
@@ -187,42 +171,61 @@ function MessageEditor({
             />
           </Field>
           <small>{text.length}/5.000 caracteres</small>
-          <div className="button-row">
-            <button
-              className="button primary"
-              disabled={
-                busy ||
-                !data.ready ||
-                text === data.template ||
-                text.trim().length < 20
-              }
-              onClick={() => void save()}
-            >
-              {busy ? "Salvando…" : "Salvar mensagem"}
-            </button>
-            <button
-              className="button outline"
-              disabled={busy || !data.ready}
-              onClick={() => {
-                setText(data.defaultTemplate);
-                setInfo(
-                  "Texto padrão carregado na edição. Salve para aplicar ao evento.",
-                );
-              }}
-            >
-              Restaurar texto padrão
-            </button>
-          </div>
-          <p className="muted">
-            Salvar o modelo não envia mensagens nem modifica candidaturas.
-            Mensagens já enviadas permanecem com o conteúdo original.
-          </p>
         </div>
-        <section className="previous-review" aria-label="Prévia da mensagem">
-          <h3>Prévia com dados fictícios</h3>
+        <section aria-label="Prévia da mensagem">
+          <h3 className="message-preview-label">Prévia com dados fictícios</h3>
           <p className="message-preview">{preview}</p>
         </section>
       </div>
+      <section
+        className="message-insertions"
+        aria-label="Inserir informações automáticas"
+      >
+        <h3>Inserção automática</h3>
+        <div className="button-row">
+          {data.fields.map((field) => (
+            <button
+              key={field.key}
+              type="button"
+              className="button outline"
+              disabled={busy || !data.ready}
+              onClick={() => insert(field.key)}
+            >
+              Inserir {field.label.toLocaleLowerCase("pt-BR")}
+            </button>
+          ))}
+        </div>
+      </section>
+      <div className="button-row">
+        <button
+          className="button primary"
+          disabled={
+            busy ||
+            !data.ready ||
+            text === data.template ||
+            text.trim().length < 20
+          }
+          onClick={() => void save()}
+        >
+          {busy ? "Salvando…" : "Salvar mensagem"}
+        </button>
+        <button
+          className="button outline"
+          disabled={busy || !data.ready}
+          onClick={() => {
+            setText(data.defaultTemplate);
+            setInfo(
+              "Texto padrão carregado na edição. Salve para aplicar ao evento.",
+            );
+          }}
+        >
+          Restaurar texto padrão
+        </button>
+      </div>
+      <p className="muted">
+        Salvar o modelo não envia mensagens nem modifica candidaturas. Mensagens
+        já enviadas permanecem com o conteúdo original.
+      </p>
     </section>
   );
 }

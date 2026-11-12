@@ -14,14 +14,12 @@ describe("Modelo de mensagem de aceite", () => {
     const db = {
       $queryRaw: query,
       event: {
-        findFirst: vi
-          .fn()
-          .mockResolvedValue({
-            id: "event",
-            name: "FAC",
-            startsAt: new Date("2027-02-05"),
-            organization: { name: "Paróquia" },
-          }),
+        findFirst: vi.fn().mockResolvedValue({
+          id: "event",
+          name: "FAC",
+          startsAt: new Date("2027-02-05"),
+          organization: { name: "Paróquia" },
+        }),
       },
     } as unknown as PrismaClient;
     const service = new EventMessagesService(db);
@@ -30,6 +28,14 @@ describe("Modelo de mensagem de aceite", () => {
       ready: false,
       customized: false,
       template: defaultMessageTemplate,
+      fields: expect.arrayContaining([
+        {
+          key: "primeiro_nome",
+          label: "Primeiro nome do candidato",
+          example: "Maria",
+        },
+      ]),
+      previewValues: { nome: "Maria Exemplo", primeiro_nome: "Maria" },
     });
     await expect(
       service.save("org", "event", "actor", {
@@ -49,6 +55,34 @@ describe("Modelo de mensagem de aceite", () => {
     expect(text).toContain("Departamento alocado: SECRETARIA.");
   });
   it.each([
+    ["Maria Clara de Souza", "Maria"],
+    ["  José Luís de Almeida  ", "José"],
+    ["\u2003Érica\u00a0dos\tSantos\n", "Érica"],
+    ["Ana-Maria Silva", "Ana-Maria"],
+    ["João", "João"],
+  ])(
+    "usa somente o primeiro nome de %s sem alterar o nome completo",
+    (name, first) => {
+      const template = defaultMessageTemplate.replace(
+        "{{nome}}",
+        "{{primeiro_nome}}",
+      );
+      expect(() => validateMessageTemplate(template)).not.toThrow();
+      const values = Object.fromEntries(
+        messageFields.map((field) => [field.key, field.example]),
+      ) as MessageValues;
+      values.nome = name;
+      expect(renderMessageTemplate(template, values)).toContain(
+        `Olá, ${first}!`,
+      );
+      expect(
+        renderMessageTemplate("{{nome}} · {{ primeiro_nome }}", values),
+      ).toBe(`${name} · ${first}`);
+    },
+  );
+  it.each([
+    defaultMessageTemplate.replace("{{nome}}", ""),
+    defaultMessageTemplate.replace("{{nome}}", "{{apelido}}"),
     defaultMessageTemplate.replace("{{link}}", ""),
     defaultMessageTemplate + " {{link}}",
     defaultMessageTemplate + " {{saude}}",

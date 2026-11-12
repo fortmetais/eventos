@@ -4,6 +4,11 @@ import { assert } from "../../core/errors.js";
 
 export const messageFields = [
   { key: "nome", label: "Nome do candidato", example: "Maria Exemplo" },
+  {
+    key: "primeiro_nome",
+    label: "Primeiro nome do candidato",
+    example: "Maria",
+  },
   { key: "evento", label: "Nome do evento", example: "Acampamento de exemplo" },
   { key: "organizacao", label: "Organização", example: "Paróquia de exemplo" },
   { key: "data_evento", label: "Data do evento", example: "05/02/2027" },
@@ -20,7 +25,7 @@ export const messageFields = [
   },
 ] as const;
 export type MessageValues = Record<
-  (typeof messageFields)[number]["key"],
+  Exclude<(typeof messageFields)[number]["key"], "primeiro_nome">,
   string
 >;
 export const defaultMessageTemplate = `Olá, {{nome}}! Sua candidatura para servir no {{evento}} foi aceita!
@@ -53,7 +58,12 @@ export function validateMessageTemplate(template: string) {
     422,
     "Confira as informações automáticas entre chaves.",
   );
-  for (const key of ["nome", "evento", "link", "validade"])
+  assert(
+    variables.includes("nome") || variables.includes("primeiro_nome"),
+    422,
+    "Mantenha a informação automática {{nome}} ou {{primeiro_nome}} na mensagem.",
+  );
+  for (const key of ["evento", "link", "validade"])
     assert(
       variables.includes(key),
       422,
@@ -66,9 +76,13 @@ export function validateMessageTemplate(template: string) {
   );
 }
 export function renderMessageTemplate(template: string, values: MessageValues) {
+  const replacements = {
+    ...values,
+    primeiro_nome: values.nome.trim().split(/\s+/u)[0] ?? "",
+  };
   return template.replace(
     /\{\{\s*([\w]+)\s*\}\}/g,
-    (_, key: keyof MessageValues) => values[key],
+    (_, key: keyof typeof replacements) => replacements[key],
   );
 }
 type TemplateRow = {

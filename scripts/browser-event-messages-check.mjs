@@ -191,9 +191,51 @@ try {
     await page.goto(`${target}/organizacao/${org}/mensagens?evento=${event}`);
     const editor = page.getByRole("textbox", { name: /Texto da mensagem/ });
     await expect(editor).toHaveValue(defaultMessageTemplate);
+    const preview = page.getByRole("region", { name: "Prévia da mensagem" });
+    const insertions = page.getByRole("region", {
+      name: "Inserir informações automáticas",
+    });
+    const editorBox = await editor.boundingBox();
+    const previewBox = await preview.locator(".message-preview").boundingBox();
+    const insertionsBox = await insertions.boundingBox();
+    assert(editorBox && previewBox && insertionsBox);
+    if (mobile) {
+      assert(
+        previewBox.y >= editorBox.y + editorBox.height,
+        "A prévia deve vir abaixo do editor no celular.",
+      );
+    } else {
+      assert(
+        Math.abs(editorBox.y - previewBox.y) <= 2,
+        "Editor e prévia devem começar alinhados.",
+      );
+      assert(
+        Math.abs(editorBox.width - previewBox.width) <= 2,
+        "As colunas devem ter a mesma largura.",
+      );
+    }
+    assert(
+      insertionsBox.y >=
+        Math.max(
+          editorBox.y + editorBox.height,
+          previewBox.y + previewBox.height,
+        ),
+      "As opções automáticas devem ficar abaixo dos dois campos.",
+    );
     await editor.fill(
       "Paz e bem, {{nome}}! Você foi escolhido para {{evento}}. Confirme em {{link}} até {{validade}}.\nDepartamento: ",
     );
+    await editor.focus();
+    await editor.evaluate((input) => {
+      const start = input.value.indexOf("{{nome}}");
+      input.setSelectionRange(start, start + "{{nome}}".length);
+    });
+    await page
+      .getByRole("button", { name: "Inserir primeiro nome do candidato" })
+      .click();
+    await expect(editor).toHaveValue(/Paz e bem, \{\{primeiro_nome\}\}!/);
+    await expect(preview).toContainText("Paz e bem, Maria!");
+    await expect(preview).not.toContainText("Maria Exemplo");
     await editor.focus();
     await editor.evaluate((input) =>
       input.setSelectionRange(input.value.length, input.value.length),
@@ -213,6 +255,7 @@ try {
     assert.equal(saves, 1);
     await page.reload();
     await expect(editor).toHaveValue(settings.template);
+    assert(settings.template.includes("{{primeiro_nome}}"));
     assert(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth + 1,
@@ -252,7 +295,7 @@ try {
     assert.deepEqual(errors, []);
     await context.close();
     console.log(
-      `Mensagens ${mobile ? "celular" : "desktop"}: edição, informação no cursor, prévia, salvamento, retomada, restauração e link compacto aprovados.`,
+      `Mensagens ${mobile ? "celular" : "desktop"}: alinhamento, opções abaixo, primeiro nome, edição, prévia, salvamento, retomada, restauração e link compacto aprovados.`,
     );
   }
 } finally {

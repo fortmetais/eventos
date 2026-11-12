@@ -74,6 +74,9 @@ configuração independente dos avisos enviados pelo backend.
 
 ANTES DE IMPLANTAR
 
+Conferir os pacotes preparados em deploy/PROXIMA_SINCRONIZACAO.md e incluir
+suas alterações na mesma versão enviada ao GitHub e publicada na Hostinger.
+
 1. Confirme que as tabelas e esquemas já existem no PostgreSQL remoto.
 2. Preencha as variáveis privadas no painel, sem colocá-las no GitHub.
 3. No Supabase Auth > URL Configuration, configure:
