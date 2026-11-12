@@ -6,6 +6,7 @@ import type { RegistrationsService } from "./registrations.service.js";
 const filters = z.object({
   eventId: id.optional(),
   campaignId: id.optional(),
+  teamId: z.union([id, z.literal("NONE")]).optional(),
   origin: z.enum(["PUBLIC_FORM", "IMPORT"]).optional(),
   completeness: z.enum(["PENDING", "COMPLETE"]).optional(),
   presence: z.enum(["VOU", "NAO_IREI", "SEM_RESPOSTA"]).optional(),

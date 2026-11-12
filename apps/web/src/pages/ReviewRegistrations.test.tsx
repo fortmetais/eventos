@@ -853,6 +853,96 @@ describe("Gestão de inscrições por evento", () => {
     expect(camp).toHaveValue("");
     expect(meeting).toHaveValue("");
   });
+  it.each([false, true])(
+    "filtra equipe/departamento preservando contexto e primeira página (celular: %s)",
+    async (mobile) => {
+      mobileViewport = mobile;
+      total = 45;
+      events.push({
+        ...structuredClone(edition),
+        id: "other-event",
+        teams: [
+          { ...edition.teams[0], id: "other-team", name: "OUTRO EVENTO" },
+        ],
+      });
+      show(
+        "/organizacao/org/inscricoes?evento=event&page=2&q=Maria&sort=NAME_DESC",
+      );
+      await ready();
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: mobile ? /Filtros e ordenação/ : "Filtros",
+        }),
+      );
+      const select = screen.getByRole("combobox", {
+        name: "Equipe/departamento",
+      });
+      expect(
+        within(select)
+          .getAllByRole("option")
+          .map((option) => option.textContent),
+      ).toEqual(["Todos", "Sem departamento", "SECRETARIA"]);
+      for (const value of ["team", "NONE", ""]) {
+        fireEvent.change(select, { target: { value } });
+        await waitFor(() => {
+          const params = new URL(
+            String(queries().at(-1)![0]),
+            "https://example.test",
+          ).searchParams;
+          expect(params.get("teamId")).toBe(value || null);
+          expect(params.get("page")).toBe("1");
+          expect(params.get("q")).toBe("Maria");
+          expect(params.get("sort")).toBe("NAME_DESC");
+          const location = new URLSearchParams(
+            screen.getByTestId("location").textContent ?? "",
+          );
+          expect(location.get("team")).toBe(value || null);
+          expect(location.has("page")).toBe(false);
+        });
+      }
+    },
+  );
+  it("retoma equipe pela URL, combina com respostas e limpa no celular", async () => {
+    mobileViewport = true;
+    show(
+      "/organizacao/org/inscricoes?evento=event&team=NONE&presence=VOU&spirituality=SIM&q=Maria",
+    );
+    await ready();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Filtros e ordenação, 3 filtros ativos/,
+      }),
+    );
+    const team = screen.getByRole("combobox", { name: "Equipe/departamento" });
+    expect(team).toHaveValue("NONE");
+    expect(
+      screen.getByRole("combobox", { name: "Participação no acampamento" }),
+    ).toHaveValue("VOU");
+    expect(
+      screen.getByRole("combobox", { name: "Espiritualidade" }),
+    ).toHaveValue("SIM");
+    fireEvent.change(team, { target: { value: "team" } });
+    await waitFor(() => {
+      const params = new URL(
+        String(queries().at(-1)![0]),
+        "https://example.test",
+      ).searchParams;
+      expect(params.get("teamId")).toBe("team");
+      expect(params.get("presence")).toBe("VOU");
+      expect(params.get("spirituality")).toBe("SIM");
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Limpar filtros" }));
+    await waitFor(() => {
+      const params = new URLSearchParams(
+        screen.getByTestId("location").textContent ?? "",
+      );
+      expect(params.has("team")).toBe(false);
+      expect(params.has("presence")).toBe(false);
+      expect(params.has("spirituality")).toBe(false);
+      expect(params.get("q")).toBe("Maria");
+    });
+    expect(team).toHaveValue("");
+  });
   it("aceita diretamente e registra motivo padrão sem pedir justificativa", async () => {
     show();
     const select = await ready();

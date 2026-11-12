@@ -1,5 +1,14 @@
 # Roteiro de testes da aplicação Encontro
 
+## Filtro de equipe/departamento — 12/11/2026
+
+- Nos filtros de inscrições do computador e celular, conferir **Equipe/departamento** com **Todos**, **Sem departamento** e os departamentos do evento. Selecionar um departamento deve incluir tanto indicações sem reserva quanto alocações já aprovadas, sem alterar vínculos ou decisões.
+- Combinar equipe com pesquisa, ordenação, participação no acampamento, espiritualidade e demais filtros. A opção **Sem departamento** deve mostrar somente candidaturas sem vínculo, excluindo também quem já possui departamento apenas indicado.
+- Alterar equipe na página 2 deve retornar à página 1; o resultado completo deve ser filtrado antes de paginar. Conferir `team` na URL e a manutenção após recarregar. Mudar equipe preserva os demais filtros; **Todos** e **Limpar filtros** removem a seleção sem apagar a pesquisa.
+- Conferir eventos sem departamentos, resultado vazio e isolamento entre eventos/organizações. Selecionar equipe não consulta cada ficha individualmente nem envia mensagens. Verificar leitura e toque no celular e ausência de rolagem horizontal.
+
+Verificação aprovada no computador (1536 × 1000) e celulares de 320, 390 e 430 px. O percurso `scripts/browser-review-registrations-check.mjs` usa 25 pessoas fictícias para verificar departamentos indicados/alocados, ausência de vínculo, filtros combinados, retomada, limpeza e paginação, preservando os fluxos anteriores. Capturas inspecionadas em `.local/screenshots/review-team-filter-*.png`. Nenhum dado de produção ou mensagem real foi utilizado.
+
 ## Respostas ao convite na ficha e filtros — 12/11/2026
 
 - Na ficha do participante, abrir **Participação e respostas** e conferir **Respostas ao convite**. As duas perguntas devem aparecer juntas: participação no acampamento (**Vou participar / Não irei / Não respondeu**) e, quando configurada, participação na espiritualidade (**Sim / Não / Não respondeu**). Conferir a data da espiritualidade e as datas de resposta; ausência de resposta não pode virar uma negativa.

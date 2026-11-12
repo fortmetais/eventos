@@ -470,6 +470,7 @@ export class RegistrationsService {
     };
     const [items, total] =
       filters.q !== undefined ||
+      filters.teamId !== undefined ||
       filters.presence !== undefined ||
       filters.spirituality !== undefined ||
       filters.sort !== undefined ||

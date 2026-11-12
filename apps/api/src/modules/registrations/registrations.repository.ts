@@ -7,6 +7,7 @@ import { basicTeam } from "../events/departments.repository.js";
 export type RegistrationFilters = {
   eventId?: string;
   campaignId?: string;
+  teamId?: string | "NONE";
   status?: RegistrationStatus;
   origin?: "PUBLIC_FORM" | "IMPORT";
   completeness?: "PENDING" | "COMPLETE";
@@ -107,6 +108,12 @@ export class RegistrationsRepository {
       clauses.push(Prisma.sql`e.evento_id = ${filters.eventId}::uuid`);
     if (filters.campaignId)
       clauses.push(Prisma.sql`r.campanha_id = ${filters.campaignId}::uuid`);
+    if (filters.teamId)
+      clauses.push(
+        filters.teamId === "NONE"
+          ? Prisma.sql`r.equipe_id IS NULL`
+          : Prisma.sql`r.equipe_id = ${filters.teamId}::uuid`,
+      );
     if (filters.status)
       clauses.push(
         Prisma.sql`r.situacao::text = ${storedStatus[filters.status]}`,

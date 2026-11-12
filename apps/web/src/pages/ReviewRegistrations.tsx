@@ -124,6 +124,7 @@ export function ReviewRegistrations() {
   const tab =
     search.get("aba") === "departamentos" ? "departamentos" : "inscricoes";
   const campaignId = search.get("campaign") ?? "";
+  const teamId = search.get("team") ?? "";
   const status = search.get("status") ?? "";
   const origin = search.get("origin") ?? "";
   const completeness = search.get("completeness") ?? "";
@@ -142,6 +143,7 @@ export function ReviewRegistrations() {
   const [showFilters, setShowFilters] = useState(
     Boolean(
       campaignId ||
+      teamId ||
       status ||
       origin ||
       completeness ||
@@ -159,6 +161,7 @@ export function ReviewRegistrations() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const filterCount = [
     campaignId,
+    teamId,
     status,
     origin,
     completeness,
@@ -248,6 +251,7 @@ export function ReviewRegistrations() {
     includeClosed: String(includeClosed),
     ...(searchQ ? { q: searchQ } : {}),
     ...(campaignId ? { campaignId } : {}),
+    ...(teamId ? { teamId } : {}),
     ...(status ? { status } : {}),
     ...(origin ? { origin } : {}),
     ...(completeness ? { completeness } : {}),
@@ -754,6 +758,20 @@ export function ReviewRegistrations() {
           ))}
         </select>
       </Field>
+      <Field label="Equipe/departamento">
+        <select
+          value={teamId}
+          onChange={(event) => filter("team", event.target.value)}
+        >
+          <option value="">Todos</option>
+          <option value="NONE">Sem departamento</option>
+          {edition?.teams.map((team) => (
+            <option value={team.id} key={team.id}>
+              {team.name}
+            </option>
+          ))}
+        </select>
+      </Field>
       <Field label="Estado">
         <select
           value={status}
@@ -1227,6 +1245,7 @@ export function ReviewRegistrations() {
               onClick={() =>
                 changeSearch({
                   campaign: null,
+                  team: null,
                   status: null,
                   origin: null,
                   completeness: null,

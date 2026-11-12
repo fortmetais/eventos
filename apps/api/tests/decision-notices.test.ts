@@ -1872,6 +1872,185 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
         expired: true,
       });
     });
+    it("filtra departamento atual ou ausência de vínculo antes de paginar, inclusive indicações e combinações", async () => {
+      await withSpirituality(async () => {
+        const prefix = "Filtro departamento atual";
+        const departmentA = await db.team.create({
+          data: { eventId, name: `${prefix} A`, capacity: 10 },
+        });
+        const departmentB = await db.team.create({
+          data: { eventId, name: `${prefix} B`, capacity: 10 },
+        });
+        const ids: Record<string, string> = {};
+        for (const suffix of ["A", "B", "C", "D", "E", "F"])
+          ids[suffix] = await candidate(true, { name: `${prefix} ${suffix}` });
+        const accepted = await acceptedNotice(ids.B);
+        await request(app)
+          .post(publicPath(accepted.id))
+          .send({ token: accepted.token, resposta: "VOU" })
+          .expect(200);
+        await request(app)
+          .post(`${publicPath(accepted.id)}/spirituality`)
+          .send({ token: accepted.token, response: false })
+          .expect(200);
+        const withoutDepartment = await acceptedNotice(ids.E);
+        await request(app)
+          .post(publicPath(withoutDepartment.id))
+          .send({ token: withoutDepartment.token, resposta: "NAO_IREI" })
+          .expect(200);
+        await request(app)
+          .post(`${publicPath(withoutDepartment.id)}/spirituality`)
+          .send({ token: withoutDepartment.token, response: true })
+          .expect(200);
+        for (const [suffix, teamId] of [
+          ["A", departmentA.id],
+          ["B", departmentA.id],
+          ["C", departmentB.id],
+          ["F", departmentA.id],
+        ])
+          await request(app)
+            .put(`${base(ids[suffix])}/team`)
+            .set(auth())
+            .send({ teamId })
+            .expect(200);
+        const path = `/api/v1/organizations/${org}/registrations`;
+        const query = (
+          filters: Record<string, string | number> = {},
+          actor = "organizer",
+        ) =>
+          request(app)
+            .get(path)
+            .query({
+              eventId,
+              q: prefix,
+              sort: "NAME_ASC",
+              pageSize: 100,
+              ...filters,
+            })
+            .set(auth(actor));
+        const selected = async (
+          filters: Record<string, string | number> = {},
+        ) =>
+          (await query(filters).expect(200)).body.items.map(
+            (item: { id: string }) => item.id,
+          );
+        expect(await selected()).toEqual([
+          ids.A,
+          ids.B,
+          ids.C,
+          ids.D,
+          ids.E,
+          ids.F,
+        ]);
+        expect(await selected({ teamId: departmentA.id })).toEqual([
+          ids.A,
+          ids.B,
+          ids.F,
+        ]);
+        expect(await selected({ teamId: departmentB.id })).toEqual([ids.C]);
+        expect(await selected({ teamId: "NONE" })).toEqual([ids.D, ids.E]);
+        expect(
+          await selected({ teamId: departmentA.id, status: "RECEIVED" }),
+        ).toEqual([ids.A, ids.F]);
+        expect(
+          await selected({
+            teamId: departmentA.id,
+            status: "APPROVED",
+            presence: "VOU",
+            spirituality: "NAO",
+          }),
+        ).toEqual([ids.B]);
+        expect(
+          await selected({
+            teamId: "NONE",
+            presence: "NAO_IREI",
+            spirituality: "SIM",
+          }),
+        ).toEqual([ids.E]);
+        const bare = await request(app)
+          .get(path)
+          .query({ teamId: departmentA.id })
+          .set(auth())
+          .expect(200);
+        expect(
+          new Set(bare.body.items.map((item: { id: string }) => item.id)),
+        ).toEqual(new Set([ids.A, ids.B, ids.F]));
+        const page1 = await query({
+          teamId: departmentA.id,
+          pageSize: 2,
+          page: 1,
+        }).expect(200);
+        const page2 = await query({
+          teamId: departmentA.id,
+          pageSize: 2,
+          page: 2,
+        }).expect(200);
+        expect(page1.body.total).toBe(3);
+        expect(page2.body.total).toBe(3);
+        expect(
+          [...page1.body.items, ...page2.body.items].map(
+            (item: { id: string }) => item.id,
+          ),
+        ).toEqual([ids.A, ids.B, ids.F]);
+        const type = await db.eventType.findFirstOrThrow({
+          where: { organizationId: org },
+        });
+        const otherEvent = await db.event.create({
+          data: {
+            organizationId: org,
+            typeId: type.id,
+            name: "Outro evento do filtro de departamento",
+            description: "Teste isolado",
+            city: "Toledo",
+            location: "Local de teste",
+            startsAt: new Date("2027-07-01"),
+            endsAt: new Date("2027-07-02"),
+            status: "PUBLISHED",
+          },
+        });
+        const foreignDepartment = await db.team.create({
+          data: {
+            eventId: otherEvent.id,
+            name: "Departamento de outro evento",
+            capacity: 10,
+          },
+        });
+        expect(await selected({ teamId: foreignDepartment.id })).toEqual([]);
+        expect(
+          await selected({ teamId: departmentA.id, eventId: otherEvent.id }),
+        ).toEqual([]);
+        expect(await selected({ teamId: randomUUID() })).toEqual([]);
+        for (const invalid of ["all", "none", "", "0 OR 1=1"])
+          await query({ teamId: invalid }).expect(422);
+        const secretary = await query(
+          { teamId: departmentA.id },
+          "secretary",
+        ).expect(200);
+        expect(secretary.body.total).toBe(3);
+        await query({ teamId: departmentA.id }, "other").expect(403);
+        const isolated = await request(app)
+          .get(`/api/v1/organizations/${otherOrg}/registrations`)
+          .query({ eventId, teamId: departmentA.id })
+          .set(auth("other"))
+          .expect(200);
+        expect(isolated.body.items).toEqual([]);
+        expect(isolated.body.total).toBe(0);
+        await request(app)
+          .put(`${base(ids.A)}/team`)
+          .set(auth())
+          .send({ teamId: null })
+          .expect(200);
+        expect(await selected({ teamId: departmentA.id })).toEqual([
+          ids.B,
+          ids.F,
+        ]);
+        expect(await selected({ teamId: "NONE" })).toEqual([
+          ids.A,
+          ids.D,
+          ids.E,
+        ]);
+      });
+    });
     it("cancelamento e suspensão bloqueiam respostas e ações administrativas", async () => {
       await status(registrationId, "CANCELLED").then((r) =>
         expect(r.status).toBe(200),

@@ -285,7 +285,8 @@ try {
           "Pessoa fictícia Diana Exemplo",
         ][index] ?? `Pessoa fictícia ${String(index + 1).padStart(2, "0")}`;
       row.snapshot.name = row.person.name;
-      row.status = "APPROVED";
+      row.status = index === 2 ? "REVIEW" : "APPROVED";
+      row.team = [0, 2].includes(index) ? event.teams[0] : null;
       row.spiritualityResponse =
         index === 2 ? null : index === 1 ? false : true;
       row.spiritualityAt =
@@ -386,6 +387,12 @@ try {
         if (url.searchParams.get("status"))
           result = result.filter(
             (row) => row.status === url.searchParams.get("status"),
+          );
+        if (url.searchParams.get("teamId"))
+          result = result.filter((row) =>
+            url.searchParams.get("teamId") === "NONE"
+              ? !row.team
+              : row.team?.id === url.searchParams.get("teamId"),
           );
         if (url.searchParams.get("presence"))
           result = result.filter((row) => {
@@ -1880,6 +1887,132 @@ try {
       await expect(page.locator("tbody tr .review-person strong")).toHaveCount(
         20,
       );
+      const teamQueryStart = queries.length;
+      await page.goto(
+        `${target}/organizacao/${orgId}/inscricoes?evento=${eventId}&q=ficticia&sort=NAME_DESC&page=2`,
+      );
+      await expect(
+        page.getByText("Página 2 de 2", { exact: true }),
+      ).toBeVisible();
+      const teamFilter = page.getByRole("combobox", {
+        name: "Equipe/departamento",
+        exact: true,
+      });
+      const assertTeamQuery = async (
+        team,
+        presence = "",
+        spirituality = "",
+        preserveSort = true,
+      ) => {
+        await expect
+          .poll(() => new URL(page.url()).searchParams.get("team") ?? "")
+          .toBe(team);
+        await expect
+          .poll(() => new URL(page.url()).searchParams.get("presence") ?? "")
+          .toBe(presence);
+        await expect
+          .poll(() => new URL(page.url()).searchParams.get("spirituality") ?? "")
+          .toBe(spirituality);
+        const params = new URL(page.url()).searchParams;
+        assert.equal(params.get("q"), "ficticia");
+        if (preserveSort) assert.equal(params.get("sort"), "NAME_DESC");
+        assert.equal(
+          params.get("page"),
+          null,
+          "Mudar equipe retorna à primeira página.",
+        );
+        await expect
+          .poll(() =>
+            queries.slice(teamQueryStart).some((query) => {
+              const apiParams = new URLSearchParams(query);
+              return (
+                (apiParams.get("teamId") ?? "") === team &&
+                !apiParams.has("team") &&
+                (apiParams.get("presence") ?? "") === presence &&
+                (apiParams.get("spirituality") ?? "") === spirituality &&
+                apiParams.get("page") === "1" &&
+                apiParams.get("q") === "ficticia"
+              );
+            }),
+          )
+          .toBe(true);
+      };
+      await openResponseFilters();
+      await expect(teamFilter.locator("option")).toHaveText([
+        "Todos",
+        "Sem departamento",
+        "SECRETARIA",
+      ]);
+      await teamFilter.selectOption(teamId);
+      await assertTeamQuery(teamId);
+      await closeFilters();
+      await expect(page.locator("tbody tr .review-person strong")).toHaveText([
+        filteringRows[2].person.name,
+        filteringRows[0].person.name,
+      ]);
+      const indicated = page.locator("tr").filter({
+        has: page.getByText(filteringRows[2].person.name, { exact: true }),
+      });
+      await expect(indicated).toContainText("Indicado — sem reserva");
+      assert.equal(filteringRows[0].status, "APPROVED");
+      assert.equal(filteringRows[2].status, "REVIEW");
+      await openResponseFilters();
+      await teamFilter.evaluate((element) =>
+        element.scrollIntoView({ block: "center", behavior: "instant" }),
+      );
+      await expect(teamFilter).toBeInViewport();
+      await page.screenshot({
+        path: `.local/screenshots/review-team-filter-${screenLabel}.png`,
+        fullPage: !mobile,
+        animations: "disabled",
+      });
+      await campFilter.selectOption("VOU");
+      await spiritualityFilter.selectOption("SIM");
+      await assertTeamQuery(teamId, "VOU", "SIM");
+      await closeFilters();
+      await expect(page.locator("tbody tr .review-person strong")).toHaveText([
+        filteringRows[0].person.name,
+      ]);
+      await page.reload();
+      await openResponseFilters();
+      await expect(teamFilter).toHaveValue(teamId);
+      await expect(campFilter).toHaveValue("VOU");
+      await expect(spiritualityFilter).toHaveValue("SIM");
+      await teamFilter.selectOption("NONE");
+      await assertTeamQuery("NONE", "VOU", "SIM");
+      await closeFilters();
+      await expect(page.locator("tbody tr .review-person strong")).toHaveCount(
+        20,
+      );
+      await expect(
+        page.getByText(filteringRows[0].person.name, { exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByText("Página 1 de 2", { exact: true }),
+      ).toBeVisible();
+      await openResponseFilters();
+      await campFilter.selectOption("");
+      await spiritualityFilter.selectOption("");
+      await assertTeamQuery("NONE");
+      await closeFilters();
+      await expect(
+        page.getByText("23 inscrições encontradas", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(filteringRows[2].person.name, { exact: true }),
+      ).toHaveCount(0);
+      await openResponseFilters();
+      if (mobile)
+        await page
+          .getByRole("button", { name: "Limpar filtros", exact: true })
+          .click();
+      else await teamFilter.selectOption("");
+      await expect(teamFilter).toHaveValue("");
+      await assertTeamQuery("", "", "", !mobile);
+      await closeFilters();
+      await expect(
+        page.getByText("25 inscrições encontradas", { exact: true }),
+      ).toBeVisible();
       assert(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= innerWidth + 1,
@@ -1888,7 +2021,7 @@ try {
       );
       assert.deepEqual(errors, []);
       console.log(
-        `Inscrições ${screenLabel}: fluxo existente preservado; duas respostas na ficha, filtros combinados/sem resposta, URL, recarga, limpeza e paginação aprovados.`,
+        `Inscrições ${screenLabel}: fluxo existente preservado; respostas e filtro de equipe/departamento com indicados/alocados, sem departamento, combinação, URL, recarga, limpeza e paginação aprovados.`,
       );
     } catch (error) {
       if (errors.length) console.error(errors);
