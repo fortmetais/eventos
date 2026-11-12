@@ -230,6 +230,7 @@ try {
     "06_fichas_servos_e_inscricoes.sql",
     "07_avisos_e_confirmacao_servos.sql",
     "18_respostas_presenca.sql",
+    "19_respostas_espiritualidade.sql",
     "08_departamentos_e_vagas.sql",
   ]) {
     run(binary("psql"), [
@@ -366,6 +367,7 @@ try {
       "13_cadastros_anteriores.sql",
       "16_importacao_candidaturas.sql",
       "17_mensagens_aceite.sql",
+      "19_respostas_espiritualidade.sql",
     ])
       run(binary("psql"), [
         "-h",
@@ -381,6 +383,22 @@ try {
         "-f",
         join(root, "database/manual", script),
       ]);
+  // A configuração opcional do evento também funciona antes da etapa de inscrições.
+  for (const database of ["fac_events_tests", "fac_function_tests"])
+    run(binary("psql"), [
+      "-h",
+      "127.0.0.1",
+      "-p",
+      String(port),
+      "-U",
+      "fac_test",
+      "-d",
+      database,
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-f",
+      join(root, "database/manual/19_respostas_espiritualidade.sql"),
+    ]);
   run(binary("psql"), [
     "-h",
     "127.0.0.1",
@@ -404,6 +422,7 @@ try {
     for (const script of [
       "16_importacao_candidaturas.sql",
       "17_mensagens_aceite.sql",
+      "19_respostas_espiritualidade.sql",
     ])
       run(binary("psql"), [
         "-h",

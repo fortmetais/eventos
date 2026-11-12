@@ -116,6 +116,39 @@ export class DecisionNoticesService {
         : registration.status === "REJECTED")
     );
   }
+  private spiritualitySummary(
+    notice: {
+      kind: string;
+      expiresAt: Date;
+      registration: {
+        spiritualityResponse: boolean | null;
+        spiritualityRespondedAt: Date | null;
+        spiritualityAt: Date | null;
+        campaign: {
+          kind: string;
+          event: { spiritualityStartsAt: Date | null };
+        };
+      };
+    },
+    active = true,
+  ) {
+    const registration = notice.registration;
+    const startsAt = registration.campaign.event.spiritualityStartsAt;
+    if (
+      notice.kind !== "ACEITE" ||
+      registration.campaign.kind !== "VOLUNTEER" ||
+      !startsAt
+    )
+      return null;
+    const sameMeeting =
+      registration.spiritualityAt?.getTime() === startsAt.getTime();
+    return {
+      startsAt: startsAt.toISOString(),
+      answer: sameMeeting ? registration.spiritualityResponse : null,
+      respondedAt: sameMeeting ? registration.spiritualityRespondedAt : null,
+      canRespond: active && notice.expiresAt > new Date(),
+    };
+  }
   private async messages(notice: Notice) {
     const registration = notice.registration,
       event = registration.campaign.event;
@@ -231,6 +264,7 @@ export class DecisionNoticesService {
         link: messages?.link ?? null,
         shortLink: messages?.shortLink ?? null,
         whatsappLink: messages?.whatsappLink ?? null,
+        spirituality: this.spiritualitySummary(notice, active),
       },
     };
   }
@@ -248,6 +282,7 @@ export class DecisionNoticesService {
         expiresAt: Date;
         active: boolean;
         expired: boolean;
+        spirituality: ReturnType<DecisionNoticesService["spiritualitySummary"]>;
       };
     };
     const ready = await this.ready();
@@ -288,11 +323,16 @@ export class DecisionNoticesService {
         registration: {
           select: {
             status: true,
+            spiritualityResponse: true,
+            spiritualityRespondedAt: true,
+            spiritualityAt: true,
             campaign: {
               select: {
+                kind: true,
                 event: {
                   select: {
                     status: true,
+                    spiritualityStartsAt: true,
                     organization: { select: { active: true } },
                   },
                 },
@@ -324,6 +364,7 @@ export class DecisionNoticesService {
           expiresAt: notice.expiresAt,
           active,
           expired: !notice.confirmedAt && notice.expiresAt <= new Date(),
+          spirituality: this.spiritualitySummary(notice, active),
         },
       });
     }
@@ -554,6 +595,7 @@ export class DecisionNoticesService {
       declinedAt: notice.declinedAt,
       canRespond: notice.expiresAt > new Date(),
       expiresAt: notice.expiresAt,
+      spirituality: this.spiritualitySummary(notice),
       event: {
         name: event.name,
         startsAt: event.startsAt,
@@ -611,6 +653,61 @@ export class DecisionNoticesService {
         await tx.$executeRaw`INSERT INTO inscricoes.respostas_presenca_historico (resposta_id, aviso_id, resposta, respondido_em)
           VALUES (${responseId}::uuid, ${noticeId}::uuid, ${response}, ${now})`;
       }
+      const updated = await tx.decisionNotice.findUniqueOrThrow({
+        where: { id: noticeId },
+        include: noticeInclude,
+      });
+      return this.publicSummary(updated);
+    });
+  }
+  async respondSpirituality(
+    noticeId: string,
+    token: string,
+    response: boolean,
+  ) {
+    const candidate = await this.authorized(noticeId, token);
+    return this.db.$transaction(async (tx) => {
+      // Follow the same lock order as presence and administrative confirmation.
+      await tx.$queryRaw`SELECT campanha_id FROM eventos.campanhas WHERE campanha_id=${candidate.registration.campaignId}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT inscricao_id FROM inscricoes.inscricoes WHERE inscricao_id=${candidate.registrationId}::uuid FOR UPDATE`;
+      await tx.$queryRaw`SELECT aviso_id FROM inscricoes.avisos_decisao WHERE aviso_id=${noticeId}::uuid FOR UPDATE`;
+      const current = await this.authorized(noticeId, token, tx);
+      assert(
+        current.expiresAt > new Date(),
+        410,
+        "Este link expirou. Procure a organização para alterar sua resposta.",
+      );
+      const registration = current.registration;
+      const startsAt = registration.campaign.event.spiritualityStartsAt;
+      assert(
+        current.kind === "ACEITE" &&
+          registration.campaign.kind === "VOLUNTEER" &&
+          startsAt,
+        409,
+        "Esta candidatura não possui encontro de espiritualidade para responder.",
+      );
+      const changed =
+        registration.spiritualityAt?.getTime() !== startsAt.getTime() ||
+        registration.spiritualityResponse !== response ||
+        !registration.spiritualityRespondedAt;
+      if (changed) {
+        const now = new Date();
+        await tx.registration.update({
+          where: { id: registration.id },
+          data: {
+            spiritualityResponse: response,
+            spiritualityRespondedAt: now,
+            spiritualityAt: startsAt,
+          },
+        });
+        const responseId = randomUUID();
+        await tx.$executeRaw`INSERT INTO inscricoes.respostas_espiritualidade_historico
+          (resposta_id, inscricao_id, espiritualidade_em, participara, respondido_em)
+          VALUES (${responseId}::uuid, ${registration.id}::uuid,
+            (${startsAt}::timestamptz AT TIME ZONE 'UTC'), ${response},
+            (${now}::timestamptz AT TIME ZONE 'UTC'))`;
+      }
+      // This answer is independent of presence, placement and legal acceptances.
       const updated = await tx.decisionNotice.findUniqueOrThrow({
         where: { id: noticeId },
         include: noticeInclude,

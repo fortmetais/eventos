@@ -90,13 +90,41 @@ try {
       putAttempts = 0,
       confirmations = 0,
       confirmedAt = null,
-      declinedAt = null;
+      declinedAt = null,
+      spiritualityConfigured = true,
+      spiritualityAnswer = null,
+      spiritualityRespondedAt = null,
+      spiritualityResponses = 0;
+    const responseSummary = () => ({
+      kind: "ACEITE",
+      participation: "VOLUNTEER",
+      candidateName: "Maria",
+      confirmedAt,
+      declinedAt,
+      canRespond: true,
+      expiresAt: "2027-01-30T12:00:00Z",
+      spirituality: spiritualityConfigured
+        ? {
+            startsAt: "2026-11-14T17:00:00.000Z",
+            answer: spiritualityAnswer,
+            respondedAt: spiritualityRespondedAt,
+            canRespond: true,
+          }
+        : null,
+      event: {
+        name: settings.event.name,
+        startsAt: "2027-02-05",
+        endsAt: "2027-02-09",
+        organization: organization.name,
+      },
+    });
     const context = await browser.newContext({
       viewport: mobile
         ? { width: 390, height: 844 }
         : { width: 1440, height: 1000 },
       isMobile: mobile,
       hasTouch: mobile,
+      timezoneId: mobile ? "Asia/Tokyo" : "America/Los_Angeles",
     });
     await context.addInitScript(
       (value) =>
@@ -177,10 +205,17 @@ try {
       }
       if (
         path === `/api/v1/public/decision-responses/${noticeId}/view` ||
-        path === `/api/v1/public/decision-responses/${noticeId}`
+        path === `/api/v1/public/decision-responses/${noticeId}` ||
+        path === `/api/v1/public/decision-responses/${noticeId}/spirituality`
       ) {
         assert.equal(req.postDataJSON().token, token);
-        if (!path.endsWith("/view")) {
+        if (path.endsWith("/spirituality")) {
+          assert.equal(typeof req.postDataJSON().response, "boolean");
+          assert.equal(spiritualityConfigured, true);
+          spiritualityResponses++;
+          spiritualityAnswer = req.postDataJSON().response;
+          spiritualityRespondedAt = new Date().toISOString();
+        } else if (!path.endsWith("/view")) {
           confirmations++;
           if (req.postDataJSON().resposta === "NAO_IREI") {
             declinedAt = new Date().toISOString();
@@ -190,20 +225,7 @@ try {
             declinedAt = null;
           }
         }
-        return json({
-          kind: "ACEITE",
-          candidateName: "Maria",
-          confirmedAt,
-          declinedAt,
-          canRespond: true,
-          expiresAt: "2027-01-30T12:00:00Z",
-          event: {
-            name: settings.event.name,
-            startsAt: "2027-02-05",
-            endsAt: "2027-02-09",
-            organization: organization.name,
-          },
-        });
+        return json(responseSummary());
       }
       if (path.startsWith("/api/")) {
         errors.push(`${req.method()} ${path}`);
@@ -433,23 +455,190 @@ try {
     assert.equal(new URL(page.url()).pathname, `/resposta/${noticeId}`);
     assert.equal(new URL(page.url()).hash, "");
     assert.equal(confirmations, 0);
+    const eventParticipation = page.getByRole("group", {
+      name: "Participação no evento",
+      exact: true,
+    });
+    const spiritualityParticipation = page.getByRole("group", {
+      name: "Participação na espiritualidade",
+      exact: true,
+    });
+    await expect(eventParticipation).toBeVisible();
+    await expect(spiritualityParticipation).toBeVisible();
+    await expect(page.locator("#spirituality-question")).toHaveText(
+      "Você participará da espiritualidade do dia 14/11/2026 às 14:00 horas?",
+    );
+    const campButtons = [
+      eventParticipation.getByRole("button", {
+        name: "Vou participar",
+        exact: true,
+      }),
+      eventParticipation.getByRole("button", { name: "Não irei", exact: true }),
+    ];
+    const spiritualityButtons = [
+      spiritualityParticipation.getByRole("button", {
+        name: "Sim",
+        exact: true,
+      }),
+      spiritualityParticipation.getByRole("button", {
+        name: "Não",
+        exact: true,
+      }),
+    ];
+    for (const button of [...campButtons, ...spiritualityButtons]) {
+      await expect(button).toBeVisible();
+      await expect(button).toHaveAttribute("aria-pressed", "false");
+    }
+    const campBounds = await eventParticipation.boundingBox();
+    const spiritualityBounds = await spiritualityParticipation.boundingBox();
+    const introductionBounds = await page
+      .locator("#participation-question")
+      .boundingBox();
+    const spiritualityQuestionBounds = await page
+      .locator("#spirituality-question")
+      .boundingBox();
+    const footerBounds = await page
+      .getByText("Você pode confirmar sem criar conta.", { exact: false })
+      .boundingBox();
+    assert(
+      campBounds &&
+        spiritualityBounds &&
+        introductionBounds &&
+        spiritualityQuestionBounds &&
+        footerBounds &&
+        introductionBounds.y + introductionBounds.height <= campBounds.y &&
+        campBounds.y + campBounds.height <= spiritualityQuestionBounds.y &&
+        spiritualityQuestionBounds.y + spiritualityQuestionBounds.height <=
+          spiritualityBounds.y &&
+        spiritualityBounds.y + spiritualityBounds.height <= footerBounds.y,
+      "A página deve mostrar introdução, participação no evento, espiritualidade e rodapé nessa ordem.",
+    );
+    assert(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+      "A confirmação não deve criar rolagem horizontal.",
+    );
+    const noVisibleExpiry = async () => {
+      await expect(page.locator("main")).not.toContainText("Responda até");
+      await expect(page.locator("main")).not.toContainText(
+        "pode alterar sua resposta até",
+      );
+      await expect(page.locator("main")).not.toContainText("30/01/2027");
+    };
+    await noVisibleExpiry();
+    await page.screenshot({
+      path: `.local/screenshots/decision-response-spirituality-${mobile ? "mobile" : "desktop"}.png`,
+      fullPage: true,
+      animations: "disabled",
+    });
+    await spiritualityButtons[0].click();
+    await expect(spiritualityButtons[0]).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(spiritualityButtons[1]).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    for (const button of campButtons)
+      await expect(button).toHaveAttribute("aria-pressed", "false");
+    assert.equal(spiritualityResponses, 1);
+    assert.equal(
+      confirmations,
+      0,
+      "Responder à espiritualidade não confirma a participação no acampamento.",
+    );
+    assert.equal(confirmedAt, null);
+    assert.equal(declinedAt, null);
     await page.reload();
     await expect(
       page.getByRole("button", { name: "Vou participar" }),
     ).toBeVisible();
     assert.equal(confirmations, 0);
-    await page.getByRole("button", { name: "Não irei" }).click();
+    await expect(spiritualityButtons[0]).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    assert.equal(
+      spiritualityResponses,
+      1,
+      "Recarregar deve consultar, sem criar resposta de espiritualidade.",
+    );
+    await spiritualityButtons[1].click();
+    await expect(spiritualityButtons[1]).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(spiritualityButtons[0]).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    assert.equal(spiritualityResponses, 2);
+    assert.equal(spiritualityAnswer, false);
+    assert.equal(confirmations, 0);
+    await page.reload();
+    await expect(spiritualityButtons[1]).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    assert.equal(spiritualityResponses, 2);
+    assert.equal(confirmations, 0);
+    await campButtons[1].click();
     await expect(page.getByText(/informou que não irá/)).toBeVisible();
     assert.equal(confirmations, 1);
-    await page.getByRole("button", { name: "Vou participar" }).click();
+    assert.equal(
+      spiritualityAnswer,
+      false,
+      "Não ir ao acampamento não apaga a resposta da espiritualidade.",
+    );
+    await expect(spiritualityButtons[1]).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await expect(campButtons[1]).toHaveAttribute("aria-pressed", "true");
+    await expect(campButtons[0]).toHaveAttribute("aria-pressed", "false");
+    for (const button of campButtons) await expect(button).toBeVisible();
+    await noVisibleExpiry();
+    await campButtons[0].click();
     await expect(
       page.getByRole("heading", { name: "Você informou que vai participar!" }),
     ).toBeVisible();
     assert.equal(confirmations, 2);
+    assert.equal(spiritualityResponses, 2);
+    assert.equal(spiritualityAnswer, false);
+    await expect(campButtons[0]).toHaveAttribute("aria-pressed", "true");
+    await expect(campButtons[1]).toHaveAttribute("aria-pressed", "false");
+    await expect(spiritualityButtons[1]).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    for (const button of [...campButtons, ...spiritualityButtons])
+      await expect(button).toBeEnabled();
+    await noVisibleExpiry();
+    await page.screenshot({
+      path: `.local/screenshots/decision-response-independent-answers-${mobile ? "mobile" : "desktop"}.png`,
+      fullPage: true,
+      animations: "disabled",
+    });
+    spiritualityConfigured = false;
+    await page.reload();
+    await expect(eventParticipation).toBeVisible();
+    await expect(spiritualityParticipation).toHaveCount(0);
+    await expect(
+      page.getByText(/Você participará da espiritualidade/),
+    ).toHaveCount(0);
+    assert.equal(spiritualityResponses, 2);
+    await noVisibleExpiry();
+    await page.screenshot({
+      path: `.local/screenshots/decision-response-without-spirituality-${mobile ? "mobile" : "desktop"}.png`,
+      fullPage: true,
+      animations: "disabled",
+    });
     assert.deepEqual(errors, []);
     await context.close();
     console.log(
-      `Mensagens ${mobile ? "celular" : "desktop"}: evento e validade opcionais, texto salvo exatamente, helper somente para nome/link, rascunho sem salvar, validação 422, prévia, retomada, restauração e link compacto aprovados.`,
+      `Mensagens ${mobile ? "celular" : "desktop"}: editor e link compacto preservados; página pública sem prazo exibido, ordem visual, respostas independentes de evento/espiritualidade, recarga, troca Sim→Não e ausência de configuração aprovados.`,
     );
   }
 } finally {

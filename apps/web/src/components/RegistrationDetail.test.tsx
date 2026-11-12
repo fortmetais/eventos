@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   role: "ORGANIZER",
   eventsEnabled: true,
   loading: false,
+  spiritualityResponse: null as boolean | null,
 }));
 vi.mock("../lib/api", () => ({
   api: mocks.api,
@@ -83,6 +84,8 @@ vi.mock("../lib/hooks", () => ({
           status: mocks.status,
           origin: mocks.origin,
           updatedAt: mocks.updatedAt,
+          spiritualityResponse: mocks.spiritualityResponse,
+          spiritualityAt: "2026-11-14T17:00:00Z",
           pendingInformation: mocks.pendingInformation,
           importData:
             mocks.origin === "IMPORT"
@@ -114,6 +117,7 @@ vi.mock("../lib/hooks", () => ({
 }));
 afterEach(cleanup);
 beforeEach(() => {
+  mocks.spiritualityResponse = null;
   mocks.api.mockReset();
   mocks.refresh.mockClear();
   mocks.team = null;
@@ -143,6 +147,28 @@ function expand(title = "Departamento e decisão") {
 }
 
 describe("Ficha completa extraída", () => {
+  it.each([true, false])(
+    "exibe a resposta independente da espiritualidade: %s",
+    async (answer) => {
+      mocks.spiritualityResponse = answer;
+      render(
+        <RegistrationDetail
+          organizationId="org"
+          registrationId="candidate"
+          onChanged={vi.fn()}
+        />,
+      );
+      await userEvent.click(
+        screen.getByRole("button", {
+          name: "Participação e respostas",
+        }),
+      );
+      expect(screen.getByText("Participação na espiritualidade")).toBeVisible();
+      expect(
+        screen.getByText(new RegExp(`14/11/2026.*${answer ? "Sim" : "Não"}`)),
+      ).toBeVisible();
+    },
+  );
   it("inicia seções fechadas e mantém dados privados fora do resumo", async () => {
     mocks.snapshot = {
       email: "contato-privado@example.test",

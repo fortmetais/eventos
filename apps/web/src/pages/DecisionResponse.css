@@ -1,0 +1,19 @@
+.decision-response .decision-response-block {
+  margin-top: 24px;
+}
+
+.decision-response .decision-response-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.decision-response .decision-response-actions .button {
+  min-height: 44px;
+  padding: 11px 16px;
+}
+
+.decision-response .decision-response-footer {
+  margin-top: 24px;
+}

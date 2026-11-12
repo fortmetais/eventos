@@ -6,6 +6,10 @@ O candidato abre o link e informa sua resposta sem obrigação de criar conta. A
 
 O convite de aceite oferece **Vou participar** e **Não irei**. A resposta pode ser alterada até o fim da validade do link e é uma previsão, não registro de presença no dia. Uma resposta negativa aparece para revisão, sem alterar a candidatura nem liberar vaga automaticamente; o organizador toma essa decisão. O histórico guarda somente o aviso, a resposta e a data, sem token. Convites de recusa e links anteriores continuam compatíveis.
 
+A página pública não exibe a data de vencimento do link; o servidor continua validando a credencial e o prazo. Depois dos botões sobre o acampamento, o convite de servos do **3º Acampamento FAC** apresenta a pergunta da espiritualidade de **14/11/2026 às 14h (Brasília)**, com respostas **Sim/Não**. Cada grupo salva sua própria resposta: espiritualidade não confirma a participação no acampamento nem altera vaga, departamento ou aceites.
+
+A migração aditiva `database/manual/19_respostas_espiritualidade.sql` cria configuração opcional de data no evento e campos próprios na inscrição, com histórico protegido. A data é habilitada somente para o evento solicitado; a API restringe a pergunta aos convites de aceite de servos. A resposta fica vinculada à inscrição e à data da espiritualidade, permanecendo após a renovação do link. A organização consulta o resultado em **Ficha → Participação e respostas**. Os dados originais da ficha não são alterados.
+
 ## Consulta organizada da ficha
 
 A ficha do participante começa com um resumo de identificação operacional: foto quando disponível, nome, protocolo, evento/campanha, situação da vaga, departamento, presença e quantidade de pendências. Contatos, documentos e respostas ficam em seções recolhidas inicialmente. As seções podem ser abertas independentemente; recolher uma seção não descarta uma edição em andamento. A saúde continua na área de cuidados, sujeita à autorização específica por evento.

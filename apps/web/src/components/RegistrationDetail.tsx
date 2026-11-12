@@ -492,6 +492,16 @@ export function RegistrationDetail({
                 {...sectionProps("participation")}
               >
                 <dl className="registration-detail-facts">
+                  {registration.spiritualityResponse != null &&
+                    registration.spiritualityAt && (
+                      <div>
+                        <dt>Participação na espiritualidade</dt>
+                        <dd>
+                          {dateTime(registration.spiritualityAt)} ·{" "}
+                          {registration.spiritualityResponse ? "Sim" : "Não"}
+                        </dd>
+                      </div>
+                    )}
                   {registration.snapshot.shirt && (
                     <div>
                       <dt>Camiseta</dt>

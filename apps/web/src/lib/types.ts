@@ -229,6 +229,9 @@ export interface RegistrationDecisionSummary {
   };
 }
 export interface Registration {
+  spiritualityResponse?: boolean | null;
+  spiritualityRespondedAt?: string | null;
+  spiritualityAt?: string | null;
   decisionSummary?: RegistrationDecisionSummary;
   pendingInformation?: string[];
   updatedAt?: string;

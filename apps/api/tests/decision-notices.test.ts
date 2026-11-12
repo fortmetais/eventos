@@ -115,6 +115,36 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
           reason: "Motivo interno que não será enviado ao candidato",
         });
     }
+    const spiritualityStartsAt = new Date("2026-11-14T17:00:00Z");
+    async function withSpirituality(run: () => Promise<void>) {
+      await db.event.update({
+        where: { id: eventId },
+        data: { spiritualityStartsAt },
+      });
+      try {
+        await run();
+      } finally {
+        await db.event.update({
+          where: { id: eventId },
+          data: { spiritualityStartsAt: null },
+        });
+      }
+    }
+    async function acceptedNotice(id: string) {
+      expect((await status(id, "APPROVED")).status).toBe(200);
+      const notice = (
+        await request(app)
+          .get(`${base(id)}/decision-notice`)
+          .set(auth())
+          .expect(200)
+      ).body.notice;
+      return {
+        ...notice,
+        token: new URLSearchParams(new URL(notice.link).hash.slice(1)).get(
+          "token",
+        )!,
+      };
+    }
     beforeAll(async () => {
       await db.account.createMany({ data: Object.values(users) });
       org = (
@@ -198,7 +228,7 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       const tables = await db.$queryRaw<
         { rowsecurity: boolean }[]
       >`SELECT rowsecurity FROM pg_tables WHERE schemaname IN ('acesso','organizacoes','pessoas','eventos','inscricoes','saude','arquivos')`;
-      expect(tables).toHaveLength(25);
+      expect(tables).toHaveLength(26);
       expect(tables.every((t) => t.rowsecurity)).toBe(true);
     });
     it("aceite direto prepara link sem enviar; envio exige ação explícita", async () => {
@@ -1299,6 +1329,267 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
         .send({ token: secret, resposta: "NAO_IREI" })
         .expect(410);
       expect(await history()).toHaveLength(2);
+    });
+    it("responde espiritualidade de modo independente, com histórico idempotente e sem fabricar presença ou aceites", async () => {
+      await withSpirituality(async () => {
+        const id = await candidate();
+        const notice = await acceptedNotice(id);
+        const before = await db.registration.findUniqueOrThrow({
+          where: { id },
+        });
+        const consentCount = await db.consent.count({
+          where: { registrationId: id },
+        });
+        const sent = messages.length;
+        const path = `${publicPath(notice.id)}/spirituality`;
+        const initial = await request(app)
+          .post(`${publicPath(notice.id)}/view`)
+          .send({ token: notice.token })
+          .expect(200);
+        expect(initial.body.spirituality).toEqual({
+          startsAt: spiritualityStartsAt.toISOString(),
+          answer: null,
+          respondedAt: null,
+          canRespond: true,
+        });
+        const responses = await Promise.all([
+          request(app).post(path).send({ token: notice.token, response: false }),
+          request(app).post(path).send({ token: notice.token, response: false }),
+        ]);
+        expect(responses.map((r) => r.status)).toEqual([200, 200]);
+        expect(responses[0].body).toMatchObject({
+          confirmedAt: null,
+          declinedAt: null,
+          spirituality: { answer: false, canRespond: true },
+        });
+        const history = () =>
+          db.$queryRaw<{ participara: boolean; espiritualidade_em: Date }[]>`
+            SELECT participara, espiritualidade_em
+            FROM inscricoes.respostas_espiritualidade_historico
+            WHERE inscricao_id=${id}::uuid ORDER BY respondido_em, resposta_id`;
+        expect(await history()).toEqual([
+          { participara: false, espiritualidade_em: spiritualityStartsAt },
+        ]);
+        const declined = await request(app)
+          .post(publicPath(notice.id))
+          .send({ token: notice.token, resposta: "NAO_IREI" })
+          .expect(200);
+        const yes = await request(app)
+          .post(path)
+          .send({ token: notice.token, response: true })
+          .expect(200);
+        expect(yes.body).toMatchObject({
+          confirmedAt: null,
+          declinedAt: declined.body.declinedAt,
+          spirituality: { answer: true },
+        });
+        const after = await db.registration.findUniqueOrThrow({
+          where: { id },
+        });
+        expect(after).toMatchObject({
+          status: before.status,
+          teamId: before.teamId,
+          snapshot: before.snapshot,
+          spiritualityResponse: true,
+          spiritualityAt: spiritualityStartsAt,
+        });
+        expect(after.spiritualityRespondedAt).toBeInstanceOf(Date);
+        expect(
+          await db.consent.count({ where: { registrationId: id } }),
+        ).toBe(consentCount);
+        expect(await history()).toHaveLength(2);
+        expect(messages).toHaveLength(sent);
+        // Legacy requests still default to VOU, without changing the separate answer.
+        const legacy = await request(app)
+          .post(publicPath(notice.id))
+          .send({ token: notice.token })
+          .expect(200);
+        expect(legacy.body.confirmedAt).toBeTruthy();
+        expect(legacy.body.spirituality.answer).toBe(true);
+        const admin = await request(app)
+          .get(`${base(id)}/decision-notice`)
+          .set(auth())
+          .expect(200);
+        expect(admin.body.notice.spirituality.answer).toBe(true);
+        const list = await request(app)
+          .get(`/api/v1/organizations/${org}/registrations`)
+          .query({ eventId, q: before.snapshot && "Pessoa do teste de avisos", sort: "NAME_ASC", pageSize: 100 })
+          .set(auth())
+          .expect(200);
+        expect(
+          list.body.items.find((item: { id: string }) => item.id === id)
+            ?.decisionSummary.notice.spirituality.answer,
+        ).toBe(true);
+      });
+    });
+    it("preserva a resposta após renovar ou substituir o convite e separa uma nova data de espiritualidade", async () => {
+      await withSpirituality(async () => {
+        const id = await candidate();
+        const notice = await acceptedNotice(id);
+        await request(app)
+          .post(`${publicPath(notice.id)}/spirituality`)
+          .send({ token: notice.token, response: true })
+          .expect(200);
+        const renewed = await request(app)
+          .post(`${base(id)}/decision-notice/renew`)
+          .set(auth())
+          .expect(200);
+        expect(renewed.body.notice.spirituality.answer).toBe(true);
+        await status(id, "RECEIVED").then((r) => expect(r.status).toBe(200));
+        const replacement = await acceptedNotice(id);
+        expect(replacement.id).not.toBe(notice.id);
+        const view = await request(app)
+          .post(`${publicPath(replacement.id)}/view`)
+          .send({ token: replacement.token })
+          .expect(200);
+        expect(view.body.spirituality.answer).toBe(true);
+        await request(app)
+          .post(`${publicPath(notice.id)}/spirituality`)
+          .send({ token: notice.token, response: false })
+          .expect(404);
+        const nextMeeting = new Date("2026-11-15T17:00:00Z");
+        await db.event.update({
+          where: { id: eventId },
+          data: { spiritualityStartsAt: nextMeeting },
+        });
+        const changedDate = await request(app)
+          .post(`${publicPath(replacement.id)}/view`)
+          .send({ token: replacement.token })
+          .expect(200);
+        expect(changedDate.body.spirituality).toMatchObject({
+          startsAt: nextMeeting.toISOString(),
+          answer: null,
+          respondedAt: null,
+        });
+        await request(app)
+          .post(`${publicPath(replacement.id)}/spirituality`)
+          .send({ token: replacement.token, response: false })
+          .expect(200);
+        const history = await db.$queryRaw<
+          { participara: boolean; espiritualidade_em: Date }[]
+        >`SELECT participara, espiritualidade_em FROM inscricoes.respostas_espiritualidade_historico
+          WHERE inscricao_id=${id}::uuid ORDER BY respondido_em, resposta_id`;
+        expect(history).toEqual([
+          { participara: true, espiritualidade_em: spiritualityStartsAt },
+          { participara: false, espiritualidade_em: nextMeeting },
+        ]);
+      });
+    });
+    it("não habilita espiritualidade sem configuração, para campistas ou em avisos de recusa", async () => {
+      const id = await candidate();
+      const notice = await acceptedNotice(id);
+      const noMeeting = await request(app)
+        .post(`${publicPath(notice.id)}/view`)
+        .send({ token: notice.token })
+        .expect(200);
+      expect(noMeeting.body.spirituality).toBeNull();
+      await request(app)
+        .post(`${publicPath(notice.id)}/spirituality`)
+        .send({ token: notice.token, response: true })
+        .expect(409);
+      await withSpirituality(async () => {
+        const refusedId = await candidate();
+        expect((await status(refusedId, "REJECTED")).status).toBe(200);
+        const refusal = (
+          await request(app)
+            .get(`${base(refusedId)}/decision-notice`)
+            .set(auth())
+            .expect(200)
+        ).body.notice;
+        const refusalToken = new URLSearchParams(new URL(refusal.link).hash.slice(1)).get("token");
+        expect(refusal.spirituality).toBeNull();
+        await request(app)
+          .post(`${publicPath(refusal.id)}/spirituality`)
+          .send({ token: refusalToken, response: true })
+          .expect(409);
+        const camper = await db.campaign.findFirstOrThrow({
+          where: { eventId, kind: "CAMPER" },
+          include: { forms: true },
+        });
+        const camperId = await candidate(true, {
+          campaign: camper.id,
+          form: camper.forms[0].id,
+        });
+        const camperApp = createApp({
+          db,
+          eventsEnabled: true,
+          camperRegistrationsEnabled: true,
+          volunteerRegistrationsEnabled: true,
+          rateLimits: false,
+          decisionNotificationsEnabled: true,
+          decisionLinkSecret: "segredo-exclusivo-do-teste-de-avisos-123456789",
+          resolveIdentity: async (token) => users[token] ?? null,
+        });
+        await request(camperApp)
+          .patch(`${base(camperId)}/status`)
+          .set(auth())
+          .send({ status: "APPROVED", reason: "Decisão explícita de teste" })
+          .expect(200);
+        const camperNotice = (
+          await request(camperApp)
+            .get(`${base(camperId)}/decision-notice`)
+            .set(auth())
+            .expect(200)
+        ).body.notice;
+        const camperToken = new URLSearchParams(new URL(camperNotice.link).hash.slice(1)).get("token");
+        const camperView = await request(camperApp)
+          .post(`${publicPath(camperNotice.id)}/view`)
+          .send({ token: camperToken })
+          .expect(200);
+        expect(camperView.body.spirituality).toBeNull();
+        await request(camperApp)
+          .post(`${publicPath(camperNotice.id)}/spirituality`)
+          .send({ token: camperToken, response: true })
+          .expect(409);
+      });
+    });
+    it("valida os campos da resposta e bloqueia token inválido, link vencido ou candidatura cancelada", async () => {
+      await withSpirituality(async () => {
+        const id = await candidate();
+        const notice = await acceptedNotice(id);
+        const path = `${publicPath(notice.id)}/spirituality`;
+        for (const invalid of [
+          { token: notice.token },
+          { token: notice.token, response: "SIM" },
+          { token: notice.token, response: null },
+          { token: notice.token, response: false, resposta: "VOU" },
+          { token: "inválido", response: false },
+        ])
+          await request(app).post(path).send(invalid).expect(422);
+        await request(app)
+          .post(path)
+          .send({ token: "x".repeat(43), response: true })
+          .expect(404);
+        await request(app)
+          .post(publicPath(notice.id))
+          .send({ token: notice.token, resposta: "VOU" })
+          .expect(200);
+        await db.decisionNotice.update({
+          where: { id: notice.id },
+          data: { expiresAt: new Date(Date.now() - 1000) },
+        });
+        const expiredView = await request(app)
+          .post(`${publicPath(notice.id)}/view`)
+          .send({ token: notice.token })
+          .expect(200);
+        expect(expiredView.body.spirituality.canRespond).toBe(false);
+        await request(app)
+          .post(path)
+          .send({ token: notice.token, response: true })
+          .expect(410);
+        expect(
+          (await db.registration.findUniqueOrThrow({ where: { id } }))
+            .spiritualityResponse,
+        ).toBeNull();
+        expect((await status(id, "CANCELLED")).status).toBe(200);
+        await request(app)
+          .post(path)
+          .send({ token: notice.token, response: true })
+          .expect(410);
+        const history = await db.$queryRaw<{ total: bigint }[]>`
+          SELECT count(*) AS total FROM inscricoes.respostas_espiritualidade_historico WHERE inscricao_id=${id}::uuid`;
+        expect(Number(history[0].total)).toBe(0);
+      });
     });
     it("cancelamento e suspensão bloqueiam respostas e ações administrativas", async () => {
       await status(registrationId, "CANCELLED").then((r) =>

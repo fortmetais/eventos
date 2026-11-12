@@ -210,6 +210,7 @@ model Event {
   city           String       @map("cidade")
   startsAt       DateTime     @map("inicio_em") @db.Date
   endsAt         DateTime     @map("termino_em") @db.Date
+  spiritualityStartsAt DateTime? @map("espiritualidade_em") @db.Timestamp(3)
   status         EventStatus  @default(DRAFT) @map("situacao")
   createdAt      DateTime     @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
   organization   Organization @relation(fields: [organizationId], references: [id], map: "eventos_organizacao_fk")
@@ -411,6 +412,9 @@ model Registration {
   accountId             String?                @map("conta_id") @db.Uuid
   teamId                String?                @map("equipe_id") @db.Uuid
   snapshot              Json                   @map("respostas")
+  spiritualityResponse  Boolean?               @map("espiritualidade_participara")
+  spiritualityRespondedAt DateTime?             @map("espiritualidade_respondido_em") @db.Timestamp(3)
+  spiritualityAt        DateTime?               @map("espiritualidade_em") @db.Timestamp(3)
   status                RegistrationStatus     @default(RECEIVED) @map("situacao")
   createdAt             DateTime               @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
   updatedAt             DateTime               @updatedAt @map("atualizado_em") @db.Timestamp(3)

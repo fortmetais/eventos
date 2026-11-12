@@ -12,6 +12,7 @@ const credential = z
 const responseCredential = credential.extend({
   resposta: z.enum(["VOU", "NAO_IREI"]).optional(),
 });
+const spiritualityCredential = credential.extend({ response: z.boolean() });
 export function decisionNoticesRoutes(
   service: DecisionNoticesService,
   db: PrismaClient,
@@ -98,6 +99,20 @@ export function decisionNoticesRoutes(
         responseCredential.parse(req.body).resposta,
       ),
     ),
+  );
+  routes.post(
+    "/public/decision-responses/:noticeId/spirituality",
+    limit,
+    async (req, res) => {
+      const data = spiritualityCredential.parse(req.body);
+      res.json(
+        await service.respondSpirituality(
+          param(req, "noticeId"),
+          data.token,
+          data.response,
+        ),
+      );
+    },
   );
   return routes;
 }

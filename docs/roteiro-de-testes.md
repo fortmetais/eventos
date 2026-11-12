@@ -1,5 +1,15 @@
 # Roteiro de testes da aplicação Encontro
 
+## Confirmação de participação e espiritualidade — 12/11/2026
+
+- Abrir o link pessoal de um servo do 3º FAC. Conferir a ordem: explicação, **Vou participar / Não irei**, pergunta **Você participará da espiritualidade do dia 14/11/2026 às 14:00 horas?**, **Sim / Não** e orientação final. A data e o horário devem seguir Brasília, inclusive em aparelhos configurados em outro fuso.
+- Cada clique registra somente a pergunta escolhida, sem botão adicional de salvar. Responder **Sim** à espiritualidade não confirma participação no acampamento. Recarregar preserva a seleção sem enviar nova resposta; trocar para **Não** mantém a independência. Responder **Não irei** ao evento não apaga a resposta da espiritualidade.
+- Manter os dois botões de cada pergunta visíveis, indicar a opção escolhida e impedir cliques repetidos enquanto salva. Conferir operação por teclado e toque, leitura do grupo/pergunta e ausência de rolagem horizontal no computador e celular.
+- Em convites sem configuração de espiritualidade, não exibir essa pergunta nem seus botões. A confirmação normal continua funcionando. Conferir também a resposta já registrada, falha de rede e link inválido/expirado.
+- A página não mostra prazo de resposta, texto **Responda até**, **Pode alterar até** nem data de expiração. A validade continua sendo aplicada pelo servidor: um link expirado permanece bloqueado e orienta procurar a organização.
+
+Verificação automatizada aprovada no computador (1440 × 1000) e celular (390 × 844), com pessoas e serviços fictícios, sem enviar WhatsApp ou e-mail. O percurso `scripts/browser-event-messages-check.mjs` preserva os testes existentes do editor de mensagens e verifica a data de Brasília com aparelhos em fusos de Los Angeles e Tóquio. Capturas públicas em `.local/screenshots/decision-response-spirituality-*.png`, `decision-response-independent-answers-*.png` e `decision-response-without-spirituality-*.png`.
+
 ## Ficha do participante recolhível — primeira entrega
 
 - Abrir a ficha pela lista e pelos cards em computador e celular. O resumo inicial deve mostrar somente foto quando disponível, nome uma única vez, protocolo, evento, campanha, situação, departamento e presença. Telefones, CPF, endereço, respostas, contatos, dados do responsável, originais importados e histórico não podem ficar visíveis inicialmente.

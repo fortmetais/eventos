@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
-import { date, dateTime } from "../lib/types";
+import { date } from "../lib/types";
 import { BackLink, Loading, Notice } from "../components/ui";
 import { decodeDecisionLink } from "../lib/decision-link";
+import "./DecisionResponse.css";
 
 interface ResponseSummary {
   kind: "ACEITE" | "RECUSA";
@@ -13,6 +14,12 @@ interface ResponseSummary {
   declinedAt?: string | null;
   canRespond?: boolean;
   expiresAt: string;
+  spirituality?: {
+    startsAt: string;
+    answer: boolean | null;
+    respondedAt: string | null;
+    canRespond: boolean;
+  } | null;
   event: {
     name: string;
     startsAt: string;
@@ -84,15 +91,18 @@ function ResponseForm({ noticeId }: { noticeId: string }) {
     void view();
     return () => controller.abort();
   }, [noticeId, token]);
-  async function confirm(resposta: "VOU" | "NAO_IREI") {
+  async function saveResponse(
+    suffix: string,
+    response: { resposta: "VOU" | "NAO_IREI" } | { response: boolean },
+  ) {
     setBusy(true);
     setError("");
     try {
       setData(
-        await api<ResponseSummary>(`/public/decision-responses/${noticeId}`, {
-          method: "POST",
-          body: { token, resposta },
-        }),
+        await api<ResponseSummary>(
+          `/public/decision-responses/${noticeId}${suffix}`,
+          { method: "POST", body: { token, ...response } },
+        ),
       );
     } catch (error) {
       setError((error as Error).message);
@@ -100,8 +110,11 @@ function ResponseForm({ noticeId }: { noticeId: string }) {
       setBusy(false);
     }
   }
+  const canRespond =
+    data?.canRespond ??
+    (data ? new Date(data.expiresAt).getTime() > Date.now() : false);
   return (
-    <div className="auth-shell">
+    <div className="auth-shell decision-response">
       <BackLink to="/eventos">Eventos</BackLink>
       {loading ? (
         <Loading />
@@ -136,82 +149,126 @@ function ResponseForm({ noticeId }: { noticeId: string }) {
                     : "agradecemos sua disponibilidade para servir. Sua candidatura não foi selecionada para esta edição."}
                   Esperamos contar com você em uma próxima oportunidade!
                 </p>
-              ) : data.declinedAt ? (
-                <>
-                  <Notice kind="info">
-                    Você informou que não irá em {dateTime(data.declinedAt)}.
-                  </Notice>
-                  <p>A organização foi informada e avaliará sua vaga.</p>
-                </>
-              ) : data.confirmedAt ? (
-                <>
-                  <Notice kind="success">
-                    Você informou que vai participar em{" "}
-                    {dateTime(data.confirmedAt)}.
-                  </Notice>
-                  <p>
-                    {data.participation === "CAMPER"
-                      ? "A organização finalizará a confirmação da participação conforme as vagas e a autorização do responsável, quando necessária. Aguarde as orientações para o encontro."
-                      : "A organização finalizará sua equipe e a confirmação da participação. Aguarde as orientações para servir."}
-                  </p>
-                </>
               ) : (
                 <>
-                  <p>
-                    {data.candidateName}, ficamos felizes em contar com você!
-                    Confirme que pretende participar como{" "}
-                    {data.participation === "CAMPER" ? "campista" : "servo"}{" "}
-                    neste evento.
-                  </p>
-                  <p>
-                    Responda até {dateTime(data.expiresAt)} (horário de
-                    Brasília).
-                  </p>
-                  <p className="muted">
+                  <div className="decision-response-block">
+                    <p id="participation-question">
+                      {data.candidateName}, ficamos felizes em contar com você!
+                      Confirme que pretende participar como{" "}
+                      {data.participation === "CAMPER" ? "campista" : "servo"}{" "}
+                      neste evento.
+                    </p>
+                    <div
+                      className="decision-response-actions"
+                      role="group"
+                      aria-label="Participação no evento"
+                      aria-describedby="participation-question"
+                      aria-busy={busy}
+                    >
+                      <button
+                        type="button"
+                        className={`button ${data.confirmedAt ? "primary" : "outline"}`}
+                        aria-pressed={!!data.confirmedAt}
+                        disabled={busy || !canRespond}
+                        onClick={() =>
+                          void saveResponse("", { resposta: "VOU" })
+                        }
+                      >
+                        Vou participar
+                      </button>
+                      <button
+                        type="button"
+                        className={`button ${data.declinedAt ? "primary" : "outline"}`}
+                        aria-pressed={!!data.declinedAt}
+                        disabled={busy || !canRespond}
+                        onClick={() =>
+                          void saveResponse("", { resposta: "NAO_IREI" })
+                        }
+                      >
+                        Não irei
+                      </button>
+                    </div>
+                    {data.declinedAt ? (
+                      <Notice kind="info">
+                        Você informou que não irá. A organização foi informada e
+                        avaliará sua vaga.
+                      </Notice>
+                    ) : (
+                      data.confirmedAt && (
+                        <Notice kind="success">
+                          Você informou que vai participar!{" "}
+                          {data.participation === "CAMPER"
+                            ? "A organização finalizará a confirmação da participação conforme as vagas e a autorização do responsável, quando necessária."
+                            : "A organização finalizará sua equipe e a confirmação da participação."}
+                        </Notice>
+                      )
+                    )}
+                  </div>
+                  {data.spirituality && (
+                    <div className="decision-response-block">
+                      <p id="spirituality-question">
+                        Você participará da espiritualidade do dia{" "}
+                        {new Intl.DateTimeFormat("pt-BR", {
+                          timeZone: "America/Sao_Paulo",
+                          day: "2-digit",
+                          month: "2-digit",
+                          year: "numeric",
+                        }).format(new Date(data.spirituality.startsAt))}{" "}
+                        às{" "}
+                        {new Intl.DateTimeFormat("pt-BR", {
+                          timeZone: "America/Sao_Paulo",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          hourCycle: "h23",
+                        }).format(new Date(data.spirituality.startsAt))}{" "}
+                        horas?
+                      </p>
+                      <div
+                        className="decision-response-actions"
+                        role="group"
+                        aria-label="Participação na espiritualidade"
+                        aria-describedby="spirituality-question"
+                        aria-busy={busy}
+                      >
+                        {([true, false] as const).map((response) => (
+                          <button
+                            type="button"
+                            key={String(response)}
+                            className={`button ${data.spirituality!.answer === response ? "primary" : "outline"}`}
+                            aria-pressed={
+                              data.spirituality!.answer === response
+                            }
+                            disabled={busy || !data.spirituality!.canRespond}
+                            onClick={() =>
+                              void saveResponse("/spirituality", { response })
+                            }
+                          >
+                            {response ? "Sim" : "Não"}
+                          </button>
+                        ))}
+                      </div>
+                      {data.spirituality.answer !== null && (
+                        <Notice kind="success">
+                          {data.spirituality.answer
+                            ? "Você informou que participará da espiritualidade."
+                            : "Você informou que não participará da espiritualidade."}
+                        </Notice>
+                      )}
+                    </div>
+                  )}
+                  {(!canRespond || data.spirituality?.canRespond === false) && (
+                    <p className="muted">
+                      Este link expirou. Procure a organização para alterar suas
+                      respostas.
+                    </p>
+                  )}
+                  <p className="muted decision-response-footer">
                     Você pode confirmar sem criar conta.{" "}
                     {data.participation === "CAMPER"
                       ? "A organização finalizará sua participação."
                       : "A organização definirá sua equipe."}
                   </p>
                 </>
-              )}
-              {data.kind === "ACEITE" &&
-                (data.canRespond ??
-                  new Date(data.expiresAt).getTime() > Date.now()) && (
-                  <div>
-                    {(data.confirmedAt || data.declinedAt) && (
-                      <p>
-                        Você pode alterar sua resposta até{" "}
-                        {dateTime(data.expiresAt)} (horário de Brasília).
-                      </p>
-                    )}
-                    <div className="button-row">
-                      {!data.confirmedAt && (
-                        <button
-                          className="button primary"
-                          disabled={busy}
-                          onClick={() => void confirm("VOU")}
-                        >
-                          Vou participar
-                        </button>
-                      )}
-                      {!data.declinedAt && (
-                        <button
-                          className="button outline"
-                          disabled={busy}
-                          onClick={() => void confirm("NAO_IREI")}
-                        >
-                          Não irei
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              {data.kind === "ACEITE" && data.canRespond === false && (
-                <p className="muted">
-                  O prazo para alterar sua resposta terminou. Procure a
-                  organização.
-                </p>
               )}
             </>
           )}
