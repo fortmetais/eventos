@@ -1,7 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import { useRemote } from "../lib/hooks";
-import { dateTime } from "../lib/types";
+import { dateTime, type RegistrationDecisionSummary } from "../lib/types";
 import { Loading, Notice } from "./ui";
 import { CopyNoticeLink, RenewNoticeLink, WhatsAppIcon } from "./NoticeActions";
 
@@ -18,6 +18,9 @@ export interface DecisionNoticeState {
     expiresAt: string;
     active: boolean;
     expired: boolean;
+    spirituality?: NonNullable<
+      RegistrationDecisionSummary["notice"]
+    >["spirituality"];
     email: string | null;
     message: string | null;
     link: string | null;

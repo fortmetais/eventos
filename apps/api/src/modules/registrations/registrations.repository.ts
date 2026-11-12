@@ -10,7 +10,8 @@ export type RegistrationFilters = {
   status?: RegistrationStatus;
   origin?: "PUBLIC_FORM" | "IMPORT";
   completeness?: "PENDING" | "COMPLETE";
-  presence?: "VOU" | "NAO_IREI";
+  presence?: "VOU" | "NAO_IREI" | "SEM_RESPOSTA";
+  spirituality?: "SIM" | "NAO" | "SEM_RESPOSTA";
   q?: string;
   sort?: "NAME_ASC" | "NAME_DESC" | "RECEIVED_ASC" | "ACCEPTED_FIRST";
   includeClosed?: boolean;
@@ -56,6 +57,7 @@ export const registrationInclude = {
           organizationId: true,
           startsAt: true,
           endsAt: true,
+          spiritualityStartsAt: true,
         },
       },
     },
@@ -110,13 +112,30 @@ export class RegistrationsRepository {
         Prisma.sql`r.situacao::text = ${storedStatus[filters.status]}`,
       );
     if (filters.origin) clauses.push(Prisma.sql`r.origem = ${filters.origin}`);
-    if (filters.presence)
-      clauses.push(Prisma.sql`EXISTS (
+    if (filters.presence) {
+      // The partial unique index permits only one unrevoked notice per registration.
+      const matchingResponse = Prisma.sql`EXISTS (
       SELECT 1 FROM inscricoes.avisos_decisao a
       WHERE a.inscricao_id = r.inscricao_id AND a.revogado_em IS NULL AND a.tipo = 'ACEITE'
         AND r.situacao::text IN ('APROVADA', 'CONFIRMADA')
-        AND ${filters.presence === "VOU" ? Prisma.sql`a.presenca_confirmada_em IS NOT NULL` : Prisma.sql`a.presenca_recusada_em IS NOT NULL`}
-    )`);
+        AND ${filters.presence === "VOU" ? Prisma.sql`a.presenca_confirmada_em IS NOT NULL` : filters.presence === "NAO_IREI" ? Prisma.sql`a.presenca_recusada_em IS NOT NULL` : Prisma.sql`(a.presenca_confirmada_em IS NOT NULL OR a.presenca_recusada_em IS NOT NULL)`}
+      )`;
+      clauses.push(
+        filters.presence === "SEM_RESPOSTA"
+          ? Prisma.sql`NOT ${matchingResponse}`
+          : matchingResponse,
+      );
+    }
+    if (filters.spirituality) {
+      clauses.push(
+        Prisma.sql`c.publico::text = 'SERVO' AND e.espiritualidade_em IS NOT NULL`,
+      );
+      clauses.push(
+        filters.spirituality === "SEM_RESPOSTA"
+          ? Prisma.sql`(r.espiritualidade_em IS DISTINCT FROM e.espiritualidade_em OR r.espiritualidade_participara IS NULL)`
+          : Prisma.sql`r.espiritualidade_em = e.espiritualidade_em AND r.espiritualidade_participara = ${filters.spirituality === "SIM"}`,
+      );
+    }
     if (filters.includeClosed === false)
       clauses.push(
         Prisma.sql`r.situacao::text NOT IN ('RECUSADA', 'CANCELADA')`,

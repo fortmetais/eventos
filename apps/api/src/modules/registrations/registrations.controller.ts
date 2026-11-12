@@ -8,7 +8,8 @@ const filters = z.object({
   campaignId: id.optional(),
   origin: z.enum(["PUBLIC_FORM", "IMPORT"]).optional(),
   completeness: z.enum(["PENDING", "COMPLETE"]).optional(),
-  presence: z.enum(["VOU", "NAO_IREI"]).optional(),
+  presence: z.enum(["VOU", "NAO_IREI", "SEM_RESPOSTA"]).optional(),
+  spirituality: z.enum(["SIM", "NAO", "SEM_RESPOSTA"]).optional(),
   q: z.string().trim().max(120).optional(),
   sort: z
     .enum(["NAME_ASC", "NAME_DESC", "RECEIVED_ASC", "ACCEPTED_FIRST"])

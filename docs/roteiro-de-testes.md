@@ -1,5 +1,15 @@
 # Roteiro de testes da aplicação Encontro
 
+## Respostas ao convite na ficha e filtros — 12/11/2026
+
+- Na ficha do participante, abrir **Participação e respostas** e conferir **Respostas ao convite**. As duas perguntas devem aparecer juntas: participação no acampamento (**Vou participar / Não irei / Não respondeu**) e, quando configurada, participação na espiritualidade (**Sim / Não / Não respondeu**). Conferir a data da espiritualidade e as datas de resposta; ausência de resposta não pode virar uma negativa.
+- Nos filtros de inscrições, testar **Participação no acampamento** e **Espiritualidade**, com **Todos**, **Não respondeu**, **Sim** e **Não**. Combinar as duas perguntas com pesquisa, ordenação e demais filtros. O resultado precisa satisfazer ambos os filtros, incluindo a combinação sem resposta nas duas perguntas e uma pergunta respondida com a outra pendente.
+- Confirmar que os filtros são aplicados ao conjunto completo antes da paginação. Alterá-los na página 2 deve retornar à página 1; preservar pesquisa e ordenação, gravar ambos na URL e manter a escolha após recarregar. Limpar deve remover os dois filtros sem apagar a pesquisa.
+- Testar aviso ausente, vigente e revogado; respostas de outro encontro não respondem a espiritualidade atual. Campistas e eventos sem espiritualidade configurada não devem aparecer como pendentes dessa pergunta. O filtro do acampamento deve distinguir resposta negativa de ausência de resposta vigente.
+- Conferir os filtros no computador e na janela de filtros do celular, com nomes acessíveis, seleção simples, resultado vazio, respostas da ficha e ausência de rolagem horizontal. A consulta da ficha e dos filtros não envia mensagens nem altera respostas.
+
+Verificação aprovada no computador (1536 × 1000) e celulares de 320, 390 e 430 px. O percurso `scripts/browser-review-registrations-check.mjs` utiliza serviços e pessoas fictícias, incluindo 25 candidaturas para conferir paginação, preservando os fluxos existentes. As capturas ficam em `.local/screenshots/review-response-filters-*.png` e `review-invitation-answers-*.png`. Nenhum dado de produção ou mensagem real foi utilizado.
+
 ## Confirmação de participação e espiritualidade — 12/11/2026
 
 - Abrir o link pessoal de um servo do 3º FAC. Conferir a ordem: explicação, **Vou participar / Não irei**, pergunta **Você participará da espiritualidade do dia 14/11/2026 às 14:00 horas?**, **Sim / Não** e orientação final. A data e o horário devem seguir Brasília, inclusive em aparelhos configurados em outro fuso.

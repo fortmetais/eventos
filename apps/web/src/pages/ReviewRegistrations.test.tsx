@@ -777,6 +777,82 @@ describe("Gestão de inscrições por evento", () => {
       screen.getByRole("combobox", { name: "Complementação" }),
     ).toBeVisible();
   });
+  it.each([
+    ["Participação no acampamento", "presence", "SEM_RESPOSTA"],
+    ["Participação no acampamento", "presence", "VOU"],
+    ["Participação no acampamento", "presence", "NAO_IREI"],
+    ["Espiritualidade", "spirituality", "SEM_RESPOSTA"],
+    ["Espiritualidade", "spirituality", "SIM"],
+    ["Espiritualidade", "spirituality", "NAO"],
+  ])(
+    "filtra %s por %s=%s e volta à primeira página",
+    async (label, key, value) => {
+      total = 25;
+      show("/organizacao/org/inscricoes?evento=event&page=2&q=Maria");
+      await ready();
+      fireEvent.click(screen.getByRole("button", { name: "Filtros" }));
+      const select = screen.getByRole("combobox", { name: label });
+      expect(
+        within(select)
+          .getAllByRole("option")
+          .map((option) => option.textContent),
+      ).toEqual(["Todos", "Não respondeu", "Sim", "Não"]);
+      fireEvent.change(select, { target: { value } });
+      await waitFor(() =>
+        expect(
+          queries().some(([path]) => {
+            const params = new URL(String(path), "https://example.test")
+              .searchParams;
+            return (
+              params.get(key) === value &&
+              params.get("page") === "1" &&
+              params.get("q") === "Maria"
+            );
+          }),
+        ).toBe(true),
+      );
+      expect(screen.getByTestId("location")).toHaveTextContent(
+        `${key}=${value}`,
+      );
+      expect(screen.getByTestId("location")).not.toHaveTextContent("page=2");
+    },
+  );
+  it("retoma e combina filtros das duas perguntas e permite limpá-los no celular", async () => {
+    mobileViewport = true;
+    show(
+      "/organizacao/org/inscricoes?evento=event&presence=VOU&spirituality=SEM_RESPOSTA&q=Maria",
+    );
+    await ready();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Filtros e ordenação, 2 filtros ativos/,
+      }),
+    );
+    const camp = screen.getByRole("combobox", {
+      name: "Participação no acampamento",
+    });
+    const meeting = screen.getByRole("combobox", { name: "Espiritualidade" });
+    expect(camp).toHaveValue("VOU");
+    expect(meeting).toHaveValue("SEM_RESPOSTA");
+    fireEvent.change(meeting, { target: { value: "NAO" } });
+    await waitFor(() =>
+      expect(
+        queries().some(([path]) =>
+          String(path).includes("presence=VOU&spirituality=NAO"),
+        ),
+      ).toBe(true),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Limpar filtros" }));
+    await waitFor(() => {
+      expect(screen.getByTestId("location")).not.toHaveTextContent("presence=");
+      expect(screen.getByTestId("location")).not.toHaveTextContent(
+        "spirituality=",
+      );
+    });
+    expect(screen.getByTestId("location")).toHaveTextContent("q=Maria");
+    expect(camp).toHaveValue("");
+    expect(meeting).toHaveValue("");
+  });
   it("aceita diretamente e registra motivo padrão sem pedir justificativa", async () => {
     show();
     const select = await ready();

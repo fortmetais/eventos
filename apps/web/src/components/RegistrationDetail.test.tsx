@@ -29,6 +29,8 @@ const mocks = vi.hoisted(() => ({
   eventsEnabled: true,
   loading: false,
   spiritualityResponse: null as boolean | null,
+  spiritualityStartsAt: "2026-11-14T17:00:00Z" as string | null,
+  decisionSummary: undefined as Record<string, unknown> | undefined,
 }));
 vi.mock("../lib/api", () => ({
   api: mocks.api,
@@ -85,7 +87,11 @@ vi.mock("../lib/hooks", () => ({
           origin: mocks.origin,
           updatedAt: mocks.updatedAt,
           spiritualityResponse: mocks.spiritualityResponse,
-          spiritualityAt: "2026-11-14T17:00:00Z",
+          spiritualityAt:
+            mocks.spiritualityResponse == null ? null : "2026-11-14T17:00:00Z",
+          spiritualityRespondedAt:
+            mocks.spiritualityResponse == null ? null : "2026-11-12T15:00:00Z",
+          decisionSummary: mocks.decisionSummary,
           pendingInformation: mocks.pendingInformation,
           importData:
             mocks.origin === "IMPORT"
@@ -110,6 +116,7 @@ vi.mock("../lib/hooks", () => ({
               id: "event",
               name: "Evento Teste",
               startsAt: "2027-02-05",
+              spiritualityStartsAt: mocks.spiritualityStartsAt,
             },
           },
         },
@@ -118,6 +125,8 @@ vi.mock("../lib/hooks", () => ({
 afterEach(cleanup);
 beforeEach(() => {
   mocks.spiritualityResponse = null;
+  mocks.spiritualityStartsAt = "2026-11-14T17:00:00Z";
+  mocks.decisionSummary = undefined;
   mocks.api.mockReset();
   mocks.refresh.mockClear();
   mocks.team = null;
@@ -164,11 +173,100 @@ describe("Ficha completa extraída", () => {
         }),
       );
       expect(screen.getByText("Participação na espiritualidade")).toBeVisible();
+      const spirituality = screen.getByText(
+        "Participação na espiritualidade",
+      ).parentElement!;
       expect(
-        screen.getByText(new RegExp(`14/11/2026.*${answer ? "Sim" : "Não"}`)),
+        within(spirituality).getByText(answer ? "Sim" : "Não"),
       ).toBeVisible();
+      expect(spirituality).toHaveTextContent("14/11/2026");
+      expect(spirituality).toHaveTextContent("Respondido em");
     },
   );
+  it.each([
+    ["Vou participar", "2026-11-12T15:00:00Z", null, true],
+    ["Não irei", null, "2026-11-12T15:00:00Z", false],
+    ["Não respondeu", null, null, null],
+  ] as const)(
+    "mostra as duas respostas sem expor links para a secretaria: %s",
+    (answer, confirmedAt, declinedAt, spirituality) => {
+      mocks.role = "SECRETARY";
+      mocks.eventsEnabled = false;
+      mocks.status = "APPROVED";
+      mocks.decisionSummary = {
+        ready: true,
+        notice: {
+          kind: "ACEITE",
+          active: true,
+          expired: true,
+          confirmedAt,
+          declinedAt,
+          spirituality: {
+            startsAt: "2026-11-14T17:00:00Z",
+            answer: spirituality,
+            respondedAt: confirmedAt ?? declinedAt,
+          },
+        },
+      };
+      render(
+        <RegistrationDetail
+          organizationId="org"
+          registrationId="candidate"
+          onChanged={vi.fn()}
+        />,
+      );
+      expand("Participação e respostas");
+      const camp = screen.getByText(
+        "Participação no acampamento",
+      ).parentElement!;
+      const meeting = screen.getByText(
+        "Participação na espiritualidade",
+      ).parentElement!;
+      expect(within(camp).getByText(answer)).toBeVisible();
+      expect(
+        within(meeting).getByText(
+          spirituality == null ? "Não respondeu" : spirituality ? "Sim" : "Não",
+        ),
+      ).toBeVisible();
+      expect(
+        screen.queryByRole("button", { name: "Convite e presença" }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Link do candidato")).not.toBeInTheDocument();
+    },
+  );
+  it("não transforma resposta da espiritualidade anterior em resposta da nova data", () => {
+    mocks.spiritualityResponse = true;
+    mocks.spiritualityStartsAt = "2026-11-21T17:00:00Z";
+    render(
+      <RegistrationDetail
+        organizationId="org"
+        registrationId="candidate"
+        onChanged={vi.fn()}
+      />,
+    );
+    expand("Participação e respostas");
+    const meeting = screen.getByText(
+      "Participação na espiritualidade",
+    ).parentElement!;
+    expect(meeting).toHaveTextContent("21/11/2026");
+    expect(within(meeting).getByText("Não respondeu")).toBeVisible();
+    expect(within(meeting).queryByText("Sim")).not.toBeInTheDocument();
+  });
+  it("não apresenta pergunta de espiritualidade inexistente", () => {
+    mocks.spiritualityStartsAt = null;
+    render(
+      <RegistrationDetail
+        organizationId="org"
+        registrationId="candidate"
+        onChanged={vi.fn()}
+      />,
+    );
+    expand("Participação e respostas");
+    expect(
+      screen.queryByText("Participação na espiritualidade"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Participação no acampamento")).toBeVisible();
+  });
   it("inicia seções fechadas e mantém dados privados fora do resumo", async () => {
     mocks.snapshot = {
       email: "contato-privado@example.test",

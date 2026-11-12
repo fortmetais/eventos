@@ -1353,8 +1353,12 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
           canRespond: true,
         });
         const responses = await Promise.all([
-          request(app).post(path).send({ token: notice.token, response: false }),
-          request(app).post(path).send({ token: notice.token, response: false }),
+          request(app)
+            .post(path)
+            .send({ token: notice.token, response: false }),
+          request(app)
+            .post(path)
+            .send({ token: notice.token, response: false }),
         ]);
         expect(responses.map((r) => r.status)).toEqual([200, 200]);
         expect(responses[0].body).toMatchObject({
@@ -1394,9 +1398,9 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
           spiritualityAt: spiritualityStartsAt,
         });
         expect(after.spiritualityRespondedAt).toBeInstanceOf(Date);
-        expect(
-          await db.consent.count({ where: { registrationId: id } }),
-        ).toBe(consentCount);
+        expect(await db.consent.count({ where: { registrationId: id } })).toBe(
+          consentCount,
+        );
         expect(await history()).toHaveLength(2);
         expect(messages).toHaveLength(sent);
         // Legacy requests still default to VOU, without changing the separate answer.
@@ -1413,7 +1417,12 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
         expect(admin.body.notice.spirituality.answer).toBe(true);
         const list = await request(app)
           .get(`/api/v1/organizations/${org}/registrations`)
-          .query({ eventId, q: before.snapshot && "Pessoa do teste de avisos", sort: "NAME_ASC", pageSize: 100 })
+          .query({
+            eventId,
+            q: before.snapshot && "Pessoa do teste de avisos",
+            sort: "NAME_ASC",
+            pageSize: 100,
+          })
           .set(auth())
           .expect(200);
         expect(
@@ -1496,7 +1505,9 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
             .set(auth())
             .expect(200)
         ).body.notice;
-        const refusalToken = new URLSearchParams(new URL(refusal.link).hash.slice(1)).get("token");
+        const refusalToken = new URLSearchParams(
+          new URL(refusal.link).hash.slice(1),
+        ).get("token");
         expect(refusal.spirituality).toBeNull();
         await request(app)
           .post(`${publicPath(refusal.id)}/spirituality`)
@@ -1531,7 +1542,9 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
             .set(auth())
             .expect(200)
         ).body.notice;
-        const camperToken = new URLSearchParams(new URL(camperNotice.link).hash.slice(1)).get("token");
+        const camperToken = new URLSearchParams(
+          new URL(camperNotice.link).hash.slice(1),
+        ).get("token");
         const camperView = await request(camperApp)
           .post(`${publicPath(camperNotice.id)}/view`)
           .send({ token: camperToken })
@@ -1589,6 +1602,274 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
         const history = await db.$queryRaw<{ total: bigint }[]>`
           SELECT count(*) AS total FROM inscricoes.respostas_espiritualidade_historico WHERE inscricao_id=${id}::uuid`;
         expect(Number(history[0].total)).toBe(0);
+      });
+    });
+    it("a ficha apresenta as duas respostas à organização e à secretaria sem credenciais ou ampliação de acesso", async () => {
+      await withSpirituality(async () => {
+        const id = await candidate();
+        const notice = await acceptedNotice(id);
+        const sent = messages.length;
+        for (const [presence, spirituality] of [
+          ["VOU", false],
+          ["NAO_IREI", true],
+        ] as const) {
+          await request(app)
+            .post(publicPath(notice.id))
+            .send({ token: notice.token, resposta: presence })
+            .expect(200);
+          await request(app)
+            .post(`${publicPath(notice.id)}/spirituality`)
+            .send({ token: notice.token, response: spirituality })
+            .expect(200);
+          for (const actor of ["organizer", "secretary"]) {
+            const detail = await request(app)
+              .get(base(id))
+              .set(auth(actor))
+              .expect(200);
+            const summary = detail.body.decisionSummary;
+            expect(summary.ready).toBe(true);
+            expect(Boolean(summary.notice.confirmedAt)).toBe(
+              presence === "VOU",
+            );
+            expect(Boolean(summary.notice.declinedAt)).toBe(
+              presence === "NAO_IREI",
+            );
+            expect(summary.notice.spirituality).toMatchObject({
+              startsAt: spiritualityStartsAt.toISOString(),
+              answer: spirituality,
+            });
+            expect(detail.body.campaign.event.spiritualityStartsAt).toBe(
+              spiritualityStartsAt.toISOString(),
+            );
+            for (const privateField of [
+              "link",
+              "shortLink",
+              "token",
+              "tokenHash",
+              "message",
+              "whatsappLink",
+              "email",
+            ])
+              expect(summary.notice).not.toHaveProperty(privateField);
+            expect(JSON.stringify(detail.body)).not.toContain(notice.token);
+            expect(detail.body.health).toBeUndefined();
+          }
+        }
+        await request(app).get(base(id)).expect(401);
+        await request(app).get(base(id)).set(auth("other")).expect(403);
+        await request(app)
+          .get(`/api/v1/organizations/${otherOrg}/registrations/${id}`)
+          .set(auth("other"))
+          .expect(404);
+        await request(app)
+          .get(`${base(id)}/decision-notice`)
+          .set(auth("secretary"))
+          .expect(403);
+        const withoutNotices = createApp({
+          db,
+          volunteerRegistrationsEnabled: true,
+          decisionNotificationsEnabled: false,
+          rateLimits: false,
+          resolveIdentity: async (token) => users[token] ?? null,
+        });
+        const unavailable = await request(withoutNotices)
+          .get(base(id))
+          .set(auth("secretary"))
+          .expect(200);
+        expect(unavailable.body.decisionSummary).toEqual({
+          ready: false,
+          notice: null,
+        });
+        expect(messages).toHaveLength(sent);
+      });
+    });
+    it("filtra ambas respostas antes de paginar e distingue ausência, convite anterior e reunião desatualizada", async () => {
+      const prefix = "Filtro respostas independentes";
+      const type = await db.eventType.findFirstOrThrow({
+        where: { organizationId: org },
+      });
+      const event = await db.event.create({
+        data: {
+          organizationId: org,
+          typeId: type.id,
+          name: "Evento exclusivo dos filtros",
+          description: "Teste sem informações reais",
+          city: "Toledo",
+          location: "Local de teste",
+          startsAt: new Date("2027-06-01"),
+          endsAt: new Date("2027-06-03"),
+          status: "PUBLISHED",
+          spiritualityStartsAt,
+        },
+      });
+      const campaign = await db.campaign.create({
+        data: {
+          eventId: event.id,
+          kind: "VOLUNTEER",
+          opensAt: new Date("2026-01-01"),
+          closesAt: new Date("2027-01-01"),
+        },
+      });
+      const form = await db.formVersion.create({
+        data: { campaignId: campaign.id, version: 1, config: {} },
+      });
+      const ids: Record<string, string> = {};
+      const notices: Record<
+        string,
+        Awaited<ReturnType<typeof acceptedNotice>>
+      > = {};
+      for (const suffix of ["A", "B", "C", "D", "E", "F"]) {
+        ids[suffix] = await candidate(true, {
+          name: `${prefix} ${suffix}`,
+          campaign: campaign.id,
+          form: form.id,
+        });
+        if (suffix !== "D") notices[suffix] = await acceptedNotice(ids[suffix]);
+      }
+      for (const suffix of ["A", "B", "E", "F"]) {
+        const notice = notices[suffix];
+        await request(app)
+          .post(publicPath(notice.id))
+          .send({
+            token: notice.token,
+            resposta: suffix === "B" ? "NAO_IREI" : "VOU",
+          })
+          .expect(200);
+        await request(app)
+          .post(`${publicPath(notice.id)}/spirituality`)
+          .send({ token: notice.token, response: suffix !== "B" })
+          .expect(200);
+      }
+      await db.registration.update({
+        where: { id: ids.E },
+        data: { spiritualityAt: new Date("2026-11-13T17:00:00Z") },
+      });
+      expect((await status(ids.F, "RECEIVED")).status).toBe(200);
+      await acceptedNotice(ids.F);
+      const camper = await db.campaign.create({
+        data: {
+          eventId: event.id,
+          kind: "CAMPER",
+          opensAt: new Date("2026-01-01"),
+          closesAt: new Date("2027-01-01"),
+        },
+      });
+      const camperForm = await db.formVersion.create({
+        data: { campaignId: camper.id, version: 1, config: {} },
+      });
+      const camperId = await candidate(true, {
+        name: `${prefix} Campista`,
+        campaign: camper.id,
+        form: camperForm.id,
+      });
+      const unconfiguredId = await candidate(true, {
+        name: `${prefix} Sem pergunta`,
+      });
+      const broadApp = createApp({
+        db,
+        eventsEnabled: true,
+        camperRegistrationsEnabled: true,
+        volunteerRegistrationsEnabled: true,
+        decisionNotificationsEnabled: false,
+        rateLimits: false,
+        resolveIdentity: async (token) => users[token] ?? null,
+      });
+      const query = (filters: Record<string, string | number> = {}) =>
+        request(broadApp)
+          .get(`/api/v1/organizations/${org}/registrations`)
+          .query({ q: prefix, sort: "NAME_ASC", pageSize: 100, ...filters })
+          .set(auth());
+      const selected = async (filters: Record<string, string | number>) =>
+        (await query(filters).expect(200)).body.items.map(
+          (item: { id: string }) => item.id,
+        );
+      expect(await selected({ presence: "VOU" })).toEqual([ids.A, ids.E]);
+      expect(await selected({ presence: "NAO_IREI" })).toEqual([ids.B]);
+      expect(await selected({ presence: "SEM_RESPOSTA" })).toEqual([
+        ids.C,
+        camperId,
+        ids.D,
+        ids.F,
+        unconfiguredId,
+      ]);
+      expect(await selected({ spirituality: "SIM" })).toEqual([ids.A, ids.F]);
+      expect(await selected({ spirituality: "NAO" })).toEqual([ids.B]);
+      expect(await selected({ spirituality: "SEM_RESPOSTA" })).toEqual([
+        ids.C,
+        ids.D,
+        ids.E,
+      ]);
+      expect(await selected({ presence: "VOU", spirituality: "SIM" })).toEqual([
+        ids.A,
+      ]);
+      expect(
+        await selected({ presence: "NAO_IREI", spirituality: "NAO" }),
+      ).toEqual([ids.B]);
+      expect(
+        await selected({ presence: "SEM_RESPOSTA", spirituality: "SIM" }),
+      ).toEqual([ids.F]);
+      expect(
+        await selected({ presence: "VOU", spirituality: "SEM_RESPOSTA" }),
+      ).toEqual([ids.E]);
+      const page1 = await query({
+        spirituality: "SEM_RESPOSTA",
+        pageSize: 2,
+        page: 1,
+      }).expect(200);
+      const page2 = await query({
+        spirituality: "SEM_RESPOSTA",
+        pageSize: 2,
+        page: 2,
+      }).expect(200);
+      expect(page1.body.total).toBe(3);
+      expect(page2.body.total).toBe(3);
+      expect(
+        [...page1.body.items, ...page2.body.items].map(
+          (item: { id: string }) => item.id,
+        ),
+      ).toEqual([ids.C, ids.D, ids.E]);
+      await query({ presence: "SIM" }).expect(422);
+      await query({ spirituality: "VOU" }).expect(422);
+      await request(broadApp)
+        .get(`/api/v1/organizations/${org}/registrations`)
+        .query({ presence: "SEM_RESPOSTA", spirituality: "SEM_RESPOSTA" })
+        .set(auth("other"))
+        .expect(403);
+      const isolated = await request(broadApp)
+        .get(`/api/v1/organizations/${otherOrg}/registrations`)
+        .query({
+          eventId: event.id,
+          presence: "SEM_RESPOSTA",
+          spirituality: "SEM_RESPOSTA",
+        })
+        .set(auth("other"))
+        .expect(200);
+      expect(isolated.body.items).toEqual([]);
+      expect(isolated.body.total).toBe(0);
+      await db.decisionNotice.updateMany({
+        where: { registrationId: { in: [ids.A, ids.B] }, revokedAt: null },
+        data: { expiresAt: new Date(Date.now() - 1000) },
+      });
+      await db.event.update({
+        where: { id: event.id },
+        data: { status: "COMPLETED" },
+      });
+      expect(await selected({ presence: "VOU" })).toEqual([ids.A, ids.E]);
+      expect(await selected({ presence: "NAO_IREI" })).toEqual([ids.B]);
+      expect(await selected({ spirituality: "SIM" })).toEqual([ids.A, ids.F]);
+      const concluded = await query({ presence: "NAO_IREI" }).expect(200);
+      expect(concluded.body.items[0].decisionSummary).toEqual({
+        ready: false,
+        notice: null,
+      });
+      const preserved = await request(app)
+        .get(`/api/v1/organizations/${org}/registrations`)
+        .query({ eventId: event.id, presence: "NAO_IREI" })
+        .set(auth())
+        .expect(200);
+      expect(preserved.body.items[0].decisionSummary.notice).toMatchObject({
+        active: false,
+        expired: true,
       });
     });
     it("cancelamento e suspensão bloqueiam respostas e ações administrativas", async () => {

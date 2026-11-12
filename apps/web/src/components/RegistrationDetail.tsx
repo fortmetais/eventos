@@ -311,6 +311,35 @@ export function RegistrationDetail({
       ? noticeState.state.notice
       : registration?.decisionSummary?.notice;
   const notice = currentNotice?.kind === "ACEITE" ? currentNotice : null;
+  const campResponse = notice?.declinedAt
+    ? "Não irei"
+    : notice?.confirmedAt
+      ? "Vou participar"
+      : "Não respondeu";
+  const campRespondedAt = notice?.declinedAt ?? notice?.confirmedAt;
+  const spiritualityAt =
+    registration?.campaign.kind === "VOLUNTEER"
+      ? (notice?.spirituality?.startsAt ??
+        registration.campaign.event.spiritualityStartsAt ??
+        registration.spiritualityAt)
+      : null;
+  // A response to an earlier meeting must not answer the current question.
+  const sameSpirituality = Boolean(
+    spiritualityAt &&
+    registration?.spiritualityAt &&
+    new Date(spiritualityAt).getTime() ===
+      new Date(registration.spiritualityAt).getTime(),
+  );
+  const spiritualityResponse = notice?.spirituality
+    ? notice.spirituality.answer
+    : sameSpirituality
+      ? registration?.spiritualityResponse
+      : null;
+  const spiritualityRespondedAt = notice?.spirituality
+    ? notice.spirituality.respondedAt
+    : sameSpirituality
+      ? registration?.spiritualityRespondedAt
+      : null;
   const presence = !["APPROVED", "CONFIRMED"].includes(
     registration?.status ?? "",
   )
@@ -488,20 +517,53 @@ export function RegistrationDetail({
 
               <DetailSection
                 title="Participação e respostas"
-                summary={`${answers.length} ${answers.length === 1 ? "resposta" : "respostas"}`}
+                summary={
+                  spiritualityAt
+                    ? "Acampamento e espiritualidade"
+                    : "Resposta ao convite"
+                }
                 {...sectionProps("participation")}
               >
-                <dl className="registration-detail-facts">
-                  {registration.spiritualityResponse != null &&
-                    registration.spiritualityAt && (
+                <div className="registration-detail-invitation-answers">
+                  <h4>Respostas ao convite</h4>
+                  <dl className="registration-detail-facts">
+                    <div>
+                      <dt>Participação no acampamento</dt>
+                      <dd>
+                        <strong>{campResponse}</strong>
+                        {campRespondedAt && (
+                          <small>
+                            Respondido em {dateTime(campRespondedAt)}
+                          </small>
+                        )}
+                        {campRespondedAt && !notice?.active && (
+                          <small>Convite inativo; resposta preservada.</small>
+                        )}
+                      </dd>
+                    </div>
+                    {spiritualityAt && (
                       <div>
                         <dt>Participação na espiritualidade</dt>
                         <dd>
-                          {dateTime(registration.spiritualityAt)} ·{" "}
-                          {registration.spiritualityResponse ? "Sim" : "Não"}
+                          <strong>
+                            {spiritualityResponse == null
+                              ? "Não respondeu"
+                              : spiritualityResponse
+                                ? "Sim"
+                                : "Não"}
+                          </strong>
+                          <small>{dateTime(spiritualityAt)}</small>
+                          {spiritualityRespondedAt && (
+                            <small>
+                              Respondido em {dateTime(spiritualityRespondedAt)}
+                            </small>
+                          )}
                         </dd>
                       </div>
                     )}
+                  </dl>
+                </div>
+                <dl className="registration-detail-facts">
                   {registration.snapshot.shirt && (
                     <div>
                       <dt>Camiseta</dt>

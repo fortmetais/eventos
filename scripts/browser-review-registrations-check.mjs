@@ -106,7 +106,8 @@ try {
       detailReads = 0,
       noticeReads = 0,
       noticeRenewals = 0,
-      guardianRenewals = 0;
+      guardianRenewals = 0,
+      testingResponseFilters = false;
     const event = {
       id: eventId,
       organizationId: orgId,
@@ -117,6 +118,7 @@ try {
       location: "Comunidade Santa Teresinha",
       city: "Loanda",
       status: "PUBLISHED",
+      spiritualityStartsAt: "2026-11-14T17:00:00.000Z",
       type: { name: "FAC" },
       departmentsReady: true,
       imageThumbnailUrl: `${target}/fixture-banner.svg`,
@@ -180,7 +182,12 @@ try {
       history: [],
       campaign: {
         ...event.campaigns[0],
-        event: { id: eventId, name: event.name, startsAt: event.startsAt },
+        event: {
+          id: eventId,
+          name: event.name,
+          startsAt: event.startsAt,
+          spiritualityStartsAt: event.spiritualityStartsAt,
+        },
       },
       form: { config: { questions: [], terms: "Termos fictícios" } },
     }));
@@ -248,6 +255,13 @@ try {
         emailSentAt: null,
         whatsappSentAt: null,
         confirmedAt: null,
+        declinedAt: null,
+        spirituality: {
+          startsAt: event.spiritualityStartsAt,
+          answer: row.spiritualityResponse ?? null,
+          respondedAt: row.spiritualityRespondedAt ?? null,
+          canRespond: true,
+        },
         expiresAt: "2028-01-10T12:00:00Z",
         active: true,
         expired: false,
@@ -259,6 +273,33 @@ try {
       };
     }
     notices.set(rows[1].id, makeNotice(rows[1]));
+    const filteringRows = Array.from({ length: 25 }, (_, index) => {
+      const row = structuredClone(rows[3]);
+      row.id = `00000000-0000-4000-8000-${String(index + 301).padStart(12, "0")}`;
+      row.protocol = `INS-FILTROS-${index + 1}`;
+      row.person.name =
+        [
+          "Pessoa fictícia Ana Exemplo",
+          "Pessoa fictícia Beatriz Exemplo",
+          "Pessoa fictícia Caio Exemplo",
+          "Pessoa fictícia Diana Exemplo",
+        ][index] ?? `Pessoa fictícia ${String(index + 1).padStart(2, "0")}`;
+      row.snapshot.name = row.person.name;
+      row.status = "APPROVED";
+      row.spiritualityResponse =
+        index === 2 ? null : index === 1 ? false : true;
+      row.spiritualityAt =
+        row.spiritualityResponse === null ? null : event.spiritualityStartsAt;
+      row.spiritualityRespondedAt =
+        row.spiritualityResponse === null ? null : "2026-11-12T12:00:00.000Z";
+      if (index !== 2) {
+        const notice = makeNotice(row);
+        if (index === 1) notice.declinedAt = "2026-11-12T12:00:00.000Z";
+        else if (index !== 3) notice.confirmedAt = "2026-11-12T12:00:00.000Z";
+        notices.set(row.id, notice);
+      }
+      return row;
+    });
     function summary(row) {
       const notice = notices.get(row.id);
       if (!notice) return { ready: true, notice: null };
@@ -332,7 +373,7 @@ try {
           .normalize("NFD")
           .replace(/\p{Diacritic}/gu, "")
           .toLowerCase();
-        let result = rows.filter(
+        let result = (testingResponseFilters ? filteringRows : rows).filter(
           (row) =>
             (url.searchParams.get("includeClosed") !== "false" ||
               !["REJECTED", "CANCELLED"].includes(row.status)) &&
@@ -346,6 +387,36 @@ try {
           result = result.filter(
             (row) => row.status === url.searchParams.get("status"),
           );
+        if (url.searchParams.get("presence"))
+          result = result.filter((row) => {
+            const notice = notices.get(row.id);
+            const response =
+              notice?.active && notice.kind === "ACEITE"
+                ? notice.declinedAt
+                  ? "NAO_IREI"
+                  : notice.confirmedAt
+                    ? "VOU"
+                    : "SEM_RESPOSTA"
+                : "SEM_RESPOSTA";
+            return response === url.searchParams.get("presence");
+          });
+        if (url.searchParams.get("spirituality"))
+          result = result.filter((row) => {
+            const configured =
+              row.campaign.kind === "VOLUNTEER" &&
+              row.campaign.event.spiritualityStartsAt;
+            const answered =
+              row.spiritualityAt === configured &&
+              row.spiritualityResponse != null;
+            const response = answered
+              ? row.spiritualityResponse
+                ? "SIM"
+                : "NAO"
+              : "SEM_RESPOSTA";
+            return (
+              configured && response === url.searchParams.get("spirituality")
+            );
+          });
         const sort = url.searchParams.get("sort");
         result.sort((a, b) =>
           sort === "RECEIVED_ASC"
@@ -358,13 +429,19 @@ try {
                   a.person.name.localeCompare(b.person.name, "pt-BR")
                 : a.person.name.localeCompare(b.person.name, "pt-BR"),
         );
+        const requestedPage = testingResponseFilters
+          ? Number(url.searchParams.get("page") ?? 1)
+          : 1;
         return json(route, {
-          items: result.map((row) => ({
+          items: (testingResponseFilters
+            ? result.slice((requestedPage - 1) * 20, requestedPage * 20)
+            : result
+          ).map((row) => ({
             ...row,
             decisionSummary: summary(row),
           })),
           total: result.length,
-          page: 1,
+          page: requestedPage,
           pageSize: 20,
         });
       }
@@ -372,12 +449,14 @@ try {
         new RegExp(`^${base}/registrations/([^/]+)(.*)$`),
       );
       if (match) {
-        const row = rows.find((item) => item.id === match[1]),
+        const row = [...rows, ...filteringRows].find(
+            (item) => item.id === match[1],
+          ),
           suffix = match[2];
         if (!row) return json(route, {}, 404);
         if (!suffix) {
           detailReads++;
-          return json(route, row);
+          return json(route, { ...row, decisionSummary: summary(row) });
         }
         if (suffix === "/guardian")
           return json(route, {
@@ -1593,9 +1672,223 @@ try {
         ),
         "A página não pode ter rolagem horizontal.",
       );
+      testingResponseFilters = true;
+      await page.goto(
+        `${target}/organizacao/${orgId}/inscricoes?evento=${eventId}&q=ficticia&sort=NAME_DESC&page=2`,
+      );
+      await expect(
+        page.getByText("Página 2 de 2", { exact: true }),
+      ).toBeVisible();
+      const campFilter = page.getByRole("combobox", {
+        name: "Participação no acampamento",
+        exact: true,
+      });
+      const spiritualityFilter = page.getByRole("combobox", {
+        name: "Espiritualidade",
+        exact: true,
+      });
+      const openResponseFilters = async () => {
+        const trigger = page.getByRole("button", {
+          name: mobile ? /^Filtros e ordenação/ : "Filtros",
+          exact: !mobile,
+        });
+        await expect(trigger).toBeVisible();
+        if ((await trigger.getAttribute("aria-expanded")) !== "true")
+          await trigger.click();
+        await expect(campFilter).toBeVisible();
+      };
+      const assertResponseQuery = async (presence, spirituality) => {
+        await expect
+          .poll(() => new URL(page.url()).searchParams.get("presence") ?? "")
+          .toBe(presence);
+        await expect
+          .poll(
+            () => new URL(page.url()).searchParams.get("spirituality") ?? "",
+          )
+          .toBe(spirituality);
+        const params = new URL(page.url()).searchParams;
+        assert.equal(params.get("q"), "ficticia");
+        assert.equal(
+          params.get("page"),
+          null,
+          "Mudar resposta retorna à primeira página.",
+        );
+        await expect
+          .poll(() =>
+            queries.some((query) => {
+              const apiParams = new URLSearchParams(query);
+              return (
+                (apiParams.get("presence") ?? "") === presence &&
+                (apiParams.get("spirituality") ?? "") === spirituality &&
+                apiParams.get("page") === "1" &&
+                apiParams.get("q") === "ficticia"
+              );
+            }),
+          )
+          .toBe(true);
+      };
+      const assertResponseDetail = async (
+        row,
+        campAnswer,
+        spiritualityAnswer,
+        screenshot,
+      ) => {
+        await page
+          .getByRole("button", {
+            name: `Abrir ficha de ${row.person.name}`,
+            exact: true,
+          })
+          .click();
+        const responseDialog = page.getByRole("dialog");
+        await responseDialog
+          .getByRole("button", {
+            name: "Participação e respostas",
+            exact: true,
+          })
+          .click();
+        const answers = responseDialog.locator(
+          ".registration-detail-invitation-answers",
+        );
+        await expect(
+          answers.getByRole("heading", {
+            name: "Respostas ao convite",
+            exact: true,
+          }),
+        ).toBeVisible();
+        const camp = answers
+          .locator("dt")
+          .filter({ hasText: /^Participação no acampamento$/ })
+          .locator("..");
+        const spirituality = answers
+          .locator("dt")
+          .filter({ hasText: /^Participação na espiritualidade$/ })
+          .locator("..");
+        await expect(camp.locator("dd strong")).toHaveText(campAnswer);
+        await expect(spirituality.locator("dd strong")).toHaveText(
+          spiritualityAnswer,
+        );
+        await expect(spirituality).toContainText("14/11/2026");
+        if (campAnswer !== "Não respondeu")
+          await expect(camp).toContainText("Respondido em");
+        if (spiritualityAnswer !== "Não respondeu")
+          await expect(spirituality).toContainText("Respondido em");
+        await answers.scrollIntoViewIfNeeded();
+        if (screenshot)
+          await page.screenshot({
+            path: `.local/screenshots/review-invitation-answers-${screenshot}-${screenLabel}.png`,
+            fullPage: false,
+            animations: "disabled",
+          });
+        await page.keyboard.press("Escape");
+        await expect(responseDialog).toHaveCount(0);
+      };
+      await openResponseFilters();
+      await campFilter.selectOption("SEM_RESPOSTA");
+      await assertResponseQuery("SEM_RESPOSTA", "");
+      assert.equal(new URL(page.url()).searchParams.get("sort"), "NAME_DESC");
+      await closeFilters();
+      await expect(page.locator("tbody tr .review-person strong")).toHaveText([
+        filteringRows[3].person.name,
+        filteringRows[2].person.name,
+      ]);
+      await openResponseFilters();
+      await spiritualityFilter.selectOption("SEM_RESPOSTA");
+      await assertResponseQuery("SEM_RESPOSTA", "SEM_RESPOSTA");
+      await closeFilters();
+      await expect(page.locator("tbody tr .review-person strong")).toHaveText([
+        filteringRows[2].person.name,
+      ]);
+      await page.reload();
+      await openResponseFilters();
+      await expect(campFilter).toHaveValue("SEM_RESPOSTA");
+      await expect(spiritualityFilter).toHaveValue("SEM_RESPOSTA");
+      await spiritualityFilter.evaluate((element) =>
+        element.scrollIntoView({ block: "center", behavior: "instant" }),
+      );
+      await expect(spiritualityFilter).toBeInViewport();
+      await page.screenshot({
+        path: `.local/screenshots/review-response-filters-${screenLabel}.png`,
+        fullPage: !mobile,
+        animations: "disabled",
+      });
+      await closeFilters();
+      await assertResponseDetail(
+        filteringRows[2],
+        "Não respondeu",
+        "Não respondeu",
+        "pending",
+      );
+      await openResponseFilters();
+      await campFilter.selectOption("VOU");
+      await spiritualityFilter.selectOption("NAO");
+      await assertResponseQuery("VOU", "NAO");
+      await closeFilters();
+      await expect(page.locator("tbody tr .review-person strong")).toHaveCount(
+        0,
+      );
+      await openResponseFilters();
+      await campFilter.selectOption("NAO_IREI");
+      await assertResponseQuery("NAO_IREI", "NAO");
+      await closeFilters();
+      await expect(page.locator("tbody tr .review-person strong")).toHaveText([
+        filteringRows[1].person.name,
+      ]);
+      await assertResponseDetail(
+        filteringRows[1],
+        "Não irei",
+        "Não",
+        "declined",
+      );
+      await openResponseFilters();
+      await campFilter.selectOption("VOU");
+      await spiritualityFilter.selectOption("SIM");
+      await assertResponseQuery("VOU", "SIM");
+      await closeFilters();
+      await expect(page.locator("tbody tr .review-person strong")).toHaveCount(
+        20,
+      );
+      await expect(
+        page.getByText("Página 1 de 2", { exact: true }),
+      ).toBeVisible();
+      await assertResponseDetail(
+        filteringRows[0],
+        "Vou participar",
+        "Sim",
+        "confirmed",
+      );
+      await openResponseFilters();
+      await campFilter.selectOption("SEM_RESPOSTA");
+      await assertResponseQuery("SEM_RESPOSTA", "SIM");
+      await closeFilters();
+      await expect(page.locator("tbody tr .review-person strong")).toHaveText([
+        filteringRows[3].person.name,
+      ]);
+      await assertResponseDetail(filteringRows[3], "Não respondeu", "Sim");
+      await openResponseFilters();
+      if (mobile)
+        await page
+          .getByRole("button", { name: "Limpar filtros", exact: true })
+          .click();
+      else {
+        await campFilter.selectOption("");
+        await spiritualityFilter.selectOption("");
+      }
+      await expect(campFilter).toHaveValue("");
+      await expect(spiritualityFilter).toHaveValue("");
+      await assertResponseQuery("", "");
+      await closeFilters();
+      await expect(page.locator("tbody tr .review-person strong")).toHaveCount(
+        20,
+      );
+      assert(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth + 1,
+        ),
+        "Filtros de resposta e ficha não podem criar rolagem horizontal.",
+      );
       assert.deepEqual(errors, []);
       console.log(
-        `Inscrições ${screenLabel}: cards, abas, pesquisa/URL, indicação, aprovação, modal, WhatsApp direto, cópia de link, envio explícito, presença e link antigo aprovados.`,
+        `Inscrições ${screenLabel}: fluxo existente preservado; duas respostas na ficha, filtros combinados/sem resposta, URL, recarga, limpeza e paginação aprovados.`,
       );
     } catch (error) {
       if (errors.length) console.error(errors);

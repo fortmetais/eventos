@@ -145,6 +145,21 @@
 .registration-detail-dialog .registration-detail-facts:empty {
   display: none;
 }
+.registration-detail-dialog .registration-detail-invitation-answers {
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.registration-detail-dialog .registration-detail-invitation-answers h4 {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+.registration-detail-dialog .registration-detail-invitation-answers small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
 .registration-detail-dialog .registration-detail-answers {
   margin: 12px 0 0;
 }

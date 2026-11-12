@@ -471,6 +471,7 @@ export class RegistrationsService {
     const [items, total] =
       filters.q !== undefined ||
       filters.presence !== undefined ||
+      filters.spirituality !== undefined ||
       filters.sort !== undefined ||
       filters.includeClosed !== undefined
         ? await this.repo.reviewList(
@@ -510,7 +511,19 @@ export class RegistrationsService {
       404,
       "Inscrição indisponível.",
     );
-    return (await this.withPendingInformation([result]))[0];
+    const [items, summaries] = await Promise.all([
+      this.withPendingInformation([result]),
+      this.notices
+        ? this.notices.summaries(organizationId, [registrationId])
+        : Promise.resolve(new Map()),
+    ]);
+    return {
+      ...items[0],
+      decisionSummary: summaries.get(registrationId) ?? {
+        ready: false,
+        notice: null,
+      },
+    };
   }
   async transition(
     organizationId: string,

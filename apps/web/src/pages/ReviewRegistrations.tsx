@@ -128,6 +128,7 @@ export function ReviewRegistrations() {
   const origin = search.get("origin") ?? "";
   const completeness = search.get("completeness") ?? "";
   const presence = search.get("presence") ?? "";
+  const spirituality = search.get("spirituality") ?? "";
   const includeClosed = search.get("includeClosed") === "true";
   const sort = Object.hasOwn(sorts, search.get("sort") ?? "")
     ? (search.get("sort") as Sort)
@@ -139,7 +140,14 @@ export function ReviewRegistrations() {
   const searchQ = search.get("q") ?? "";
   const [query, setQuery] = useState(searchQ);
   const [showFilters, setShowFilters] = useState(
-    Boolean(campaignId || status || origin || completeness || presence),
+    Boolean(
+      campaignId ||
+      status ||
+      origin ||
+      completeness ||
+      presence ||
+      spirituality,
+    ),
   );
   const isMobile = useReviewMedia("(max-width: 800px)");
   const canChooseView = useReviewMedia(
@@ -155,6 +163,7 @@ export function ReviewRegistrations() {
     origin,
     completeness,
     presence,
+    spirituality,
     includeClosed,
   ].filter(Boolean).length;
   useEffect(() => {
@@ -243,6 +252,7 @@ export function ReviewRegistrations() {
     ...(origin ? { origin } : {}),
     ...(completeness ? { completeness } : {}),
     ...(presence ? { presence } : {}),
+    ...(spirituality ? { spirituality } : {}),
   });
   const list = useRemote<Page<Registration>>(
     eventId && tab === "inscricoes"
@@ -426,7 +436,9 @@ export function ReviewRegistrations() {
         color = "waiting";
       } else {
         label =
-          notice.emailStatus === "FALHA" ? "Falha no envio" : "Convite não enviado";
+          notice.emailStatus === "FALHA"
+            ? "Falha no envio"
+            : "Convite não enviado";
         color = "pending";
       }
     }
@@ -775,14 +787,26 @@ export function ReviewRegistrations() {
           <option value="COMPLETE">Completa</option>
         </select>
       </Field>
-      <Field label="Resposta ao convite">
+      <Field label="Participação no acampamento">
         <select
           value={presence}
           onChange={(event) => filter("presence", event.target.value)}
         >
-          <option value="">Todas</option>
-          <option value="VOU">Vou participar</option>
-          <option value="NAO_IREI">Não irei</option>
+          <option value="">Todos</option>
+          <option value="SEM_RESPOSTA">Não respondeu</option>
+          <option value="VOU">Sim</option>
+          <option value="NAO_IREI">Não</option>
+        </select>
+      </Field>
+      <Field label="Espiritualidade">
+        <select
+          value={spirituality}
+          onChange={(event) => filter("spirituality", event.target.value)}
+        >
+          <option value="">Todos</option>
+          <option value="SEM_RESPOSTA">Não respondeu</option>
+          <option value="SIM">Sim</option>
+          <option value="NAO">Não</option>
         </select>
       </Field>
     </div>
@@ -1207,6 +1231,7 @@ export function ReviewRegistrations() {
                   origin: null,
                   completeness: null,
                   presence: null,
+                  spirituality: null,
                   includeClosed: null,
                   sort: null,
                   page: null,

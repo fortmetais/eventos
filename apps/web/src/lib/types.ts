@@ -130,6 +130,7 @@ export interface Team {
   available?: number | null;
 }
 export interface EventEdition {
+  spiritualityStartsAt?: string | null;
   departmentsReady?: boolean;
   hasRegistrations?: boolean;
   id: string;
@@ -226,6 +227,12 @@ export interface RegistrationDecisionSummary {
     expiresAt: string;
     active: boolean;
     expired: boolean;
+    spirituality?: {
+      startsAt: string;
+      answer: boolean | null;
+      respondedAt: string | null;
+      canRespond: boolean;
+    } | null;
   };
 }
 export interface Registration {
