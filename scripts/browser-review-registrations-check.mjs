@@ -102,6 +102,7 @@ try {
     const errors = [],
       queries = [],
       changes = [];
+    const noticeReadFailures = new Set();
     let emails = 0,
       detailReads = 0,
       noticeReads = 0,
@@ -248,6 +249,8 @@ try {
       receiptHash: null,
     };
     function makeNotice(row) {
+      const shortLink = `${target}/r#fixture-${row.id}`;
+      const message = `Olá, ${row.person.name}! Departamento: ${row.team?.name ?? "A definir pela organização"}. Confirme pelo link: ${shortLink}`;
       return {
         id: `notice-${row.id}`,
         kind: "ACEITE",
@@ -266,10 +269,10 @@ try {
         active: true,
         expired: false,
         email: row.snapshot.email,
-        message: `Olá, ${row.person.name}! Departamento: ${row.team?.name ?? "A definir pela organização"}.`,
+        message,
         link: `${target}/resposta/fixture#token=fixture`,
-        shortLink: `${target}/r#fixture`,
-        whatsappLink: "https://wa.me/5544999999999?text=convite-ficticio",
+        shortLink,
+        whatsappLink: `https://wa.me/5544999999999?text=${encodeURIComponent(message)}`,
       };
     }
     notices.set(rows[1].id, makeNotice(rows[1]));
@@ -510,6 +513,18 @@ try {
         }
         if (suffix === "/decision-notice") {
           noticeReads++;
+          if (noticeReadFailures.delete(row.id))
+            return json(
+              route,
+              {
+                error: {
+                  code: "SERVICE_UNAVAILABLE",
+                  message:
+                    "Falha fictícia ao preparar o convite. Tente novamente.",
+                },
+              },
+              503,
+            );
           return json(route, {
             ready: true,
             notice: notices.get(row.id) ?? null,
@@ -1446,17 +1461,136 @@ try {
         null,
         "Copiar o link não registra envio.",
       );
-      const popupPromise = context.waitForEvent("page");
+      const shareName = "Enviar convite por WhatsApp para Ágata Silva";
+      const preparedLink = candidate.getByRole("link", {
+        name: shareName,
+        exact: true,
+      });
+      const tabsBeforePreparation = context.pages().length;
+      noticeReadFailures.add(rows[0].id);
       await candidate
+        .getByRole("button", { name: shareName, exact: true })
+        .click();
+      await expect(candidate.getByRole("alert")).toContainText(
+        "Falha fictícia ao preparar o convite",
+      );
+      await expect(preparedLink).toHaveCount(0);
+      assert.equal(
+        context.pages().length,
+        tabsBeforePreparation,
+        "Falha ao preparar não abre uma aba em branco.",
+      );
+      await candidate
+        .getByRole("button", { name: shareName, exact: true })
+        .click();
+      await expect(preparedLink).toHaveAttribute(
+        "href",
+        notices.get(rows[0].id).whatsappLink,
+      );
+      await expect(candidate.getByRole("alert")).toHaveCount(0);
+      await expect(candidate).toContainText(
+        "Mensagem pronta. Toque no WhatsApp para abrir.",
+      );
+      await expect(preparedLink).toHaveAttribute("target", "_blank");
+      await expect(preparedLink).toHaveAttribute("rel", /noopener/);
+      await expect(preparedLink).toHaveAttribute("rel", /noreferrer/);
+      assert.equal(
+        context.pages().length,
+        tabsBeforePreparation,
+        "O primeiro toque prepara o link sem abrir outra aba.",
+      );
+      await expect(
+        candidate.getByRole("button", { name: /Marcar como enviado/i }),
+      ).toHaveCount(0);
+      assert.equal(notices.get(rows[0].id).whatsappSentAt, null);
+      await search.fill("bruno");
+      await expect(page.getByText("Ágata Silva", { exact: true })).toHaveCount(
+        0,
+      );
+      await importedCandidate
         .getByRole("button", {
-          name: "Enviar convite por WhatsApp para Ágata Silva",
+          name: "Enviar convite por WhatsApp para Bruno Souza",
           exact: true,
         })
         .click();
+      const brunoLink = importedCandidate.getByRole("link", {
+        name: "Enviar convite por WhatsApp para Bruno Souza",
+        exact: true,
+      });
+      await expect(brunoLink).toHaveAttribute(
+        "href",
+        notices.get(rows[1].id).whatsappLink,
+      );
+      assert(
+        new URL(await brunoLink.getAttribute("href")).searchParams
+          .get("text")
+          .includes("Bruno Souza"),
+      );
+      assert(
+        !new URL(await brunoLink.getAttribute("href")).searchParams
+          .get("text")
+          .includes("Ágata Silva"),
+      );
+      assert.equal(
+        context.pages().length,
+        tabsBeforePreparation,
+        "Preparar outro candidato continua sem abrir abas.",
+      );
+      await search.fill("");
+      await expect(
+        page.getByText("Ágata Silva", { exact: true }),
+      ).toBeVisible();
+      await expect(preparedLink).toHaveCount(0);
+      await candidate
+        .getByRole("button", { name: shareName, exact: true })
+        .click();
+      await expect(preparedLink).toHaveAttribute(
+        "href",
+        notices.get(rows[0].id).whatsappLink,
+      );
+      // Advance only the browser's wall clock to exercise expiry during the
+      // second gesture; no real waiting, backend mutation or message is needed.
+      await page.clock.setFixedTime(new Date("2029-01-01T12:00:00.000Z"));
+      if (mobile) await preparedLink.tap();
+      else await preparedLink.click();
+      await expect(candidate.getByRole("alert")).toContainText(/expir/i);
+      assert.equal(
+        context.pages().length,
+        tabsBeforePreparation,
+        "Um link que expirou entre os toques não abre aba.",
+      );
+      assert.equal(notices.get(rows[0].id).whatsappSentAt, null);
+      await page.clock.setFixedTime(new Date());
+      await candidate
+        .getByRole("button", { name: shareName, exact: true })
+        .click();
+      await expect(preparedLink).toHaveAttribute(
+        "href",
+        notices.get(rows[0].id).whatsappLink,
+      );
+      assert.equal(context.pages().length, tabsBeforePreparation);
+      await page.screenshot({
+        path: `.local/screenshots/review-whatsapp-prepared-${screenLabel}.png`,
+        fullPage: true,
+        animations: "disabled",
+      });
+      const popupPromise = context.waitForEvent("page");
+      if (mobile) await preparedLink.tap();
+      else await preparedLink.click();
       const whatsappPage = await popupPromise;
-      await expect(whatsappPage).toHaveURL(/^https:\/\/wa\.me\//);
+      await expect(whatsappPage).toHaveURL(
+        notices.get(rows[0].id).whatsappLink,
+      );
+      assert.equal(
+        await whatsappPage.evaluate(() => window.opener === null),
+        true,
+      );
       await whatsappPage.close();
+      assert.equal(context.pages().length, tabsBeforePreparation);
       await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(candidate).toContainText(
+        "Abertura solicitada. Após enviar a mensagem, marque como enviado.",
+      );
       assert.equal(notices.get(rows[0].id).whatsappSentAt, null);
       await candidate
         .getByRole("button", { name: /Marcar como enviado/i })
@@ -1578,7 +1712,7 @@ try {
           "Copiar link do candidato Ágata Silva",
         ]) {
           const actionBounds = await candidate
-            .getByRole("button", { name, exact: true })
+            .getByLabel(name, { exact: true })
             .boundingBox();
           assert(
             actionBounds &&
@@ -1616,9 +1750,7 @@ try {
         }),
       ).toBeVisible();
       await expect(
-        importedCandidate.getByRole("button", {
-          name: /Enviar convite por WhatsApp/,
-        }),
+        importedCandidate.getByLabel(/Enviar convite por WhatsApp/),
       ).toBeEnabled();
       await page.screenshot({
         path: `.local/screenshots/review-presence-${screenLabel}.png`,
@@ -1911,7 +2043,9 @@ try {
           .poll(() => new URL(page.url()).searchParams.get("presence") ?? "")
           .toBe(presence);
         await expect
-          .poll(() => new URL(page.url()).searchParams.get("spirituality") ?? "")
+          .poll(
+            () => new URL(page.url()).searchParams.get("spirituality") ?? "",
+          )
           .toBe(spirituality);
         const params = new URL(page.url()).searchParams;
         assert.equal(params.get("q"), "ficticia");

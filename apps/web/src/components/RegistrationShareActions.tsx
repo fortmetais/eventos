@@ -29,14 +29,54 @@ export function RegistrationShareActions({
   const [openedNoticeId, setOpenedNoticeId] = useState<string | null>(null);
   const [manualLink, setManualLink] = useState("");
   const [blockedHint, setBlockedHint] = useState(false);
+  const [preparedWhatsApp, setPreparedWhatsApp] = useState<{
+    context: string;
+    id: string;
+    url: string;
+    expiresAt: number;
+    validUntil: number;
+  } | null>(null);
   const hintId = useId();
   const whatsappControl = useRef<HTMLDivElement>(null);
+  const whatsappLink = useRef<HTMLAnchorElement>(null);
+  const restoreWhatsAppFocus = useRef(false);
   const running = useRef(false);
   const request = useRef<{
     controller: AbortController;
-    popup: Window | null;
   } | null>(null);
   const summary = registration.decisionSummary?.notice;
+  const context = JSON.stringify([
+    organizationId,
+    registration.id,
+    registration.status,
+    registration.team?.id,
+    registration.updatedAt,
+    summary?.id,
+    summary?.active,
+    summary?.expired,
+    summary?.expiresAt,
+  ]);
+  const prepared =
+    preparedWhatsApp?.context === context && canWhatsApp
+      ? preparedWhatsApp
+      : null;
+  useEffect(() => {
+    if (!prepared) return;
+    if (
+      restoreWhatsAppFocus.current &&
+      document.activeElement === document.body
+    )
+      whatsappLink.current?.focus({ preventScroll: true });
+    restoreWhatsAppFocus.current = false;
+    const timer = window.setTimeout(
+      () => {
+        setPreparedWhatsApp(null);
+        setInfo("");
+      },
+      Math.max(0, prepared.validUntil - Date.now()),
+    );
+    return () => window.clearTimeout(timer);
+  }, [prepared]);
   useEffect(() => {
     setBlockedHint(false);
   }, [
@@ -66,6 +106,7 @@ export function RegistrationShareActions({
   }, [blockedHint]);
   useEffect(() => {
     setOpenedNoticeId(null);
+    setPreparedWhatsApp(null);
     setManualLink("");
     setError("");
     setInfo("");
@@ -73,17 +114,9 @@ export function RegistrationShareActions({
     running.current = false;
     return () => {
       request.current?.controller.abort();
-      request.current?.popup?.close();
       request.current = null;
     };
-  }, [
-    registration.id,
-    registration.status,
-    registration.team?.id,
-    summary?.id,
-    summary?.active,
-    summary?.expired,
-  ]);
+  }, [context]);
 
   async function currentNotice(signal: AbortSignal) {
     const state = await api<DecisionNoticeState>(path, { signal });
@@ -109,22 +142,16 @@ export function RegistrationShareActions({
     setError("");
     setInfo("");
     setManualLink("");
-    // Reserve the tab during the click so mobile browsers keep the user gesture.
     const operation = {
       controller: new AbortController(),
-      popup: null as Window | null,
     };
     request.current = operation;
     const signal = operation.controller.signal;
     try {
-      if (kind === "whatsapp") {
-        operation.popup = window.open("about:blank", "_blank");
-        if (!operation.popup)
-          throw new Error(
-            "O navegador bloqueou a nova aba. Permita pop-ups para abrir o WhatsApp e tente novamente.",
-          );
-        operation.popup.opener = null;
-      }
+      if (kind === "whatsapp")
+        restoreWhatsAppFocus.current = Boolean(
+          whatsappControl.current?.contains(document.activeElement),
+        );
       if (kind === "copy") {
         const linkPromise = currentNotice(signal).then((notice) => {
           const link = notice.shortLink ?? notice.link;
@@ -183,12 +210,21 @@ export function RegistrationShareActions({
           throw new Error(
             "O candidato não tem um telefone válido para abrir o WhatsApp. Copie o link ou confira a ficha.",
           );
-        operation.popup!.location.replace(notice.whatsappLink);
-        operation.popup = null;
-        setOpenedNoticeId(notice.id);
-        setInfo(
-          "Conversa aberta. Após enviar a mensagem, marque como enviado.",
-        );
+        const expiresAt = new Date(notice.expiresAt).getTime();
+        if (!Number.isFinite(expiresAt) || expiresAt <= Date.now())
+          throw new Error(
+            "O link expirou. Renove-o pelo indicador de convite antes de compartilhar.",
+          );
+        // Safari needs a fresh, direct tap on the final link to open another app.
+        // Keep it only in memory; never fetch personal links for the whole list.
+        setPreparedWhatsApp({
+          context,
+          id: notice.id,
+          url: notice.whatsappLink,
+          expiresAt,
+          validUntil: Math.min(expiresAt, Date.now() + 60_000),
+        });
+        setInfo("Mensagem pronta. Toque no WhatsApp para abrir.");
       } else {
         if (!openedNoticeId || notice.id !== openedNoticeId) {
           setOpenedNoticeId(null);
@@ -206,7 +242,7 @@ export function RegistrationShareActions({
         onChanged();
       }
     } catch (error) {
-      operation.popup?.close();
+      if (kind === "whatsapp") setPreparedWhatsApp(null);
       if (!signal.aborted) setError((error as Error).message);
     } finally {
       if (request.current === operation) {
@@ -220,32 +256,65 @@ export function RegistrationShareActions({
     <div className="review-share" aria-busy={busy || undefined}>
       <div className="review-share-buttons">
         <div className="review-whatsapp-control" ref={whatsappControl}>
-          <button
-            type="button"
-            className="review-whatsapp"
-            disabled={
-              disabled || busy || (!canWhatsApp && !whatsappBlockedMessage)
-            }
-            aria-disabled={disabled || busy || !canWhatsApp || undefined}
-            aria-label={`Enviar convite por WhatsApp para ${registration.person.name}`}
-            aria-describedby={blockedHint ? hintId : undefined}
-            title={
-              canWhatsApp
-                ? "Abrir mensagem no WhatsApp em outra aba"
-                : undefined
-            }
-            onBlur={() => setBlockedHint(false)}
-            onClick={() => {
-              if (!canWhatsApp && whatsappBlockedMessage) {
-                setBlockedHint(true);
-                return;
+          {prepared ? (
+            <a
+              ref={whatsappLink}
+              className="review-whatsapp"
+              href={prepared.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Enviar convite por WhatsApp para ${registration.person.name}`}
+              aria-disabled={disabled || busy || !canWhatsApp || undefined}
+              title="Abrir mensagem no WhatsApp"
+              onClick={(event) => {
+                if (disabled || busy || !canWhatsApp) {
+                  event.preventDefault();
+                  return;
+                }
+                if (Date.now() >= prepared.validUntil) {
+                  event.preventDefault();
+                  setPreparedWhatsApp(null);
+                  setInfo("");
+                  setError(
+                    Date.now() >= prepared.expiresAt
+                      ? "O link expirou. Renove-o pelo indicador de convite antes de compartilhar."
+                      : "Atualize a mensagem: toque novamente no WhatsApp para prepará-la.",
+                  );
+                  return;
+                }
+                setOpenedNoticeId(prepared.id);
+                setInfo(
+                  "Abertura solicitada. Após enviar a mensagem, marque como enviado.",
+                );
+              }}
+            >
+              <WhatsAppIcon />
+              <span className="review-action-label">WhatsApp</span>
+            </a>
+          ) : (
+            <button
+              type="button"
+              className="review-whatsapp"
+              disabled={
+                disabled || busy || (!canWhatsApp && !whatsappBlockedMessage)
               }
-              void share("whatsapp");
-            }}
-          >
-            <WhatsAppIcon />
-            <span className="review-action-label">WhatsApp</span>
-          </button>
+              aria-disabled={disabled || busy || !canWhatsApp || undefined}
+              aria-label={`Enviar convite por WhatsApp para ${registration.person.name}`}
+              aria-describedby={blockedHint ? hintId : undefined}
+              title={canWhatsApp ? "Preparar mensagem no WhatsApp" : undefined}
+              onBlur={() => setBlockedHint(false)}
+              onClick={() => {
+                if (!canWhatsApp && whatsappBlockedMessage) {
+                  setBlockedHint(true);
+                  return;
+                }
+                void share("whatsapp");
+              }}
+            >
+              <WhatsAppIcon />
+              <span className="review-action-label">WhatsApp</span>
+            </button>
+          )}
           {blockedHint && whatsappBlockedMessage && (
             <span
               id={hintId}

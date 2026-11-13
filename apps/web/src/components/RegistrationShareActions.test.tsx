@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { RegistrationShareActions } from "./RegistrationShareActions";
 import type { Registration } from "../lib/types";
 
@@ -16,6 +17,8 @@ vi.mock("../lib/api", () => ({ api: mocks.api }));
 const candidate = {
   id: "registration",
   status: "APPROVED",
+  updatedAt: "2026-11-12T12:00:00Z",
+  team: null,
   person: { name: "Maria Teste", phone: "44999999999" },
   snapshot: { phone: "44999999999" },
   decisionSummary: {
@@ -24,6 +27,7 @@ const candidate = {
       id: "notice",
       active: true,
       expired: false,
+      expiresAt: "2027-02-01T12:00:00Z",
       whatsappSentAt: null,
     },
   },
@@ -45,17 +49,15 @@ const state = () => ({
     whatsappLink: "https://wa.me/5544999999999?text=convite",
   },
 });
-const replace = vi.fn(),
-  close = vi.fn(),
-  writeText = vi.fn(),
+const writeText = vi.fn(),
   onChanged = vi.fn();
 let open: ReturnType<typeof vi.spyOn>;
-function show(
+function subject(
   overrides: Partial<
     React.ComponentProps<typeof RegistrationShareActions>
   > = {},
 ) {
-  return render(
+  return (
     <RegistrationShareActions
       organizationId="org"
       registration={candidate}
@@ -64,28 +66,37 @@ function show(
       canCopy
       onChanged={onChanged}
       {...overrides}
-    />,
+    />
   );
 }
-const whatsapp = () =>
-  screen.getByRole("button", {
-    name: "Enviar convite por WhatsApp para Maria Teste",
-  });
+function show(
+  overrides: Partial<
+    React.ComponentProps<typeof RegistrationShareActions>
+  > = {},
+) {
+  return render(subject(overrides));
+}
+const whatsappName = "Enviar convite por WhatsApp para Maria Teste";
+const whatsapp = () => screen.getByRole("button", { name: whatsappName });
+const preparedWhatsApp = () => screen.getByRole("link", { name: whatsappName });
+async function prepare() {
+  fireEvent.click(whatsapp());
+  return screen.findByRole("link", { name: whatsappName });
+}
+async function openPrepared() {
+  const link = await prepare();
+  fireEvent.click(link);
+  return link;
+}
 const copy = () =>
   screen.getByRole("button", { name: "Copiar link do candidato Maria Teste" });
 beforeEach(() => {
   mocks.api.mockReset().mockResolvedValue(state());
-  replace.mockReset();
-  close.mockReset();
   writeText.mockReset().mockResolvedValue(undefined);
   onChanged.mockReset();
-  open = vi
-    .spyOn(window, "open")
-    .mockReturnValue({
-      location: { replace },
-      close,
-      opener: null,
-    } as unknown as Window);
+  open = vi.spyOn(window, "open").mockReturnValue(null);
+  localStorage.clear();
+  sessionStorage.clear();
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
     value: { writeText },
@@ -152,14 +163,20 @@ describe("Compartilhamento direto do convite", () => {
     expect(mocks.api).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();
   });
-  it("carrega o convite apenas ao clicar e abre o WhatsApp sem declarar envio", async () => {
+  it("prepara o convite apenas ao clicar, sem abrir aba vazia ou carregar links na listagem", async () => {
     show();
     expect(mocks.api).not.toHaveBeenCalled();
-    fireEvent.click(whatsapp());
-    expect(open).toHaveBeenCalledTimes(1);
-    await waitFor(() =>
-      expect(replace).toHaveBeenCalledWith(state().notice.whatsappLink),
-    );
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("short-secret");
+    expect(document.body).not.toHaveTextContent("token=secret");
+    const link = await prepare();
+    expect(open).not.toHaveBeenCalled();
+    expect(link).toHaveAttribute("href", state().notice.whatsappLink);
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(
+      screen.getByText("Mensagem pronta. Toque no WhatsApp para abrir."),
+    ).toBeVisible();
     expect(mocks.api).toHaveBeenCalledWith(
       "/organizations/org/registrations/registration/decision-notice",
       { signal: expect.any(AbortSignal) },
@@ -169,13 +186,28 @@ describe("Compartilhamento direto do convite", () => {
     ).toBe(false);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Marcar como enviado/ }),
-    ).toBeVisible();
+      screen.queryByRole("button", { name: /Marcar como enviado/ }),
+    ).not.toBeInTheDocument();
     expect(onChanged).not.toHaveBeenCalled();
+    expect(localStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(0);
   });
-  it("registra o WhatsApp somente pela ação explícita após abrir a conversa", async () => {
+  it("permite navegação nativa no segundo clique e registra envio somente pela ação explícita", async () => {
     show();
-    fireEvent.click(whatsapp());
+    const link = await prepare();
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    act(() => link.dispatchEvent(click));
+    expect(click.defaultPrevented).toBe(false);
+    expect(open).not.toHaveBeenCalled();
+    expect(mocks.api).toHaveBeenCalledTimes(1);
+    expect(
+      screen.getByText(
+        "Abertura solicitada. Após enviar a mensagem, marque como enviado.",
+      ),
+    ).toBeVisible();
+    expect(
+      mocks.api.mock.calls.some(([, options]) => options?.method === "POST"),
+    ).toBe(false);
     fireEvent.click(
       await screen.findByRole("button", { name: /Marcar como enviado/ }),
     );
@@ -186,6 +218,22 @@ describe("Compartilhamento direto do convite", () => {
       ),
     );
     expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+  it("o link preparado pode ser ativado por Enter sem navegação programática", async () => {
+    show();
+    const link = await prepare();
+    const clicks: MouseEvent[] = [];
+    link.addEventListener("click", (event) => clicks.push(event as MouseEvent));
+    link.focus();
+    expect(link).toHaveFocus();
+    await userEvent.keyboard("{Enter}");
+    expect(clicks).toHaveLength(1);
+    expect(clicks[0].defaultPrevented).toBe(false);
+    expect(open).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("button", { name: /Marcar como enviado/ }),
+    ).toBeVisible();
+    expect(mocks.api).toHaveBeenCalledTimes(1);
   });
   it.each([true, false])(
     "copia o link pessoal, priorizando o compacto quando disponível (%s)",
@@ -220,18 +268,18 @@ describe("Compartilhamento direto do convite", () => {
       mocks.api.mockResolvedValue(response);
       show();
       fireEvent.click(whatsapp());
-      await waitFor(() => expect(close).toHaveBeenCalled());
-      expect(replace).not.toHaveBeenCalled();
+      expect(await screen.findByRole("alert")).toBeVisible();
+      expect(open).not.toHaveBeenCalled();
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
       expect(
         mocks.api.mock.calls.some(([, options]) => options?.method === "POST"),
       ).toBe(false);
-      expect(screen.getByRole("alert")).toBeVisible();
       expect(
         screen.queryByRole("button", { name: /Marcar como enviado/ }),
       ).not.toBeInTheDocument();
     },
   );
-  it("fecha a aba preparada e mostra erro quando a consulta falha", async () => {
+  it("mostra falha da consulta sem abrir aba e permite tentar novamente", async () => {
     mocks.api.mockRejectedValue(
       new Error("Não foi possível consultar o convite."),
     );
@@ -240,22 +288,34 @@ describe("Compartilhamento direto do convite", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Não foi possível consultar o convite.",
     );
-    expect(close).toHaveBeenCalled();
-    expect(replace).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(whatsapp()).not.toBeDisabled();
+    mocks.api.mockResolvedValue(state());
+    await prepare();
+    expect(mocks.api).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(open).not.toHaveBeenCalled();
   });
-  it("não registra envio quando o navegador bloqueia a nova aba", async () => {
-    open.mockReturnValue(null);
-    show();
-    fireEvent.click(whatsapp());
-    expect(await screen.findByRole("alert")).toBeVisible();
-    expect(replace).not.toHaveBeenCalled();
-    expect(
-      mocks.api.mock.calls.some(([, options]) => options?.method === "POST"),
-    ).toBe(false);
-    expect(
-      screen.queryByRole("button", { name: /Marcar como enviado/ }),
-    ).not.toBeInTheDocument();
-  });
+  it.each([null, "https://example.test/conversa", "javascript:alert(1)"])(
+    "não prepara link de WhatsApp inválido (%s), não abre aba e permite corrigir",
+    async (whatsappLink) => {
+      mocks.api.mockResolvedValue({
+        ...state(),
+        notice: { ...state().notice, whatsappLink },
+      });
+      show();
+      fireEvent.click(whatsapp());
+      expect(await screen.findByRole("alert")).toBeVisible();
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(open).not.toHaveBeenCalled();
+      expect(onChanged).not.toHaveBeenCalled();
+      mocks.api.mockResolvedValue(state());
+      const link = await prepare();
+      expect(link).toHaveAttribute("href", state().notice.whatsappLink);
+      expect(mocks.api).toHaveBeenCalledTimes(2);
+    },
+  );
   it("mostra a falha de cópia sem declarar envio ou abrir outra aba", async () => {
     writeText.mockRejectedValue(new Error("Permission denied"));
     show();
@@ -269,7 +329,7 @@ describe("Compartilhamento direto do convite", () => {
   });
   it("não registra envio em outro convite renovado depois que a conversa foi aberta", async () => {
     show();
-    fireEvent.click(whatsapp());
+    await openPrepared();
     const mark = await screen.findByRole("button", {
       name: /Marcar como enviado/,
     });
@@ -291,18 +351,16 @@ describe("Compartilhamento direto do convite", () => {
   });
   it("invalida a marcação pendente quando a candidatura é devolvida para Recebida", async () => {
     const view = show();
-    fireEvent.click(whatsapp());
+    await openPrepared();
     await screen.findByRole("button", { name: /Marcar como enviado/ });
     view.rerender(
-      <RegistrationShareActions
-        organizationId="org"
-        registration={{ ...candidate, status: "RECEIVED" }}
-        disabled={false}
-        canWhatsApp={false}
-        canCopy={false}
-        onChanged={onChanged}
-      />,
+      subject({
+        registration: { ...candidate, status: "RECEIVED" },
+        canWhatsApp: false,
+        canCopy: false,
+      }),
     );
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /Marcar como enviado/ }),
     ).not.toBeInTheDocument();
@@ -321,10 +379,204 @@ describe("Compartilhamento direto do convite", () => {
     fireEvent.click(whatsapp());
     fireEvent.click(whatsapp());
     fireEvent.click(copy());
-    expect(open).toHaveBeenCalledTimes(1);
+    expect(open).not.toHaveBeenCalled();
     expect(mocks.api).toHaveBeenCalledTimes(1);
     resolve(state());
-    await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    await screen.findByRole("link", { name: whatsappName });
+    expect(mocks.api).toHaveBeenCalledTimes(1);
+    expect(open).not.toHaveBeenCalled();
+  });
+  it("mantém a preparação por 60 segundos e depois exige nova consulta sem abrir abas", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-12T12:00:00Z"));
+    show();
+    await act(async () => fireEvent.click(whatsapp()));
+    expect(preparedWhatsApp()).toHaveAttribute(
+      "href",
+      state().notice.whatsappLink,
+    );
+    act(() => vi.advanceTimersByTime(59_999));
+    expect(preparedWhatsApp()).toBeVisible();
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Mensagem pronta. Toque no WhatsApp para abrir."),
+    ).not.toBeInTheDocument();
+    expect(whatsapp()).toBeEnabled();
+    expect(mocks.api).toHaveBeenCalledTimes(1);
+    await act(async () => fireEvent.click(whatsapp()));
+    expect(preparedWhatsApp()).toBeVisible();
+    expect(mocks.api).toHaveBeenCalledTimes(2);
+    expect(open).not.toHaveBeenCalled();
+  });
+  it("a preparação nunca ultrapassa a validade do convite", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-11-12T12:00:00Z");
+    vi.setSystemTime(now);
+    mocks.api.mockResolvedValue({
+      ...state(),
+      notice: {
+        ...state().notice,
+        expiresAt: new Date(now.getTime() + 10_000).toISOString(),
+      },
+    });
+    show();
+    await act(async () => fireEvent.click(whatsapp()));
+    expect(preparedWhatsApp()).toBeVisible();
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(whatsapp()).toBeEnabled();
+    expect(open).not.toHaveBeenCalled();
+  });
+  it.each(["2026-11-12T12:00:00Z", "data inválida"])(
+    "rejeita validade %s mesmo quando a API não marcou expired",
+    async (expiresAt) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-11-12T12:00:00Z"));
+      mocks.api.mockResolvedValue({
+        ...state(),
+        notice: { ...state().notice, expiresAt },
+      });
+      show();
+      await act(async () => fireEvent.click(whatsapp()));
+      expect(screen.getByRole("alert")).toHaveTextContent(/expirou/i);
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(open).not.toHaveBeenCalled();
+    },
+  );
+  it("bloqueia sincronicamente o clique se a preparação venceu antes de o temporizador atualizar a tela", async () => {
+    vi.useFakeTimers();
+    const now = new Date("2026-11-12T12:00:00Z");
+    vi.setSystemTime(now);
+    show();
+    await act(async () => fireEvent.click(whatsapp()));
+    const link = preparedWhatsApp();
+    vi.setSystemTime(new Date(now.getTime() + 60_001));
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    act(() => link.dispatchEvent(click));
+    expect(click.defaultPrevented).toBe(true);
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/Atualize a mensagem/i);
+    expect(
+      screen.queryByRole("button", { name: /Marcar como enviado/ }),
+    ).not.toBeInTheDocument();
+    expect(open).not.toHaveBeenCalled();
+  });
+  const contextCases: Array<
+    [string, Partial<React.ComponentProps<typeof RegistrationShareActions>>]
+  > = [
+    ["organização", { organizationId: "another-org" }],
+    [
+      "candidato",
+      {
+        registration: {
+          ...candidate,
+          id: "another-registration",
+          person: { ...candidate.person, name: "Joana Teste" },
+        },
+      },
+    ],
+    ["situação", { registration: { ...candidate, status: "CONFIRMED" } }],
+    [
+      "departamento",
+      {
+        registration: {
+          ...candidate,
+          team: { id: "team", name: "Secretaria" } as Registration["team"],
+        },
+      },
+    ],
+    [
+      "atualização da candidatura",
+      { registration: { ...candidate, updatedAt: "2026-11-12T12:01:00Z" } },
+    ],
+    ...(
+      [
+        ["identificador do convite", { id: "renewed" }],
+        ["convite encerrado", { active: false }],
+        ["convite expirado", { expired: true }],
+        ["validade alterada", { expiresAt: "2027-02-01T13:00:00Z" }],
+      ] as const
+    ).map(
+      ([label, patch]) =>
+        [
+          label,
+          {
+            registration: {
+              ...candidate,
+              decisionSummary: {
+                ...candidate.decisionSummary!,
+                notice: { ...candidate.decisionSummary!.notice!, ...patch },
+              },
+            },
+          },
+        ] as [
+          string,
+          Partial<React.ComponentProps<typeof RegistrationShareActions>>,
+        ],
+    ),
+  ];
+  it.each(contextCases)(
+    "descarta link preparado e marcação pendente ao mudar %s, sem consultar automaticamente",
+    async (_, overrides) => {
+      const view = show();
+      await openPrepared();
+      expect(
+        screen.getByRole("button", { name: /Marcar como enviado/ }),
+      ).toBeVisible();
+      view.rerender(subject(overrides));
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: /Marcar como enviado/ }),
+      ).not.toBeInTheDocument();
+      expect(mocks.api).toHaveBeenCalledTimes(1);
+      expect(open).not.toHaveBeenCalled();
+      expect(onChanged).not.toHaveBeenCalled();
+    },
+  );
+  it("o link preparado bloqueia navegação quando a linha está desativada", async () => {
+    const view = show();
+    await prepare();
+    view.rerender(subject({ disabled: true }));
+    const link = preparedWhatsApp();
+    expect(link).toHaveAttribute("aria-disabled", "true");
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    act(() => link.dispatchEvent(click));
+    expect(click.defaultPrevented).toBe(true);
+    expect(
+      screen.queryByRole("button", { name: /Marcar como enviado/ }),
+    ).not.toBeInTheDocument();
+    expect(mocks.api).toHaveBeenCalledTimes(1);
+  });
+  it("o link preparado bloqueia navegação enquanto outra ação está em andamento", async () => {
+    show();
+    await prepare();
+    let resolve!: (value: ReturnType<typeof state>) => void;
+    mocks.api.mockReturnValueOnce(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    fireEvent.click(copy());
+    const link = preparedWhatsApp();
+    expect(link).toHaveAttribute("aria-disabled", "true");
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    act(() => link.dispatchEvent(click));
+    expect(click.defaultPrevented).toBe(true);
+    expect(
+      screen.queryByRole("button", { name: /Marcar como enviado/ }),
+    ).not.toBeInTheDocument();
+    await act(async () => resolve(state()));
+    expect(open).not.toHaveBeenCalled();
+  });
+  it("remove o link preparado quando perde a permissão de WhatsApp", async () => {
+    const view = show();
+    await prepare();
+    view.rerender(subject({ canWhatsApp: false }));
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(whatsapp()).toBeDisabled();
+    expect(mocks.api).toHaveBeenCalledTimes(1);
+    expect(open).not.toHaveBeenCalled();
   });
   it("inicia a cópia durante o clique e entrega o conteúdo após a consulta, preservando o gesto no Safari", async () => {
     let resolve!: (value: ReturnType<typeof state>) => void;
@@ -366,7 +618,7 @@ describe("Compartilhamento direto do convite", () => {
     ).toBe(false);
   });
   it.each(["unmount", "status"])(
-    "aborta a consulta e fecha a aba preparada quando ocorre %s",
+    "aborta a consulta sem abrir aba quando ocorre %s",
     async (change) => {
       let resolve!: (value: ReturnType<typeof state>) => void;
       mocks.api.mockReturnValue(
@@ -391,9 +643,9 @@ describe("Compartilhamento direto do convite", () => {
           />,
         );
       expect(signal.aborted).toBe(true);
-      expect(close).toHaveBeenCalledTimes(1);
       await act(async () => resolve(state()));
-      expect(replace).not.toHaveBeenCalled();
+      expect(screen.queryByRole("link")).not.toBeInTheDocument();
+      expect(open).not.toHaveBeenCalled();
       expect(onChanged).not.toHaveBeenCalled();
     },
   );
