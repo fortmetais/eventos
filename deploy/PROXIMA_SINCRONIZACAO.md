@@ -1,5 +1,11 @@
 # Pacotes de sincronização com GitHub e Hostinger
 
+## Membros e convites — copiar link
+
+Solicitado em 12/11/2026 e incluído nesta sincronização. Novos convites permitem copiar o mesmo link enviado por e-mail. Convites anteriores oferecem geração explícita de substituto, com aviso de invalidação do link antigo, preservando o prazo e sem novo envio de e-mail. Convites inativos não oferecem cópia. Se a área de transferência for bloqueada, há exibição explícita para cópia manual.
+
+A API e a interface devem ser publicadas juntas. Não há nova migration ou variável de ambiente: usa o segredo já configurado `REGISTRATION_LINK_SECRET`. A listagem não expõe links nem hashes; a obtenção e a geração são restritas aos gestores autorizados, com auditoria. Consulte `docs/api.md`. O teste no navegador é `scripts/browser-invitation-links-check.mjs`; o resultado publicado fica em `.local/hostinger/invitation-copy-live.json`.
+
 ## Mensagens do evento — editor e primeiro nome
 
 Solicitado em 11/11/2026 e incluído nesta sincronização com `fortmetais/eventos` e `facnsaloanda.com.br`. O commit que atualiza este registro contém o pacote completo abaixo, junto dos estilos já presentes no histórico.

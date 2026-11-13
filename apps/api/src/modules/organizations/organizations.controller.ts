@@ -67,6 +67,17 @@ export class OrganizationsController {
   accept = async (req: Request, res: Response) => {
     res.json(await this.service.accept(invitationToken(req), account(req)));
   };
+  invitationLink = async (req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.json(
+      await this.service.invitationLink(
+        param(req, "organizationId"),
+        param(req, "invitationId"),
+        account(req).id,
+        req.body,
+      ),
+    );
+  };
   updateMember = async (req: Request, res: Response) => {
     res.json(
       await this.service.updateMember(

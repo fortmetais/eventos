@@ -58,6 +58,7 @@ export class OrganizationsRepository {
       select: {
         id: true,
         email: true,
+        tokenHash: true,
         role: true,
         functionId: true,
         function: true,

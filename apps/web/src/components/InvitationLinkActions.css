@@ -1,0 +1,42 @@
+.invitation-link-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  max-width: 100%;
+}
+.invitation-link-actions .notice {
+  margin: 0;
+}
+.invitation-link-actions .field {
+  width: 100%;
+  margin: 0;
+}
+.invitation-link-actions .button {
+  white-space: normal;
+  max-width: 100%;
+}
+.invitation-link-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+  max-width: 100%;
+}
+.invitation-list-row > div:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 700px) {
+  .invitation-list-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .invitation-link-controls {
+    justify-content: flex-start;
+    width: 100%;
+  }
+}

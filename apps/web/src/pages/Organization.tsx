@@ -27,6 +27,7 @@ import { clearPendingInvitation, rememberInvitation } from "../lib/navigation";
 import { useRemote } from "../lib/hooks";
 import { api } from "../lib/api";
 import { OrganizationForm } from "../components/OrganizationForm";
+import { InvitationLinkActions } from "../components/InvitationLinkActions";
 import type {
   EventEdition,
   Membership,
@@ -573,6 +574,7 @@ export function PlatformAdmin() {
   );
 }
 interface MembersResponse {
+  invitationLinksReady?: boolean;
   functions: OrganizationFunction[];
   members: Membership[];
   invitations: {
@@ -584,6 +586,7 @@ interface MembersResponse {
     expiresAt: string;
     acceptedAt: string | null;
     revokedAt: string | null;
+    canCopyLink?: boolean;
   }[];
   events?: { id: string; name: string }[];
 }
@@ -951,8 +954,14 @@ export function Members() {
           </section>
           <section className="panel">
             <h2>Convites</h2>
+            {state.data?.invitationLinksReady === false &&
+              hasPendingInvitations && (
+                <Notice kind="info">
+                  A cópia dos links de convite aguarda configuração do sistema.
+                </Notice>
+              )}
             {state.data?.invitations.map((i) => (
-              <div className="list-row" key={i.id}>
+              <div className="list-row invitation-list-row" key={i.id}>
                 <div>
                   <strong>{i.email}</strong>
                   <p>
@@ -967,13 +976,28 @@ export function Members() {
                   </p>
                 </div>
                 {!i.acceptedAt && !i.revokedAt && (
-                  <button
-                    className="text-button danger"
-                    disabled={busy}
-                    onClick={() => void revoke(i.id)}
-                  >
-                    Revogar
-                  </button>
+                  <div className="invitation-link-controls">
+                    {state.data?.invitationLinksReady &&
+                      new Date(i.expiresAt) > new Date() && (
+                        <InvitationLinkActions
+                          key={`${organizationId}:${i.id}:${i.expiresAt}`}
+                          organizationId={organizationId}
+                          invitationId={i.id}
+                          email={i.email}
+                          expiresAt={i.expiresAt}
+                          canCopyLink={Boolean(i.canCopyLink)}
+                          disabled={busy}
+                          onChanged={state.refreshInBackground}
+                        />
+                      )}
+                    <button
+                      className="text-button danger"
+                      disabled={busy}
+                      onClick={() => void revoke(i.id)}
+                    >
+                      Revogar
+                    </button>
+                  </div>
                 )}
               </div>
             ))}

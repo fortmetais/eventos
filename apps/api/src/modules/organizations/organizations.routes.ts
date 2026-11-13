@@ -77,6 +77,13 @@ export function organizationsRoutes(
     members,
     controller.revoke,
   );
+  router.post(
+    "/organizations/:organizationId/invitations/:invitationId/link",
+    auth,
+    members,
+    limit,
+    controller.invitationLink,
+  );
   router.patch(
     "/organizations/:organizationId/members/:memberId",
     auth,

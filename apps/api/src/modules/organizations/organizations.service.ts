@@ -10,6 +10,10 @@ import type { InvitationMailer } from "../../core/mail.js";
 import { config } from "../../config.js";
 import { OrganizationsRepository } from "./organizations.repository.js";
 import {
+  invitationLinkToken,
+  recoverInvitationToken,
+} from "./invitation-links.js";
+import {
   OrganizationFunctionsService,
   requireOrganizationManager,
   resolveOrganizationFunction,
@@ -25,6 +29,7 @@ export class OrganizationsService {
     private repo: OrganizationsRepository,
     private mail: InvitationMailer,
     private logoStorage: ArtworkStorage,
+    private invitationLinkSecret = config.REGISTRATION_LINK_SECRET,
   ) {}
   async list(page: number, pageSize: number) {
     const [items, total] = await this.repo.list(
@@ -99,11 +104,36 @@ export class OrganizationsService {
         : Promise.resolve([]),
       new OrganizationFunctionsService(this.repo.db).list(organizationId),
     ]);
-    return { members, invitations, events, functions };
+    return {
+      members,
+      invitations: invitations.map(({ tokenHash, ...invitation }) => ({
+        ...invitation,
+        canCopyLink:
+          !invitation.acceptedAt &&
+          !invitation.revokedAt &&
+          invitation.expiresAt > new Date() &&
+          Boolean(
+            recoverInvitationToken(
+              { ...invitation, tokenHash, organizationId },
+              this.invitationLinkSecret,
+            ),
+          ),
+      })),
+      invitationLinksReady: Boolean(this.invitationLinkSecret),
+      events,
+      functions,
+    };
   }
   async invite(organizationId: string, actorId: string, input: unknown) {
     const data = invitationSchema.parse(input);
-    const token = newToken();
+    const id = randomUUID();
+    const expiresAt = new Date(Date.now() + 7 * 86400000);
+    const token = this.invitationLinkSecret
+      ? invitationLinkToken(
+          { id, organizationId, email: data.email, expiresAt },
+          this.invitationLinkSecret,
+        )
+      : newToken();
     const { invitation, organization } = await this.repo.db.$transaction(
       async (tx) => {
         const organization = await requireOrganizationManager(
@@ -118,13 +148,14 @@ export class OrganizationsService {
         );
         const invitation = await tx.invitation.create({
           data: {
+            id,
             email: data.email,
             role: selected.role,
             functionId: selected.id,
             organizationId,
             createdBy: actorId,
             tokenHash: hashToken(token),
-            expiresAt: new Date(Date.now() + 7 * 86400000),
+            expiresAt,
           },
         });
         return { invitation, organization };
@@ -138,6 +169,74 @@ export class OrganizationsService {
       delivery: sent ? "sent" : "manual",
       link,
     };
+  }
+  async invitationLink(
+    organizationId: string,
+    invitationId: string,
+    actorId: string,
+    input: unknown,
+  ) {
+    const { regenerate } = z
+      .object({ regenerate: z.boolean().default(false) })
+      .strict()
+      .parse(input ?? {});
+    return this.repo.db.$transaction(async (tx) => {
+      await requireOrganizationManager(tx, organizationId, actorId);
+      const invitation = await tx.invitation.findFirst({
+        where: { id: invitationId, organizationId },
+      });
+      assert(invitation, 404, "Convite não encontrado nesta organização.");
+      assert(
+        !invitation.acceptedAt &&
+          !invitation.revokedAt &&
+          invitation.expiresAt > new Date(),
+        410,
+        "Este convite já foi aceito, revogado ou expirou. Crie um novo convite se necessário.",
+      );
+      assert(
+        this.invitationLinkSecret,
+        503,
+        "A cópia de links de convite aguarda configuração do sistema.",
+        "INVITATION_LINK_SETUP_REQUIRED",
+      );
+      let token = recoverInvitationToken(invitation, this.invitationLinkSecret);
+      let regenerated = false;
+      if (!token) {
+        assert(
+          regenerate,
+          409,
+          "O link original deste convite não está disponível. Gere um novo link e compartilhe com a pessoa; o anterior deixará de funcionar.",
+          "INVITATION_LINK_UNAVAILABLE",
+        );
+        token = invitationLinkToken(invitation, this.invitationLinkSecret);
+        await tx.invitation.update({
+          where: { id: invitation.id },
+          data: { tokenHash: hashToken(token) },
+        });
+        regenerated = true;
+        await tx.auditLog.create({
+          data: {
+            organizationId,
+            actorId,
+            entityId: invitation.id,
+            action: "INVITATION_LINK_REGENERATED",
+          },
+        });
+      }
+      await tx.auditLog.create({
+        data: {
+          organizationId,
+          actorId,
+          entityId: invitation.id,
+          action: "INVITATION_LINK_ACCESSED",
+        },
+      });
+      return {
+        link: `${config.WEB_URL.replace(/\/$/, "")}/convite/${token}`,
+        expiresAt: invitation.expiresAt,
+        regenerated,
+      };
+    });
   }
   async accept(token: string, user: Account) {
     const target = await this.repo.db.invitation.findUnique({

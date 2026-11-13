@@ -273,6 +273,14 @@ const operations: Operation[] = [
     security: "account",
   },
   {
+    method: "post",
+    path: "/organizations/{organizationId}/invitations/{invitationId}/link",
+    summary:
+      "Obter link do convite ou gerar substituto explicitamente para convite antigo",
+    security: "account",
+    body: "InvitationLinkRequest",
+  },
+  {
     method: "patch",
     path: "/organizations/{organizationId}/members/{memberId}",
     summary: "Atualizar permissões de membro",
@@ -608,6 +616,9 @@ const schemas = {
       ),
     ],
   },
+  InvitationLinkRequest: object({
+    regenerate: { type: "boolean", default: false },
+  }),
   Membership: {
     oneOf: [
       object(

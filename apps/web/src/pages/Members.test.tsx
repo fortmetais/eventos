@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -52,7 +53,7 @@ function response(accepted: boolean) {
         role: "ORGANIZER",
         expiresAt: "2099-01-01T00:00:00Z",
         acceptedAt: accepted ? "2026-10-08T12:00:00Z" : null,
-        revokedAt: null,
+        revokedAt: null as string | null,
       },
     ],
     events: [],
@@ -88,6 +89,296 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
+describe("Cópia dos links de convite", () => {
+  const link = "https://encontro.example/convite/" + "a".repeat(43);
+  const path = "/organizations/org/invitations/invitation/link";
+  const expiry = "2099-01-01T00:00:00Z";
+  function prepared(canCopyLink = true) {
+    const data = response(false);
+    return {
+      ...data,
+      invitationLinksReady: true,
+      invitations: data.invitations.map((invitation) => ({
+        ...invitation,
+        canCopyLink,
+      })),
+    };
+  }
+  function serve(data = prepared()) {
+    mocks.api.mockImplementation(async (_url, options) =>
+      options?.method === "POST"
+        ? { link, expiresAt: expiry, regenerated: false }
+        : data,
+    );
+  }
+
+  it("busca o mesmo link só ao clicar e copia sem expô-lo na listagem", async () => {
+    const user = userEvent.setup();
+    const write = vi.spyOn(navigator.clipboard, "writeText");
+    serve();
+    renderMembers();
+    const button = await screen.findByRole("button", {
+      name: "Copiar link do convite",
+    });
+    expect(mocks.api).toHaveBeenCalledTimes(1);
+    expect(screen.queryByDisplayValue(link)).not.toBeInTheDocument();
+    await user.click(button);
+    await screen.findByText("Link do convite copiado.");
+    expect(write).toHaveBeenCalledWith(link);
+    expect(mocks.api).toHaveBeenCalledWith(
+      path,
+      expect.objectContaining({ method: "POST", body: {} }),
+    );
+    expect(screen.queryByDisplayValue(link)).not.toBeInTheDocument();
+    expect(
+      mocks.api.mock.calls.filter(([, options]) => options?.method === "POST"),
+    ).toHaveLength(1);
+  });
+
+  it("explica a troca do link antigo e só gera depois da confirmação explícita", async () => {
+    const user = userEvent.setup();
+    const write = vi.spyOn(navigator.clipboard, "writeText");
+    let generated = false;
+    mocks.api.mockImplementation(async (_url, options) => {
+      if (options?.method === "POST") {
+        generated = true;
+        return { link, expiresAt: expiry, regenerated: true };
+      }
+      return prepared(generated);
+    });
+    renderMembers();
+    await user.click(
+      await screen.findByRole("button", { name: "Gerar link para copiar" }),
+    );
+    expect(
+      screen.getByText(/Gerar um novo link invalida o anterior/),
+    ).toBeVisible();
+    expect(mocks.api).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "Cancelar geração" }));
+    expect(mocks.api).toHaveBeenCalledTimes(1);
+    await user.click(
+      screen.getByRole("button", { name: "Gerar link para copiar" }),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Gerar novo link e copiar" }),
+    );
+    await screen.findByText(/Novo link gerado e copiado/);
+    expect(write).toHaveBeenCalledWith(link);
+    expect(mocks.api).toHaveBeenCalledWith(
+      path,
+      expect.objectContaining({ method: "POST", body: { regenerate: true } }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Copiar link do convite" }),
+    ).toBeEnabled();
+    await waitFor(() =>
+      expect(
+        mocks.api.mock.calls.filter(([, options]) => !options?.method),
+      ).toHaveLength(2),
+    );
+  });
+
+  it("oferece cópia manual após bloqueio, revelando o link só por escolha explícita", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(
+      new Error("Bloqueado"),
+    );
+    serve();
+    renderMembers();
+    await user.click(
+      await screen.findByRole("button", { name: "Copiar link do convite" }),
+    );
+    const fallback = await screen.findByRole("button", {
+      name: "Exibir link para copiar manualmente",
+    });
+    expect(screen.queryByDisplayValue(link)).not.toBeInTheDocument();
+    await user.click(fallback);
+    const input = screen.getByRole("textbox", {
+      name: `Link do convite para ${email}`,
+    });
+    expect(input).toHaveValue(link);
+    expect(input).toHaveAttribute("readonly");
+    expect(input).toHaveFocus();
+  });
+
+  it("não mostra sucesso nem link manual quando o servidor recusa a consulta", async () => {
+    const user = userEvent.setup();
+    const write = vi.spyOn(navigator.clipboard, "writeText");
+    mocks.api.mockImplementation(async (_url, options) => {
+      if (options?.method === "POST")
+        throw new Error("Convite não está mais disponível.");
+      return prepared();
+    });
+    renderMembers();
+    await user.click(
+      await screen.findByRole("button", { name: "Copiar link do convite" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Convite não está mais disponível.",
+    );
+    expect(write).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText("Link do convite copiado."),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: "Exibir link para copiar manualmente",
+      }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("mantém convites aceitos, revogados ou expirados sem ação de copiar ou gerar", async () => {
+    const data = prepared();
+    data.invitations = [
+      {
+        ...data.invitations[0],
+        id: "accepted",
+        acceptedAt: "2026-10-08T12:00:00Z",
+      },
+      {
+        ...data.invitations[0],
+        id: "revoked",
+        revokedAt: "2026-10-08T12:00:00Z",
+      },
+      {
+        ...data.invitations[0],
+        id: "expired",
+        expiresAt: "2000-01-01T00:00:00Z",
+      },
+    ];
+    serve(data);
+    renderMembers();
+    await screen.findByText("Organizador · Expirado");
+    expect(
+      screen.queryByRole("button", { name: "Copiar link do convite" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Gerar link para copiar" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("informa indisponibilidade quando o servidor não tem a configuração dos links", async () => {
+    mocks.api.mockResolvedValue({ ...prepared(), invitationLinksReady: false });
+    renderMembers();
+    expect(
+      await screen.findByText(
+        /A cópia dos links de convite aguarda configuração/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Copiar link do convite" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Gerar link para copiar" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("não duplica solicitações enquanto prepara o link", async () => {
+    const user = userEvent.setup();
+    let finish!: (result: {
+      link: string;
+      expiresAt: string;
+      regenerated: boolean;
+    }) => void;
+    mocks.api.mockImplementation((_url, options) =>
+      options?.method === "POST"
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve(prepared()),
+    );
+    renderMembers();
+    const button = await screen.findByRole("button", {
+      name: "Copiar link do convite",
+    });
+    await user.dblClick(button);
+    expect(
+      mocks.api.mock.calls.filter(([, options]) => options?.method === "POST"),
+    ).toHaveLength(1);
+    expect(
+      screen.getByRole("button", { name: "Copiando link…" }),
+    ).toBeDisabled();
+    await act(async () =>
+      finish({ link, expiresAt: expiry, regenerated: false }),
+    );
+    await screen.findByText("Link do convite copiado.");
+  });
+
+  it("descarta uma resposta atrasada após sair da lista", async () => {
+    const user = userEvent.setup();
+    const write = vi.spyOn(navigator.clipboard, "writeText");
+    let finish!: (result: {
+      link: string;
+      expiresAt: string;
+      regenerated: boolean;
+    }) => void;
+    mocks.api.mockImplementation((_url, options) =>
+      options?.method === "POST"
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve(prepared()),
+    );
+    const view = renderMembers();
+    await user.click(
+      await screen.findByRole("button", { name: "Copiar link do convite" }),
+    );
+    view.unmount();
+    await act(async () =>
+      finish({ link, expiresAt: expiry, regenerated: false }),
+    );
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it("inicia o acesso à área de transferência no clique antes de resolver a consulta", async () => {
+    let finish!: (result: {
+      link: string;
+      expiresAt: string;
+      regenerated: boolean;
+    }) => void;
+    mocks.api.mockImplementation((_url, options) =>
+      options?.method === "POST"
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve(prepared()),
+    );
+    class TestClipboardItem {
+      constructor(public data: Record<string, Promise<Blob>>) {}
+    }
+    vi.stubGlobal("ClipboardItem", TestClipboardItem);
+    const write = vi.fn().mockResolvedValue(undefined);
+    const writeText = vi.fn();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { write, writeText },
+    });
+    renderMembers();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Copiar link do convite" }),
+    );
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(writeText).not.toHaveBeenCalled();
+    const content = (write.mock.calls[0][0] as TestClipboardItem[])[0].data[
+      "text/plain"
+    ];
+    expect(content).toBeInstanceOf(Promise);
+    await act(async () =>
+      finish({ link, expiresAt: expiry, regenerated: false }),
+    );
+    const blob = await content;
+    expect(blob.type).toBe("text/plain");
+    const text = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(blob);
+    });
+    expect(text).toBe(link);
+    expect(await screen.findByText("Link do convite copiado.")).toBeVisible();
+  });
 });
 
 describe("Lista de membros após aceite em outra aba", () => {

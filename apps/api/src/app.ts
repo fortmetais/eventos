@@ -70,6 +70,7 @@ export function createApp(
     registrationPrefillEnabled?: boolean;
     decisionEmail?: DecisionEmailSender;
     decisionLinkSecret?: string;
+    invitationLinkSecret?: string;
     decisionNotificationsEnabled?: boolean;
   } = {},
 ) {
@@ -265,6 +266,7 @@ export function createApp(
           ),
           dependencies.mail ?? mailer,
           dependencies.artworkStorage ?? artworkStorage,
+          dependencies.invitationLinkSecret ?? config.REGISTRATION_LINK_SECRET,
         ),
       ),
       db,
