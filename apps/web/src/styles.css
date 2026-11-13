@@ -1067,6 +1067,10 @@ svg {
 .auth-shell .field {
   text-align: left;
 }
+.auth-shell .panel > .text-button {
+  display: flex;
+  justify-content: flex-start;
+}
 .auth-icon,
 .success-icon {
   margin: 0 auto 22px;
