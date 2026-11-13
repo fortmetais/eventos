@@ -238,6 +238,10 @@ describe("Entrada de organizadores", () => {
     );
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("Nova senha"), "senha-nova-do-teste");
+    await user.type(
+      screen.getByLabelText("Confirmar nova senha"),
+      "senha-nova-do-teste",
+    );
     await user.click(screen.getByRole("button", { name: "Salvar senha" }));
     expect(updateUser).toHaveBeenCalledWith({
       password: "senha-nova-do-teste",

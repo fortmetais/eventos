@@ -5,8 +5,13 @@ import { rateLimit } from "express-rate-limit";
 import type { PrismaClient } from "@prisma/client";
 import { config } from "./config.js";
 import { database } from "./core/database.js";
-import { authentication, type IdentityResolver } from "./core/auth.js";
-import { errorHandler } from "./core/errors.js";
+import { account, authentication, type IdentityResolver } from "./core/auth.js";
+import { assert, errorHandler } from "./core/errors.js";
+import { z } from "zod";
+import {
+  updateFirstPassword,
+  type FirstPasswordUpdater,
+} from "./core/first-password.js";
 import {
   privateStorage,
   resolveSupabaseIdentity,
@@ -72,6 +77,7 @@ export function createApp(
     decisionLinkSecret?: string;
     invitationLinkSecret?: string;
     decisionNotificationsEnabled?: boolean;
+    firstPasswordUpdater?: FirstPasswordUpdater;
   } = {},
 ) {
   const db = dependencies.db ?? database;
@@ -161,6 +167,27 @@ export function createApp(
             },
           },
         });
+  app.post("/api/v1/me/first-password", auth, limit, async (req, res) => {
+    assert(
+      req.passwordChangeRequired,
+      403,
+      "Esta conta não exige troca de senha temporária.",
+      "PASSWORD_CHANGE_NOT_REQUIRED",
+    );
+    const { password } = z
+      .object({ password: z.string().min(12).max(128) })
+      .strict()
+      .parse(req.body);
+    const updater = dependencies.firstPasswordUpdater ?? updateFirstPassword;
+    await db.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT conta_id FROM acesso.contas WHERE conta_id=${account(req).id}::uuid FOR UPDATE`;
+        await updater(account(req).id, password);
+      },
+      { timeout: 30000 },
+    );
+    res.json({ passwordChanged: true, signInAgain: true });
+  });
   app.get("/api/v1/health", (_req, res) =>
     res.json({ status: "ok", service: "fac-api" }),
   );

@@ -118,6 +118,13 @@ function Protected({
         to={`/entrar?next=${encodeURIComponent(location.pathname)}`}
       />
     );
+  if (auth.access?.passwordChangeRequired)
+    return (
+      <Navigate
+        replace
+        to={`/nova-senha?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`}
+      />
+    );
   if (auth.error)
     return (
       <div className="narrow-shell">

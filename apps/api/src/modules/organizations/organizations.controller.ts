@@ -45,6 +45,20 @@ export class OrganizationsController {
     );
   };
   mine = async (req: Request, res: Response) => {
+    if (req.passwordChangeRequired) {
+      const current = account(req);
+      res.json({
+        account: {
+          id: current.id,
+          email: current.email,
+          profile: {},
+          platformAdmin: false,
+        },
+        organizations: [],
+        passwordChangeRequired: true,
+      });
+      return;
+    }
     res.json({
       account: account(req),
       organizations: await this.service.mine(account(req).id),

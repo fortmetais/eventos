@@ -26,6 +26,12 @@ export function loginDestination(
   access: Access,
   requested: string | null,
 ): string {
+  if (access.passwordChangeRequired) {
+    const destination = localDestination(requested) ?? "/meu-perfil";
+    return /^\/nova-senha\/?(?:[?#]|$)/.test(destination)
+      ? destination
+      : `/nova-senha?next=${encodeURIComponent(destination)}`;
+  }
   return (
     localDestination(requested) ??
     (access.account.platformAdmin

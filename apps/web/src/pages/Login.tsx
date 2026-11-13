@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Navigate, useSearchParams, Link } from "react-router-dom";
 import { Mail, ArrowRight, ShieldCheck } from "lucide-react";
 import { useAuth } from "../lib/auth";
@@ -39,14 +39,20 @@ export function Login() {
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [passwordMode, setPasswordMode] = useState(false);
+  const [passwordMode, setPasswordMode] = useState(
+    params.get("modo") === "senha",
+  );
   const [password, setPassword] = useState("");
+  const [signupMode, setSignupMode] = useState(false);
+  const [signupSent, setSignupSent] = useState(false);
+  const [confirmation, setConfirmation] = useState("");
+  const submitting = useRef(false);
   const [recovery, setRecovery] = useState(false);
   const [info, setInfo] = useState("");
   const [retryAt, setRetryAt] = useState(savedEmailRetry);
   const [now, setNow] = useState(Date.now);
   const retrySeconds = Math.max(0, Math.ceil((retryAt - now) / 1000));
-  const sendingEmail = recovery || (!passwordMode && !sent);
+  const sendingEmail = recovery || signupMode || (!passwordMode && !sent);
   useEffect(() => {
     if (retryAt <= Date.now()) return;
     const timer = window.setInterval(() => {
@@ -72,7 +78,8 @@ export function Login() {
   }, [requested]);
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (busy || (sendingEmail && retryAt > Date.now())) return;
+    if (submitting.current || (sendingEmail && retryAt > Date.now())) return;
+    submitting.current = true;
     setError("");
     setBusy(true);
     try {
@@ -80,7 +87,45 @@ export function Login() {
         throw new Error(
           "O acesso está sendo preparado. Tente novamente em breve.",
         );
-      if (passwordMode) {
+      if (signupMode) {
+        const callback = new URL("/entrar", window.location.origin);
+        if (requested) callback.searchParams.set("next", requested);
+        if (!signupSent) {
+          if (password.length < 12)
+            throw new Error("Use uma senha com pelo menos 12 caracteres.");
+          if (password !== confirmation)
+            throw new Error("As senhas não coincidem. Confira os dois campos.");
+        }
+        const result = signupSent
+          ? await auth.client.auth.resend({
+              type: "signup",
+              email: email.trim().toLowerCase(),
+              options: { emailRedirectTo: callback.toString() },
+            })
+          : await auth.client.auth.signUp({
+              email: email.trim().toLowerCase(),
+              password,
+              options: { emailRedirectTo: callback.toString() },
+            });
+        if (result.error) {
+          if (rateLimited(result.error)) {
+            pauseEmailRequests();
+            throw new Error(emailLimitMessage);
+          }
+          throw new Error(
+            signupSent
+              ? "Não foi possível reenviar a confirmação. Aguarde e tente novamente."
+              : "Não foi possível criar a conta. Confira os dados e use uma senha forte com pelo menos 12 caracteres. Se já possui uma conta, entre por e-mail para definir sua senha.",
+          );
+        }
+        pauseEmailRequests();
+        setSignupSent(true);
+        setPassword("");
+        setConfirmation("");
+        setInfo(
+          "Confira o link de confirmação no seu e-mail. Se já possui uma conta, entre por e-mail e use a opção de definir senha.",
+        );
+      } else if (passwordMode) {
         const result = await auth.client.auth.signInWithPassword({
           email,
           password,
@@ -89,7 +134,9 @@ export function Login() {
           throw new Error(
             rateLimited(result.error)
               ? accessLimitMessage
-              : "Confira seu e-mail e sua senha.",
+              : result.error.code === "email_not_confirmed"
+                ? "Confirme seu e-mail antes de entrar. Você também pode usar o acesso por e-mail."
+                : "Confira seu e-mail e sua senha.",
           );
       } else if (!sent) {
         const callback = new URL("/entrar", window.location.origin);
@@ -125,12 +172,14 @@ export function Login() {
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
   async function reset(e: FormEvent) {
     e.preventDefault();
-    if (busy || retryAt > Date.now()) return;
+    if (submitting.current || retryAt > Date.now()) return;
+    submitting.current = true;
     setBusy(true);
     setError("");
     try {
@@ -154,6 +203,7 @@ export function Login() {
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      submitting.current = false;
       setBusy(false);
     }
   }
@@ -169,16 +219,22 @@ export function Login() {
         title={
           recovery
             ? "Recuperar acesso"
-            : sent
+            : sent || signupSent
               ? "Confira seu e-mail"
-              : "Vamos caminhar juntos"
+              : signupMode
+                ? "Criar conta com senha"
+                : "Vamos caminhar juntos"
         }
       >
         {recovery
           ? "Enviaremos as instruções de recuperação."
-          : sent
-            ? "Abra o link de acesso recebido ou digite o código, se o e-mail apresentar um."
-            : "Acesse suas inscrições ou organize os próximos eventos."}
+          : signupSent
+            ? "Confirme seu endereço para concluir o cadastro. Depois, você poderá entrar com sua senha."
+            : signupMode
+              ? "Informe seu e-mail e crie uma senha. A confirmação do e-mail faz parte do cadastro."
+              : sent
+                ? "Abra o link de acesso recebido ou digite o código, se o e-mail apresentar um."
+                : "Acesse suas inscrições ou organize os próximos eventos."}
       </PageHeading>
       <form className="panel" onSubmit={recovery ? reset : submit}>
         {error && <Notice>{error}</Notice>}
@@ -194,7 +250,7 @@ export function Login() {
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            disabled={sent && !recovery}
+            disabled={busy || signupSent || (sent && !recovery)}
           />
         </Field>
         {sent && !passwordMode && !recovery && (
@@ -210,14 +266,33 @@ export function Login() {
             />
           </Field>
         )}
-        {passwordMode && !recovery && (
-          <Field label="Senha" required>
+        {(passwordMode || signupMode) && !recovery && !signupSent && (
+          <Field
+            label={signupMode ? "Criar senha" : "Senha"}
+            hint={signupMode ? "Use pelo menos 12 caracteres." : undefined}
+            required
+          >
             <input
               type="password"
-              autoComplete="current-password"
+              autoComplete={signupMode ? "new-password" : "current-password"}
+              minLength={signupMode ? 12 : undefined}
+              disabled={busy}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
+            />
+          </Field>
+        )}
+        {signupMode && !signupSent && (
+          <Field label="Confirmar senha" required>
+            <input
+              type="password"
+              autoComplete="new-password"
+              minLength={12}
+              required
+              disabled={busy}
+              value={confirmation}
+              onChange={(e) => setConfirmation(e.target.value)}
             />
           </Field>
         )}
@@ -236,26 +311,75 @@ export function Login() {
               ? `Solicitar novamente em ${retrySeconds} s`
               : recovery
                 ? "Enviar instruções"
-                : sent || passwordMode
-                  ? "Entrar"
-                  : "Receber acesso por e-mail"}
+                : signupMode
+                  ? signupSent
+                    ? "Reenviar confirmação"
+                    : "Criar conta e confirmar e-mail"
+                  : sent || passwordMode
+                    ? "Entrar"
+                    : "Receber acesso por e-mail"}
           <ArrowRight size={17} />
         </button>
         {!sent && (
           <button
             className="text-button"
             type="button"
+            disabled={busy}
             onClick={() => {
-              setPasswordMode(!passwordMode);
+              setPasswordMode(signupMode ? true : !passwordMode);
+              setSignupMode(false);
+              setSignupSent(false);
+              setPassword("");
+              setConfirmation("");
               setRecovery(false);
               setError("");
               setInfo("");
             }}
           >
-            {passwordMode ? "Entrar por e-mail" : "Entrar com senha"}
+            {signupMode
+              ? "Já tenho conta: entrar com senha"
+              : passwordMode
+                ? "Entrar por e-mail"
+                : "Entrar com senha"}
           </button>
         )}
-        {passwordMode && !recovery && (
+        {!signupMode && !recovery && !sent && (
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            onClick={() => {
+              setSignupMode(true);
+              setPasswordMode(false);
+              setSignupSent(false);
+              setPassword("");
+              setConfirmation("");
+              setError("");
+              setInfo("");
+            }}
+          >
+            Criar conta com senha
+          </button>
+        )}
+        {signupMode && (
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            onClick={() => {
+              setSignupMode(false);
+              setSignupSent(false);
+              setPasswordMode(false);
+              setPassword("");
+              setConfirmation("");
+              setError("");
+              setInfo("");
+            }}
+          >
+            Entrar por e-mail
+          </button>
+        )}
+        {passwordMode && !signupMode && !recovery && (
           <button
             type="button"
             className="text-button"
@@ -292,55 +416,4 @@ export function Login() {
     </div>
   );
 }
-export function NewPassword() {
-  const auth = useAuth();
-  const [params] = useSearchParams();
-  const requested = localDestination(params.get("next")) ?? pendingInvitation();
-  useEffect(() => {
-    rememberInvitation(requested);
-  }, [requested]);
-  const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setError("");
-    if (!auth.session || !auth.client) {
-      setError("Abra o link de recuperação enviado ao seu e-mail.");
-      return;
-    }
-    const { error } = await auth.client.auth.updateUser({ password });
-    if (error)
-      setError(
-        "Não foi possível alterar a senha. Use uma senha com pelo menos 12 caracteres.",
-      );
-    else setMessage("Senha atualizada. Você já pode acessar sua área.");
-  }
-  if (message && auth.access && !auth.loading && !auth.error && requested)
-    return <Navigate replace to={requested} />;
-  return (
-    <div className="auth-shell">
-      <PageHeading title="Definir nova senha" />
-      <form className="panel" onSubmit={submit}>
-        {error && <Notice>{error}</Notice>}
-        {message && <Notice kind="success">{message}</Notice>}
-        <Field label="Nova senha">
-          <input
-            required
-            type="password"
-            minLength={12}
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </Field>
-        <button className="button primary">Salvar senha</button>
-      </form>
-      <Link to={requested ?? "/meu-perfil"}>
-        {requested?.startsWith("/convite/")
-          ? "Voltar ao convite"
-          : "Ir para minha área"}
-      </Link>
-    </div>
-  );
-}
+export { NewPassword } from "./NewPassword";

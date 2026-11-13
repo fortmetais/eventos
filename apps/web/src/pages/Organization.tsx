@@ -23,7 +23,11 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { useAuth } from "../lib/auth";
-import { clearPendingInvitation, rememberInvitation } from "../lib/navigation";
+import {
+  clearPendingInvitation,
+  rememberInvitation,
+  loginDestination,
+} from "../lib/navigation";
 import { useRemote } from "../lib/hooks";
 import { api } from "../lib/api";
 import { OrganizationForm } from "../components/OrganizationForm";
@@ -1048,6 +1052,13 @@ export function Invitation() {
     return <Loading />;
   if (acceptedOrganizationId)
     return <Navigate replace to={`/organizacao/${acceptedOrganizationId}`} />;
+  if (auth.access?.passwordChangeRequired)
+    return (
+      <Navigate
+        replace
+        to={loginDestination(auth.access, `/convite/${token}`)}
+      />
+    );
   return (
     <div className="auth-shell">
       <span className="eyebrow">CAMINHAR JUNTOS</span>
@@ -1076,10 +1087,18 @@ export function Invitation() {
           </Link>
         )}
         {auth.session && (
-          <p>
-            Após aceitar, você entrará no painel da organização que enviou o
-            convite.
-          </p>
+          <>
+            <p>
+              Após aceitar, você entrará no painel da organização que enviou o
+              convite.
+            </p>
+            <Link
+              className="back-link"
+              to={`/nova-senha?next=${encodeURIComponent(`/convite/${token}`)}`}
+            >
+              Definir senha para próximos acessos
+            </Link>
+          </>
         )}
         <Link className="back-link" to="/" onClick={clearPendingInvitation}>
           Continuar depois

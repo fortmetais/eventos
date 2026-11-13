@@ -11,6 +11,7 @@ import { id } from "./security.js";
 export interface VerifiedIdentity {
   id: string;
   email: string;
+  passwordChangeRequired?: boolean;
 }
 export type IdentityResolver = (
   token: string,
@@ -20,6 +21,7 @@ declare global {
     interface Request {
       account?: Account;
       membership?: Membership;
+      passwordChangeRequired?: boolean;
     }
   }
 }
@@ -35,6 +37,17 @@ export function authentication(
       identity && id.safeParse(identity.id).success,
       401,
       "Sessão inválida ou expirada.",
+    );
+    request.passwordChangeRequired = identity.passwordChangeRequired === true;
+    const path = request.originalUrl.split("?")[0];
+    const passwordSetupRoute =
+      (request.method === "GET" && path === "/api/v1/me/access") ||
+      (request.method === "POST" && path === "/api/v1/me/first-password");
+    assert(
+      !request.passwordChangeRequired || passwordSetupRoute,
+      403,
+      "Defina uma nova senha para continuar.",
+      "PASSWORD_CHANGE_REQUIRED",
     );
     request.account = await db.account.upsert({
       where: { id: identity.id },

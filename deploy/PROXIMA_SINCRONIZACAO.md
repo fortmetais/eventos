@@ -1,5 +1,13 @@
 # Pacotes de sincronização com GitHub e Hostinger
 
+## Acesso por senha e troca obrigatória
+
+Solicitado em 12/11/2026. Inclui cadastro com senha e confirmação de e-mail, definição de senha por contas que já acessam por e-mail e retorno ao convite preservado. Contas liberadas individualmente com senha temporária administrativa ficam bloqueadas para o painel e o aceite de convites até definir uma senha pessoal e entrar novamente. A configuração individual não altera a confirmação dos demais usuários.
+
+Publicar API e interface juntas antes de marcar uma conta real com troca obrigatória. Sem nova migration, tabela ou variável de ambiente. O contrato e os limites estão em `docs/api.md`. O teste de navegador é `scripts/browser-password-access-check.mjs` e não cria contas nem envia e-mails reais. Credenciais e operações administrativas individuais ficam fora do repositório.
+
+Validação: 840 testes passaram (439 da API e 401 da interface), verificação de tipos e compilação aprovadas. Cadastro com senha, troca obrigatória e retorno ao convite conferidos no navegador em computador e celular com dados simulados. Evidências locais: `.local/password-access-tests-final.log`, `.local/screenshots/password-*.png` e, após a publicação, `.local/hostinger/password-access-live.json`.
+
 ## Membros e convites — copiar link
 
 Solicitado em 12/11/2026 e incluído nesta sincronização. Novos convites permitem copiar o mesmo link enviado por e-mail. Convites anteriores oferecem geração explícita de substituto, com aviso de invalidação do link antigo, preservando o prazo e sem novo envio de e-mail. Convites inativos não oferecem cópia. Se a área de transferência for bloqueada, há exibição explícita para cópia manual.

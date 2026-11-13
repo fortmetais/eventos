@@ -133,10 +133,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
   async function logout() {
-    await client?.auth.signOut();
-    setSession(null);
-    setAccess(null);
-    setAccessToken(null);
+    try {
+      await client?.auth.signOut();
+    } finally {
+      setSession(null);
+      setAccess(null);
+      setAccessToken(null);
+    }
   }
   return (
     <AuthContext.Provider

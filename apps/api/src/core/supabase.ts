@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { config } from "../config.js";
 import { AppError } from "./errors.js";
 import type { IdentityResolver } from "./auth.js";
+import { passwordSessionIsCurrent } from "./password-session.js";
 
 let client: SupabaseClient | undefined;
 export function supabaseAdmin() {
@@ -20,7 +21,17 @@ export function supabaseAdmin() {
 export const resolveSupabaseIdentity: IdentityResolver = async (token) => {
   const { data, error } = await supabaseAdmin().auth.getUser(token);
   if (error || !data.user?.email || !data.user.email_confirmed_at) return null;
-  return { id: data.user.id, email: data.user.email };
+  if (
+    !passwordSessionIsCurrent(token, data.user.app_metadata?.pw_changed_after)
+  )
+    return null;
+  return {
+    id: data.user.id,
+    email: data.user.email,
+    ...(data.user.app_metadata?.must_change_password === true
+      ? { passwordChangeRequired: true }
+      : {}),
+  };
 };
 export interface PrivateStorage {
   upload(key: string, buffer: Buffer): Promise<void>;

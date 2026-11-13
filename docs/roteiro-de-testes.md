@@ -265,7 +265,7 @@ Faça I01 a I03, A01 a A06, O01 a O07, E01 a E06, F01 a F04 e P01 a P04. Essa ro
 | A05  | P0         | Usar Esqueci minha senha, Enviar instruções e Salvar senha                               | Link abre `/nova-senha` no domínio público. Exige pelo menos 12 caracteres. Nova senha funciona; contexto do convite é preservado quando houver |
 | A06  | P0         | Sair da conta e abrir novamente perfil/organização; entrar com conta pessoal sem vínculo | Após sair, as áreas privadas pedem acesso. Conta comum permanece pessoal e não recebe cadastro global de organizações                           |
 
-Não há uma tela independente de “criar conta com senha”. O primeiro cadastro ocorre pelo acesso por e-mail; definir senha utiliza o fluxo disponível. Uma tela tradicional de cadastro é um requisito adicional caso a equipe queira esse modelo.
+A tela de acesso oferece **Criar conta com senha**: testar mínimo de 12 caracteres, confirmação, retorno ao convite após confirmar o e-mail, reenvio explícito e limite de tentativas. Contas que já usam acesso por e-mail podem definir senha no perfil ou no convite. Para conta marcada administrativamente com troca obrigatória, testar bloqueio do painel e do aceite do convite, senha pessoal com confirmação, encerramento da sessão e novo login antes de continuar. O teste `scripts/browser-password-access-check.mjs` cobre cadastro e troca obrigatória no computador e no celular, com serviços de acesso simulados e sem enviar e-mails.
 
 ### Organizações, convites e membros
 

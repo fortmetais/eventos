@@ -93,13 +93,23 @@ export function Profile() {
             : "Seu próximo capítulo começa aqui"
         }
         action={
-          <button
-            className="button outline"
-            disabled={busy || photoUploading || photoPending || profile.loading}
-            onClick={() => setEditing((v) => !v)}
-          >
-            Editar meu perfil
-          </button>
+          <div className="button-row">
+            <button
+              className="button outline"
+              disabled={
+                busy || photoUploading || photoPending || profile.loading
+              }
+              onClick={() => setEditing((v) => !v)}
+            >
+              Editar meu perfil
+            </button>
+            <Link
+              className="button outline"
+              to="/nova-senha?next=%2Fmeu-perfil"
+            >
+              Definir ou alterar senha
+            </Link>
+          </div>
         }
       >
         Suas experiências, seu serviço e os encontros que fazem parte da sua

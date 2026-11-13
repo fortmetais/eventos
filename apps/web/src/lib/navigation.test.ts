@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { pendingInvitation, rememberInvitation } from "./navigation";
+import {
+  pendingInvitation,
+  rememberInvitation,
+  loginDestination,
+} from "./navigation";
+import type { Access } from "./types";
 
 beforeEach(() => {
   sessionStorage.clear();
@@ -10,6 +15,23 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 describe("Contexto temporário do convite", () => {
+  it("senha temporária sempre passa pela troca antes de retornar ao destino", () => {
+    const access = {
+      account: {},
+      organizations: [],
+      passwordChangeRequired: true,
+    } as unknown as Access;
+    const invitation = `/convite/${"a".repeat(43)}`;
+    const setup = `/nova-senha?next=${encodeURIComponent(invitation)}`;
+    expect(loginDestination(access, invitation)).toBe(setup);
+    expect(loginDestination(access, setup)).toBe(setup);
+    expect(loginDestination(access, "https://externo.invalid")).toBe(
+      "/nova-senha?next=%2Fmeu-perfil",
+    );
+    expect(loginDestination(access, null)).toBe(
+      "/nova-senha?next=%2Fmeu-perfil",
+    );
+  });
   it("descarta o contexto expirado ao confirmar o e-mail em outra aba", () => {
     vi.useFakeTimers();
     rememberInvitation(`/convite/${"a".repeat(43)}`);

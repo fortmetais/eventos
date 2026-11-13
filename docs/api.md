@@ -6,6 +6,16 @@ Histórico do cartaz: `POST /public/site-visits` recebe exclusivamente `event` (
 
 Autenticação: `Authorization: Bearer <access_token Supabase>`. Inscrições anônimas: `X-Draft-Token: <token do rascunho>`. Credenciais de rascunho nunca vão na URL. Respostas são `Cache-Control: no-store`.
 
+## Acesso por senha e primeiro acesso
+
+Em `/entrar`, **Criar conta com senha** usa o cadastro do Supabase, exige pelo menos 12 caracteres e confirmação da senha. A confirmação do e-mail permanece habilitada para novos cadastros. O retorno ao convite é preservado na URL de confirmação; confirmar a conta não aceita o convite nem concede uma função. **Entrar com senha** permanece disponível junto do acesso por e-mail; `/entrar?modo=senha` abre essa opção diretamente. No perfil e no convite, uma conta já autenticada pode definir ou alterar a senha em `/nova-senha`.
+
+Uma liberação administrativa individual pode definir uma senha temporária e marcar `app_metadata.must_change_password=true` no Supabase Auth, preservando os outros metadados. A confirmação administrativa do e-mail, quando autorizada, se limita àquela conta e não altera as configurações globais. A flag só é lida dos metadados administrativos obtidos pelo servidor; dados editáveis do usuário não a substituem.
+
+Enquanto a troca é obrigatória, GET `/me/access` retorna `passwordChangeRequired:true`, conta mínima e `organizations:[]`, sem perfil pessoal ou permissões. Todas as demais rotas autenticadas, inclusive aceite de convite, retornam 403 `PASSWORD_CHANGE_REQUIRED`, exceto POST `/me/first-password`. Esse endpoint recebe exclusivamente `{password}` entre 12 e 128 caracteres, tem limite de solicitações, serializa a troca por conta e revalida a flag no Supabase. Salva a senha e remove a exigência na mesma atualização administrativa, preservando outros metadados. Responde `{passwordChanged:true,signInAgain:true}`. Não envia código, confirmação, convite ou mensagem pelo serviço de e-mail da aplicação.
+
+A troca administrativa de senha revoga as sessões anteriores no Supabase. Além disso, a API verifica `app_metadata.pw_changed_after` contra a emissão do token após validar a sessão no provedor. A interface encerra a sessão local e solicita novo login com a senha pessoal antes de continuar. A operação não cria vínculos com organizações nem aceita convites. Não há migration ou nova variável de ambiente. Teste de interface sem contas ou e-mails reais: `node scripts/browser-password-access-check.mjs` com a aplicação local na porta 5186 (ou `PREVIEW_URL`).
+
 Com `TEMPORARY_SITE=true` e `APPLICATION_TEST_ACCESS=true`, o cartaz permanece na raiz e os caminhos `/eventos`, `/inscricao/:campaignId`, `/resposta/:noticeId` e `/autorizacao/:authorizationId` usam React. A API `/api/v1/public/*` é encaminhada para os serviços e preserva validação, períodos, tokens e limites de requisições. A documentação `/api/v1/openapi` continua bloqueada nesse modo. Com `APPLICATION_TEST_ACCESS=false`, o modo temporário isolado continua bloqueando a API de negócio. A liberação está incluída nesta atualização.
 
 ## Plataforma e organização

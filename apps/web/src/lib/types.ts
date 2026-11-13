@@ -58,6 +58,7 @@ export interface Account {
 export interface Access {
   account: Account;
   organizations: (Membership & { organization: Organization })[];
+  passwordChangeRequired?: boolean;
 }
 export interface Page<T> {
   items: T[];

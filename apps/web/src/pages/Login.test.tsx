@@ -16,11 +16,13 @@ const mocks = vi.hoisted(() => ({
   signInWithPassword: vi.fn(),
   verifyOtp: vi.fn(),
   resetPasswordForEmail: vi.fn(),
+  signUp: vi.fn(),
+  resend: vi.fn(),
 }));
 vi.mock("../lib/auth", () => ({ useAuth: mocks.useAuth }));
-function showLogin() {
+function showLogin(path = "/entrar") {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[path]}>
       <Login />
     </MemoryRouter>,
   );
@@ -44,6 +46,165 @@ beforeEach(() => {
   });
   mocks.signInWithPassword.mockResolvedValue({ error: null });
   mocks.verifyOtp.mockResolvedValue({ error: null });
+  mocks.signUp.mockResolvedValue({
+    data: { user: { id: "new-user" }, session: null },
+    error: null,
+  });
+  mocks.resend.mockResolvedValue({ error: null });
+});
+
+describe("Criar conta com senha e confirmar e-mail", () => {
+  function fillSignup(password = "SenhaSegura1234", confirmation = password) {
+    fireEvent.click(
+      screen.getByRole("button", { name: "Criar conta com senha" }),
+    );
+    fireEvent.change(screen.getByLabelText(/Seu e-mail/), {
+      target: { value: "Convidado@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Criar senha/), {
+      target: { value: password },
+    });
+    fireEvent.change(screen.getByLabelText(/^Confirmar senha/), {
+      target: { value: confirmation },
+    });
+  }
+  it("cadastra senha somente no envio explícito e preserva o convite na confirmação", async () => {
+    const invitation = `/convite/${"a".repeat(43)}`;
+    showLogin(`/entrar?next=${encodeURIComponent(invitation)}`);
+    fillSignup();
+    expect(mocks.signUp).not.toHaveBeenCalled();
+    await submit("Criar conta e confirmar e-mail");
+    expect(mocks.signUp).toHaveBeenCalledWith({
+      email: "convidado@example.com",
+      password: "SenhaSegura1234",
+      options: {
+        emailRedirectTo: `${window.location.origin}/entrar?next=${encodeURIComponent(invitation)}`,
+      },
+    });
+    expect(
+      screen.getByRole("heading", { name: "Confira seu e-mail" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/Confirme seu endereço para concluir o cadastro/),
+    ).toBeVisible();
+    expect(screen.queryByLabelText(/^Criar senha/)).not.toBeInTheDocument();
+    expect(mocks.signInWithOtp).not.toHaveBeenCalled();
+    expect(mocks.verifyOtp).not.toHaveBeenCalled();
+    expect(JSON.stringify(localStorage)).not.toContain("SenhaSegura1234");
+    expect(JSON.stringify(sessionStorage)).not.toContain("SenhaSegura1234");
+  });
+  it.each([
+    ["curta", "curta", /pelo menos 12 caracteres/],
+    ["SenhaSegura1234", "OutraSenha1234", /As senhas não coincidem/],
+  ])(
+    "valida a senha antes de chamar o provedor (%s)",
+    async (password, confirmation, message) => {
+      showLogin();
+      fillSignup(password, confirmation);
+      await act(async () => {
+        fireEvent.submit(
+          screen
+            .getByRole("button", { name: "Criar conta e confirmar e-mail" })
+            .closest("form")!,
+        );
+      });
+      expect(screen.getByRole("alert")).toHaveTextContent(message);
+      expect(mocks.signUp).not.toHaveBeenCalled();
+    },
+  );
+  it("reenvia somente com clique após a pausa e conserva o tipo signup", async () => {
+    showLogin();
+    fillSignup();
+    await submit("Criar conta e confirmar e-mail");
+    expect(
+      screen.getByRole("button", { name: "Solicitar novamente em 60 s" }),
+    ).toBeDisabled();
+    expect(mocks.resend).not.toHaveBeenCalled();
+    await act(async () => {
+      vi.advanceTimersByTime(60000);
+    });
+    await submit("Reenviar confirmação");
+    expect(mocks.signUp).toHaveBeenCalledTimes(1);
+    expect(mocks.resend).toHaveBeenCalledWith({
+      type: "signup",
+      email: "convidado@example.com",
+      options: { emailRedirectTo: `${window.location.origin}/entrar` },
+    });
+  });
+  it("trata o limite de cadastro sem bloquear o login com senha existente", async () => {
+    mocks.signUp.mockResolvedValue({ error: { status: 429 } });
+    showLogin();
+    fillSignup();
+    await submit("Criar conta e confirmar e-mail");
+    expect(screen.getByRole("alert")).toHaveTextContent(/atingiu um limite/);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Já tenho conta: entrar com senha" }),
+    );
+    fireEvent.change(screen.getByLabelText(/^Senha/), {
+      target: { value: "SenhaExistente123" },
+    });
+    await submit("Entrar");
+    expect(mocks.signInWithPassword).toHaveBeenCalledTimes(1);
+    expect(mocks.signUp).toHaveBeenCalledTimes(1);
+  });
+  it("ignora retornos externos e não expõe o erro bruto do provedor", async () => {
+    mocks.signUp.mockResolvedValue({
+      error: { code: "weak_password", message: "RAW PROVIDER ERROR" },
+    });
+    showLogin("/entrar?next=https%3A%2F%2Fexterno.invalid");
+    fillSignup();
+    await submit("Criar conta e confirmar e-mail");
+    expect(mocks.signUp.mock.calls[0][0].options.emailRedirectTo).toBe(
+      `${window.location.origin}/entrar`,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /Não foi possível criar a conta/,
+    );
+    expect(screen.queryByText("RAW PROVIDER ERROR")).not.toBeInTheDocument();
+  });
+  it("impede duas solicitações simultâneas de criação da conta", async () => {
+    let finish!: (value: unknown) => void;
+    mocks.signUp.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    showLogin();
+    fillSignup();
+    const form = screen
+      .getByRole("button", { name: "Criar conta e confirmar e-mail" })
+      .closest("form")!;
+    await act(async () => {
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+    });
+    expect(mocks.signUp).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      finish({ data: { session: null }, error: null });
+    });
+    expect(
+      screen.getByRole("heading", { name: "Confira seu e-mail" }),
+    ).toBeVisible();
+  });
+  it("orienta a confirmar o endereço sem reenviar automaticamente", async () => {
+    mocks.signInWithPassword.mockResolvedValue({
+      error: { code: "email_not_confirmed" },
+    });
+    showLogin();
+    fireEvent.click(screen.getByRole("button", { name: "Entrar com senha" }));
+    fireEvent.change(screen.getByLabelText(/Seu e-mail/), {
+      target: { value: "convidado@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText(/^Senha/), {
+      target: { value: "SenhaSegura1234" },
+    });
+    await submit("Entrar");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /Confirme seu e-mail antes/,
+    );
+    expect(mocks.resend).not.toHaveBeenCalled();
+    expect(mocks.signInWithOtp).not.toHaveBeenCalled();
+  });
 });
 afterEach(() => {
   cleanup();
