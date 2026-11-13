@@ -1,7 +1,9 @@
 import { Router, type RequestHandler } from "express";
 import type { PrismaClient } from "@prisma/client";
-import { organizationAccess } from "../../core/auth.js";
+import { account, organizationAccess } from "../../core/auth.js";
+import { param } from "../../core/security.js";
 import type { RegistrationsController } from "./registrations.controller.js";
+import { RegistrationCorrectionsService } from "./registration-corrections.service.js";
 export function registrationsRoutes(
   c: RegistrationsController,
   db: PrismaClient,
@@ -20,6 +22,22 @@ export function registrationsRoutes(
     volunteersOnly ? ["ORGANIZER"] : ["ORGANIZER", "SECRETARY"],
   );
   const organizer = organizationAccess(db, ["ORGANIZER"]);
+  const corrections = new RegistrationCorrectionsService(db, volunteersOnly);
+  r.patch(
+    "/organizations/:organizationId/registrations/:registrationId/corrections",
+    auth,
+    organizer,
+    limit,
+    async (req, res) =>
+      res.json(
+        await corrections.correct(
+          param(req, "organizationId"),
+          param(req, "registrationId"),
+          account(req).id,
+          req.body,
+        ),
+      ),
+  );
   r.get("/organizations/:organizationId/registrations", auth, read, c.list);
   r.get(
     "/organizations/:organizationId/registrations/:registrationId",

@@ -575,6 +575,7 @@ model AuditLog {
   actorId        String       @map("autor_id") @db.Uuid
   action         String       @map("acao")
   entityId       String       @map("entidade_id")
+  details        Json?        @map("detalhes")
   createdAt      DateTime     @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
   organization   Organization @relation(fields: [organizationId], references: [id], map: "auditoria_organizacao_id_fk")
   actor          Account      @relation("AuditActor", fields: [actorId], references: [id], map: "auditoria_autor_id_fk")

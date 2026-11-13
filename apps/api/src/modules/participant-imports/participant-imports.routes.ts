@@ -9,6 +9,7 @@ import { suggestedMapping } from "./workbook.js";
 import type { ParticipantImportsService } from "./participant-imports.service.js";
 import { EventImportsService } from "./event-imports.service.js";
 import { readImportFile } from "./event-import-domain.js";
+import { RegistrationCorrectionsService } from "../registrations/registration-corrections.service.js";
 
 export function participantImportsRoutes(
   service: ParticipantImportsService,
@@ -20,6 +21,7 @@ export function participantImportsRoutes(
   const r = Router();
   const events = new EventImportsService(db);
   const organizer = organizationAccess(db, ["ORGANIZER"]);
+  const corrections = new RegistrationCorrectionsService(db, true);
   const base = "/organizations/:organizationId/participant-imports";
   r.patch(
     "/organizations/:organizationId/registrations/:registrationId/imported-data",
@@ -28,11 +30,12 @@ export function participantImportsRoutes(
     limit,
     async (req, res) =>
       res.json(
-        await events.updateRegistration(
+        await corrections.correct(
           param(req, "organizationId"),
           param(req, "registrationId"),
           account(req).id,
           req.body,
+          true,
         ),
       ),
   );

@@ -1,5 +1,16 @@
 # Roteiro de testes da aplicação Encontro
 
+## Edição simplificada das fichas
+
+- Como organizador, abrir uma ficha nativa e uma importada e usar **Editar ficha** no próprio modal. Corrigir nome, telefone, contato e respostas gerais; usar **Salvar alterações** e conferir a lista, a ficha e **Histórico e vínculo → Edições da ficha**. Não deve haver campo de justificativa manual nem seção separada de correções.
+- Conferir **Cancelar**, Escape, fechamento e navegação com alterações não salvas. Uma falha ou conflito de versão deve preservar o texto digitado. Uma atualização em segundo plano não deve apagar a edição.
+- Conferir autor, data e valores anteriores/novos no histórico. Salvar sem mudança não cria edição. Uma correção de pessoa compartilhada não deve alterar outra inscrição; importação posterior deve preservar a correção e os originais.
+- Validar máscaras e catálogos, os limites de preferências das fichas nativas e as preferências importadas acima de três. Corrigir e limpar e-mail de contato não muda o e-mail original, o login ou o vínculo de conta.
+- Conferir que saúde, foto, aceites, decisões, vagas e respostas de presença não são editados nesse formulário. Nome/nascimento/CPF já presentes no termo do responsável permanecem protegidos; nascimento que passa a exigir responsável numa ficha nativa confirmada exige reabrir análise.
+- Secretário, saúde e usuários de outra organização não podem editar. Conferir computador e celular, ausência de rolagem horizontal, retorno da consulta após salvar e atualização dos avisos sem envio automático.
+
+O percurso `scripts/browser-registration-corrections-check.mjs` utiliza somente dados e serviços fictícios. A base de correções é separada da base de importações nos testes com PostgreSQL. Consulte também [Edição das fichas pela organização](correcoes-de-fichas.md).
+
 ## Filtro de equipe/departamento — 12/11/2026
 
 - Nos filtros de inscrições do computador e celular, conferir **Equipe/departamento** com **Todos**, **Sem departamento** e os departamentos do evento. Selecionar um departamento deve incluir tanto indicações sem reserva quanto alocações já aprovadas, sem alterar vínculos ou decisões.
@@ -113,25 +124,25 @@ Validação do ajuste móvel: 266 testes da interface aprovados; verificação d
 
 Esta revisão organiza a gestão por cards de evento e abas. Não exige SQL novo. Os itens históricos abaixo mantêm as datas de suas entregas; não representam comprovação da versão atualmente publicada.
 
-| Percurso | Resultado esperado |
-| --- | --- |
-| Abrir Inscrições e selecionar um evento | Cards com miniatura, nome, período, situação e quantidade; abre a aba Inscrições apenas desse evento |
-| Trocar para Departamentos e vagas | Criação, capacidade, ocupação e exclusão mantêm permissões e bloqueios existentes |
-| Pesquisar por trecho, maiúsculas ou nome sem acento | Filtro aplicado a todos os registros, antes da paginação, com total coerente |
-| Ordenar A–Z, Z–A, Ordem de inscrição e Aceitos primeiro | Ordenação global estável; data original válida das importadas é usada antes da data de criação |
-| Usar o olho e Mais filtros | Recusadas/canceladas inicialmente ocultas; campanha, situação, origem e complementação continuam disponíveis |
-| Atualizar, voltar e abrir link antigo com evento/inscricao | Contexto na URL é preservado; ficha abre mesmo fora da página atual e sem evento na URL |
-| Escolher departamento antes da aprovação | Mostra indicação sem reserva; não altera vagas ocupadas; pode escolher departamento lotado |
-| Aceitar diretamente Recebida com indicação | Registra motivo padrão, autor e histórico; reserva se houver espaço, caso contrário mantém situação e mostra erro |
-| Iniciar análise, entrar em espera, recusar e cancelar | Análise/espera preservam indicação; apenas aceitos/confirmados ocupam; recusa/cancelamento limpam vínculo |
-| Limpar departamento e disputar a última vaga | Limpeza permitida antes da confirmação final; confirmada exige departamento; concorrência não excede capacidade |
-| Aceitar ou recusar e recarregar ficha/lista | Prepara aviso sem disparar e-mail automaticamente |
-| Abrir WhatsApp e retornar sem marcar envio | Indicador permanece amarelo; só Marcar como enviado muda para azul |
-| Enviar e-mail explicitamente | Sucesso muda para azul; falha/ausência de contato é explicada sem apagar a decisão |
-| Confirmar presença pelo link pessoal | Indicador fica verde após atualização; não confirma participação final nem ignora pendências ou responsável |
-| Expirar/renovar convite e alterar departamento | Expiração tem orientação própria; renovação é explícita; mensagem usa departamento atual |
-| Abrir e fechar ficha por ícone, Escape e teclado | Modal com foco/retorno correto, foto, versão, originais, correções, histórico, vínculo e termos; pede confirmação com edições não salvas |
-| Usar celular e conta de secretaria/outra organização | Cards sem rolagem horizontal; permissões e isolamento conservados; dados de saúde não são ampliados |
+| Percurso                                                   | Resultado esperado                                                                                                                       |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Abrir Inscrições e selecionar um evento                    | Cards com miniatura, nome, período, situação e quantidade; abre a aba Inscrições apenas desse evento                                     |
+| Trocar para Departamentos e vagas                          | Criação, capacidade, ocupação e exclusão mantêm permissões e bloqueios existentes                                                        |
+| Pesquisar por trecho, maiúsculas ou nome sem acento        | Filtro aplicado a todos os registros, antes da paginação, com total coerente                                                             |
+| Ordenar A–Z, Z–A, Ordem de inscrição e Aceitos primeiro    | Ordenação global estável; data original válida das importadas é usada antes da data de criação                                           |
+| Usar o olho e Mais filtros                                 | Recusadas/canceladas inicialmente ocultas; campanha, situação, origem e complementação continuam disponíveis                             |
+| Atualizar, voltar e abrir link antigo com evento/inscricao | Contexto na URL é preservado; ficha abre mesmo fora da página atual e sem evento na URL                                                  |
+| Escolher departamento antes da aprovação                   | Mostra indicação sem reserva; não altera vagas ocupadas; pode escolher departamento lotado                                               |
+| Aceitar diretamente Recebida com indicação                 | Registra motivo padrão, autor e histórico; reserva se houver espaço, caso contrário mantém situação e mostra erro                        |
+| Iniciar análise, entrar em espera, recusar e cancelar      | Análise/espera preservam indicação; apenas aceitos/confirmados ocupam; recusa/cancelamento limpam vínculo                                |
+| Limpar departamento e disputar a última vaga               | Limpeza permitida antes da confirmação final; confirmada exige departamento; concorrência não excede capacidade                          |
+| Aceitar ou recusar e recarregar ficha/lista                | Prepara aviso sem disparar e-mail automaticamente                                                                                        |
+| Abrir WhatsApp e retornar sem marcar envio                 | Indicador permanece amarelo; só Marcar como enviado muda para azul                                                                       |
+| Enviar e-mail explicitamente                               | Sucesso muda para azul; falha/ausência de contato é explicada sem apagar a decisão                                                       |
+| Confirmar presença pelo link pessoal                       | Indicador fica verde após atualização; não confirma participação final nem ignora pendências ou responsável                              |
+| Expirar/renovar convite e alterar departamento             | Expiração tem orientação própria; renovação é explícita; mensagem usa departamento atual                                                 |
+| Abrir e fechar ficha por ícone, Escape e teclado           | Modal com foco/retorno correto, foto, versão, originais, correções, histórico, vínculo e termos; pede confirmação com edições não salvas |
+| Usar celular e conta de secretaria/outra organização       | Cards sem rolagem horizontal; permissões e isolamento conservados; dados de saúde não são ampliados                                      |
 
 Automação do percurso: `npm run test:browser:reviews`, com a interface local disponível em `http://127.0.0.1:5174` (ou `PREVIEW_URL`). Usa apenas pessoas, sessão e serviços fictícios, bloqueando destinos externos. Capturas em `.local/screenshots/review-*.png`. A listagem deve carregar resumos em lote, sem buscar ficha/aviso por linha e sem expor links pessoais.
 

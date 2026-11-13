@@ -12,10 +12,14 @@ import userEvent from "@testing-library/user-event";
 import { useEffect, useState } from "react";
 import { RegistrationDetail } from "./RegistrationDetail";
 import { Modal } from "./Modal";
+import type { Registration } from "../lib/types";
 
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
   refresh: vi.fn(),
+  setData: vi.fn(),
+  guardianLoads: vi.fn(),
+  noticeLoads: vi.fn(),
   team: null as { id: string; name: string } | null,
   origin: "PUBLIC_FORM" as "PUBLIC_FORM" | "IMPORT",
   status: "RECEIVED",
@@ -31,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   spiritualityResponse: null as boolean | null,
   spiritualityStartsAt: "2026-11-14T17:00:00Z" as string | null,
   decisionSummary: undefined as Record<string, unknown> | undefined,
+  corrections: [] as NonNullable<Registration["corrections"]>,
 }));
 vi.mock("../lib/api", () => ({
   api: mocks.api,
@@ -48,6 +53,9 @@ vi.mock("./GuardianNotice", () => ({
   }: {
     onStateChange?: (state: unknown) => void;
   }) => {
+    useEffect(() => {
+      mocks.guardianLoads();
+    }, []);
     useEffect(() => onStateChange?.(mocks.guardian), [onStateChange]);
     return <p>Autorização preservada</p>;
   },
@@ -58,6 +66,9 @@ vi.mock("./DecisionNotice", () => ({
   }: {
     onStateChange?: (state: unknown) => void;
   }) => {
+    useEffect(() => {
+      mocks.noticeLoads();
+    }, []);
     useEffect(() => {
       if (mocks.notice) onStateChange?.(mocks.notice);
     }, [onStateChange]);
@@ -70,6 +81,7 @@ vi.mock("../lib/hooks", () => ({
     error: "",
     refresh: mocks.refresh,
     refreshInBackground: mocks.refresh,
+    setData: mocks.setData,
     data: path.endsWith("/events")
       ? [
           {
@@ -109,6 +121,7 @@ vi.mock("../lib/hooks", () => ({
             ...mocks.snapshot,
           },
           history: [],
+          corrections: mocks.corrections,
           campaign: {
             kind: "VOLUNTEER",
             allowWaitlist: true,
@@ -129,6 +142,9 @@ beforeEach(() => {
   mocks.decisionSummary = undefined;
   mocks.api.mockReset();
   mocks.refresh.mockClear();
+  mocks.setData.mockClear();
+  mocks.guardianLoads.mockClear();
+  mocks.noticeLoads.mockClear();
   mocks.team = null;
   mocks.origin = "PUBLIC_FORM";
   mocks.status = "RECEIVED";
@@ -145,6 +161,7 @@ beforeEach(() => {
   mocks.role = "ORGANIZER";
   mocks.eventsEnabled = true;
   mocks.loading = false;
+  mocks.corrections = [];
   mocks.api.mockResolvedValue({
     url: "https://example.test/photo.webp",
     status: "APPROVED",
@@ -412,39 +429,321 @@ describe("Ficha completa extraída", () => {
     ).toHaveValue("APPROVED");
   });
 
-  it("preserva correção importada pendente diante de atualização externa e recolhimento", async () => {
-    mocks.origin = "IMPORT";
+  it.each(["IMPORT", "PUBLIC_FORM"] as const)(
+    "preserva edição %s pendente diante de atualização externa",
+    async (origin) => {
+      mocks.origin = origin;
+      const changed = vi.fn();
+      const view = render(
+        <RegistrationDetail
+          organizationId="org"
+          registrationId="candidate"
+          onChanged={changed}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Editar ficha" }));
+      const name = screen.getByRole("textbox", { name: "Nome completo" });
+      await userEvent.clear(name);
+      await userEvent.type(name, "Maria Corrigida");
+      mocks.updatedAt = "2026-11-11T12:10:00Z";
+      mocks.loading = true;
+      view.rerender(
+        <RegistrationDetail
+          organizationId="org"
+          registrationId="candidate"
+          onChanged={changed}
+        />,
+      );
+      expect(
+        screen.getByRole("textbox", { name: "Nome completo" }),
+      ).toHaveValue("Maria Corrigida");
+    },
+  );
+
+  it.each(["PUBLIC_FORM", "IMPORT"] as const)(
+    "oferece edição direta da ficha %s no mesmo modal e oculta a consulta durante a edição",
+    (origin) => {
+      mocks.origin = origin;
+      render(
+        <RegistrationDetail
+          organizationId="org"
+          registrationId="candidate"
+          onChanged={vi.fn()}
+        />,
+      );
+      expect(
+        screen.queryByRole("button", { name: "Correções" }),
+      ).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Editar ficha" }));
+      expect(screen.getByRole("form", { name: "Editar ficha" })).toBeVisible();
+      expect(screen.getByLabelText("Nome completo")).toBeVisible();
+      expect(
+        screen.queryByRole("button", { name: "Dados pessoais e contato" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByLabelText(/Motivo da correção/),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Corrigir dados importados" }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it("aplica a ficha retornada ao salvar e atualiza a lista em segundo plano", async () => {
     const changed = vi.fn();
-    const view = render(
+    mocks.status = "APPROVED";
+    const corrected = {
+      id: "candidate",
+      snapshot: { name: "Maria Corrigida" },
+      updatedAt: "2026-11-12T12:00:00Z",
+    };
+    mocks.api.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.endsWith("/corrections")
+          ? corrected
+          : { url: "https://example.test/photo.webp" },
+      ),
+    );
+    render(
       <RegistrationDetail
         organizationId="org"
         registrationId="candidate"
         onChanged={changed}
       />,
     );
-    expand("Importação e pendências");
+    fireEvent.click(screen.getByRole("button", { name: "Editar ficha" }));
+    fireEvent.change(screen.getByLabelText("Nome completo"), {
+      target: { value: "Maria Corrigida" },
+    });
     await userEvent.click(
-      screen.getByRole("button", { name: "Corrigir dados importados" }),
+      screen.getByRole("button", { name: "Salvar alterações" }),
     );
-    const name = screen.getByRole("textbox", { name: "Nome completo" });
-    await userEvent.clear(name);
-    await userEvent.type(name, "Maria Corrigida");
-    await userEvent.click(
-      screen.getByRole("button", { name: "Importação e pendências" }),
+    expect(mocks.setData).toHaveBeenCalledWith(corrected);
+    expect(mocks.refresh).toHaveBeenCalled();
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(mocks.guardianLoads).toHaveBeenCalledTimes(2);
+    expect(mocks.noticeLoads).toHaveBeenCalledTimes(2);
+    expect(
+      screen.queryByRole("form", { name: "Editar ficha" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Editar ficha" })).toBeVisible();
+  });
+  it.each(["SECRETARY", "HEALTH"])(
+    "não oferece edição da ficha para %s mesmo com eventos habilitados",
+    (role) => {
+      mocks.role = role;
+      mocks.eventsEnabled = true;
+      render(
+        <RegistrationDetail
+          organizationId="org"
+          registrationId="candidate"
+          onChanged={vi.fn()}
+        />,
+      );
+      expect(
+        screen.queryByRole("button", { name: "Editar ficha" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("form", { name: "Editar ficha" }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it("mantém a edição e o rascunho abertos quando o salvamento falha", async () => {
+    let reject!: (reason: Error) => void;
+    mocks.api.mockImplementation((path: string) =>
+      path.endsWith("/corrections")
+        ? new Promise((_, fail) => {
+            reject = fail;
+          })
+        : Promise.resolve({ url: "https://example.test/photo.webp" }),
     );
-    mocks.updatedAt = "2026-11-11T12:10:00Z";
-    mocks.loading = true;
-    view.rerender(
+    render(
       <RegistrationDetail
         organizationId="org"
         registrationId="candidate"
-        onChanged={changed}
+        onChanged={vi.fn()}
       />,
     );
-    expand("Importação e pendências");
-    expect(screen.getByRole("textbox", { name: "Nome completo" })).toHaveValue(
+    fireEvent.click(screen.getByRole("button", { name: "Editar ficha" }));
+    fireEvent.change(screen.getByLabelText("Nome completo"), {
+      target: { value: "Maria Corrigida" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar alterações" }));
+    await act(async () =>
+      reject(new Error("Não foi possível salvar a correção.")),
+    );
+    expect(screen.getByRole("form", { name: "Editar ficha" })).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Não foi possível salvar a correção.",
+    );
+    expect(screen.getByLabelText("Nome completo")).toHaveValue(
       "Maria Corrigida",
     );
+  });
+
+  it("mostra o contato corrigido e permite apresentar contato removido sem mudar o e-mail original", () => {
+    mocks.snapshot = { email: "original@example.com", contactEmail: "" };
+    render(
+      <RegistrationDetail
+        organizationId="org"
+        registrationId="candidate"
+        onChanged={vi.fn()}
+      />,
+    );
+    expand("Dados pessoais e contato");
+    const region = screen.getByRole("region", {
+      name: "Dados pessoais e contato",
+    });
+    expect(
+      within(region).queryByText("original@example.com"),
+    ).not.toBeInTheDocument();
+    expect(within(region).getByText("Não informado")).toBeVisible();
+  });
+
+  it("cancela a edição no mesmo modal sem salvar e retorna à consulta", async () => {
+    render(
+      <RegistrationDetail
+        organizationId="org"
+        registrationId="candidate"
+        onChanged={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Editar ficha" }));
+    fireEvent.change(screen.getByLabelText("Nome completo"), {
+      target: { value: "Nome não salvo" },
+    });
+    expect(screen.getAllByRole("form")).toHaveLength(1);
+    expect(
+      screen.getByRole("form", { name: "Editar ficha" }).querySelector("form"),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(
+      screen.queryByRole("form", { name: "Editar ficha" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Dados pessoais e contato" }),
+    ).toBeVisible();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Editar ficha" }),
+      ).toHaveFocus(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Editar ficha" }));
+    expect(screen.getByLabelText("Nome completo")).toHaveValue("Maria Teste");
+    expect(
+      mocks.api.mock.calls.some(([path]) => path.endsWith("/corrections")),
+    ).toBe(false);
+  });
+
+  it("apresenta automaticamente autor, data e valores antes/depois no histórico de edições", () => {
+    mocks.corrections = [
+      {
+        id: "edit-one",
+        createdAt: "2026-11-13T03:00:00Z",
+        actor: {
+          id: "author",
+          name: "Organizadora Exemplo",
+          email: "org@example.com",
+        },
+        reason: "Correção da ficha pela organização.",
+        changes: [
+          {
+            field: "name",
+            label: "Nome completo",
+            before: "Nome anterior",
+            after: "Nome corrigido",
+          },
+          {
+            field: "shirt",
+            label: "Tamanho da camiseta",
+            before: null,
+            after: "G4",
+          },
+          {
+            field: "question:sacramentos",
+            label: "Sacramentos",
+            before: [],
+            after: ["Batismo", "Crisma"],
+          },
+          {
+            field: "question:experiencia",
+            label: "Experiência",
+            before: false,
+            after: true,
+          },
+        ],
+      },
+      {
+        id: "edit-old",
+        createdAt: "2026-11-12T03:00:00Z",
+        actor: { id: "other", name: null, email: "outro@example.com" },
+        reason: "Dados conferidos com o participante",
+        changes: [
+          {
+            field: "phone",
+            label: "Telefone",
+            before: "44999999999",
+            after: "44988887777",
+          },
+        ],
+      },
+    ];
+    render(
+      <RegistrationDetail
+        organizationId="org"
+        registrationId="candidate"
+        onChanged={vi.fn()}
+      />,
+    );
+    expand("Histórico e vínculo");
+    const region = screen.getByRole("region", { name: "Histórico e vínculo" });
+    expect(
+      within(region).getByRole("heading", { name: "Edições da ficha" }),
+    ).toBeVisible();
+    expect(within(region).getByText("Organizadora Exemplo")).toBeVisible();
+    expect(within(region).getByText("outro@example.com")).toBeVisible();
+    expect(region).toHaveTextContent("13/11/2026");
+    expect(region).toHaveTextContent(
+      "Antes: Nome anteriorDepois: Nome corrigido",
+    );
+    expect(region).toHaveTextContent("Depois: Batismo; Crisma");
+    expect(region).toHaveTextContent("Antes: NãoDepois: Sim");
+    expect(region).toHaveTextContent("Antes: Não informadoDepois: G4");
+    expect(
+      within(region).queryByText("Correção da ficha pela organização."),
+    ).not.toBeInTheDocument();
+    expect(
+      within(region).getByText("Dados conferidos com o participante"),
+    ).toBeVisible();
+  });
+
+  it("protege uma correção recém-digitada quando Escape ocorre em seguida", () => {
+    const close = vi.fn();
+    function Fixture() {
+      const [dirty, setDirty] = useState(false);
+      return (
+        <Modal title="Ficha do participante" dirty={dirty} onClose={close}>
+          <RegistrationDetail
+            organizationId="org"
+            registrationId="candidate"
+            onChanged={vi.fn()}
+            onDirtyChange={setDirty}
+          />
+        </Modal>
+      );
+    }
+    render(<Fixture />);
+    fireEvent.click(screen.getByRole("button", { name: "Editar ficha" }));
+    fireEvent.change(screen.getByLabelText("Nome completo"), {
+      target: { value: "Maria Corrigida" },
+    });
+    fireEvent(
+      screen.getByRole("dialog"),
+      new Event("cancel", { cancelable: true }),
+    );
+    expect(close).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog")).toBeVisible();
   });
 
   it("não mantém presença de um convite antigo ao devolver candidatura e mudar contexto", async () => {
@@ -522,7 +821,7 @@ describe("Ficha completa extraída", () => {
     ).not.toBeInTheDocument();
     expand("Importação e pendências");
     expect(
-      screen.queryByRole("button", { name: "Corrigir dados importados" }),
+      screen.queryByRole("button", { name: "Editar ficha" }),
     ).not.toBeInTheDocument();
   });
   it.each(["APPROVED", "CONFIRMED", "WAITLIST", "REJECTED", "CANCELLED"])(

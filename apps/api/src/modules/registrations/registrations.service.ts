@@ -36,6 +36,7 @@ import type { GuardianService } from "./guardian.service.js";
 import { requireOrganizationManager } from "../organizations/organization-functions.service.js";
 import { requiresGuardian } from "./guardian.validation.js";
 import { sanitizeHidden } from "@fac/form-layout";
+import { readRegistrationCorrections } from "./registration-corrections-history.js";
 
 type PendingInformationRecord = {
   id: string;
@@ -512,14 +513,21 @@ export class RegistrationsService {
       404,
       "Inscrição indisponível.",
     );
-    const [items, summaries] = await Promise.all([
+    const [items, summaries, corrections] = await Promise.all([
       this.withPendingInformation([result]),
       this.notices
         ? this.notices.summaries(organizationId, [registrationId])
         : Promise.resolve(new Map()),
+      readRegistrationCorrections(
+        this.repo.db,
+        organizationId,
+        registrationId,
+        result.form.config as unknown as FormConfig,
+      ),
     ]);
     return {
       ...items[0],
+      corrections,
       decisionSummary: summaries.get(registrationId) ?? {
         ready: false,
         notice: null,

@@ -7,6 +7,7 @@ export class ApiError extends Error {
     message: string,
     public status: number,
     public fields?: { fieldErrors?: Record<string, string[]> },
+    public code?: string,
   ) {
     super(message);
   }
@@ -45,6 +46,7 @@ export async function api<T>(
       data?.error?.message ?? "Não foi possível conectar. Tente novamente.",
       response.status,
       data?.error?.fields,
+      typeof data?.error?.code === "string" ? data.error.code : undefined,
     );
   return data as T;
 }

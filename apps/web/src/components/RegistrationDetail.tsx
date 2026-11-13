@@ -22,7 +22,7 @@ import { registrationPendingInformation } from "../lib/registration-pending";
 import { Badge, Field, Loading, Notice } from "./ui";
 import { GuardianNotice, type GuardianNoticeState } from "./GuardianNotice";
 import { DecisionNotice, type DecisionNoticeState } from "./DecisionNotice";
-import { ImportedRegistrationCorrection } from "./ImportedRegistrationCorrection";
+import { RegistrationCorrection } from "./RegistrationCorrection";
 import { DetailSection } from "./DetailSection";
 import "./RegistrationDetail.css";
 type SectionId =
@@ -50,6 +50,12 @@ const statusOptions: Record<RegistrationStatus, RegistrationStatus[]> = {
   REJECTED: ["RECEIVED", "REVIEW"],
   CANCELLED: ["RECEIVED", "REVIEW"],
 };
+function correctedValue(value: unknown) {
+  if (value == null || value === "" || (Array.isArray(value) && !value.length))
+    return "Não informado";
+  if (typeof value === "boolean") return value ? "Sim" : "Não";
+  return Array.isArray(value) ? value.join("; ") : String(value);
+}
 export function RegistrationDetail({
   organizationId,
   registrationId,
@@ -89,6 +95,9 @@ export function RegistrationDetail({
   const [linkEmail, setLinkEmail] = useState("");
   const [linkReason, setLinkReason] = useState("");
   const [correctionDirty, setCorrectionDirty] = useState(false);
+  const [correctionRevision, setCorrectionRevision] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const editButton = useRef<HTMLButtonElement>(null);
   const [guardianBusy, setGuardianBusy] = useState(false);
   const [noticeBusy, setNoticeBusy] = useState(false);
   const [guardianState, setGuardianState] =
@@ -126,6 +135,7 @@ export function RegistrationDetail({
     setGuardianState(null);
     setGuardianFailed(false);
     setNoticeState(null);
+    setEditing(false);
   }, [registrationId]);
   const openSection = useCallback((section: SectionId, focus = false) => {
     setOpenSections((previous) => new Set(previous).add(section));
@@ -145,10 +155,12 @@ export function RegistrationDetail({
     () => openSection("invitation", true),
     [openSection],
   );
-  const onCorrectionError = useCallback(
-    () => openSection("imports", true),
-    [openSection],
-  );
+  const onCorrectionError = useCallback(() => setEditing(true), []);
+  function finishEditing() {
+    setEditing(false);
+    setCorrectionDirty(false);
+    requestAnimationFrame(() => editButton.current?.focus());
+  }
   function sectionProps(id: SectionId) {
     return {
       open: openSections.has(id),
@@ -407,8 +419,19 @@ export function RegistrationDetail({
                   <p className="protocol-small">{registration.protocol}</p>
                   <Badge status={registration.status} />
                 </div>
+                {membership.role === "ORGANIZER" && !editing && (
+                  <button
+                    ref={editButton}
+                    type="button"
+                    className="button outline registration-detail-edit"
+                    disabled={actionBusy}
+                    onClick={() => setEditing(true)}
+                  >
+                    Editar ficha
+                  </button>
+                )}
               </div>
-              <dl className="registration-detail-operational">
+              <dl className="registration-detail-operational" hidden={editing}>
                 <div>
                   <dt>Evento</dt>
                   <dd>{registration.campaign.event.name}</dd>
@@ -430,7 +453,8 @@ export function RegistrationDetail({
                   <dd>{presence}</dd>
                 </div>
               </dl>
-              {registration.origin === "IMPORT" &&
+              {!editing &&
+                registration.origin === "IMPORT" &&
                 (pendingInformation.length > 0 ? (
                   <button
                     type="button"
@@ -451,7 +475,31 @@ export function RegistrationDetail({
                 ))}
             </section>
 
-            <div className="registration-detail-sections">
+            {editing &&
+              membership.role === "ORGANIZER" &&
+              correctionRegistration && (
+                <RegistrationCorrection
+                  key={registration.id}
+                  organizationId={organizationId}
+                  registration={correctionRegistration}
+                  guardianApplicable={guardianRelevant}
+                  onDirtyChange={setCorrectionDirty}
+                  onError={onCorrectionError}
+                  onCancel={finishEditing}
+                  onSaved={(corrected) => {
+                    detail.setData(corrected);
+                    setCorrectionRevision((revision) => revision + 1);
+                    detail.refreshInBackground();
+                    onChanged();
+                    setInfo(
+                      "Alterações salvas. Histórico atualizado automaticamente.",
+                    );
+                    finishEditing();
+                  }}
+                />
+              )}
+
+            <div className="registration-detail-sections" hidden={editing}>
               <DetailSection
                 title="Dados pessoais e contato"
                 {...sectionProps("personal")}
@@ -463,7 +511,12 @@ export function RegistrationDetail({
                   </div>
                   <div>
                     <dt>E-mail</dt>
-                    <dd>{registration.snapshot.email || "Não informado"}</dd>
+                    <dd>
+                      {(registration.snapshot.contactEmail ??
+                        registration.snapshot.email ??
+                        registration.person.email) ||
+                        "Não informado"}
+                    </dd>
                   </div>
                   <div>
                     <dt>Nascimento</dt>
@@ -677,7 +730,7 @@ export function RegistrationDetail({
                     </dl>
                   )}
                   <GuardianNotice
-                    key={registration.id}
+                    key={`${registration.id}:${correctionRevision}`}
                     organizationId={organizationId}
                     registrationId={registration.id}
                     allowPendingConfirmation={registration.origin === "IMPORT"}
@@ -856,7 +909,7 @@ export function RegistrationDetail({
                     {...sectionProps("invitation")}
                   >
                     <DecisionNotice
-                      key={`${registration.id}:${registration.status}:${registration.team?.id ?? ""}:${registration.team?.name ?? ""}`}
+                      key={`${registration.id}:${registration.status}:${registration.team?.id ?? ""}:${registration.team?.name ?? ""}:${correctionRevision}`}
                       organizationId={organizationId}
                       registrationId={registration.id}
                       embedded
@@ -932,28 +985,56 @@ export function RegistrationDetail({
                       )}
                     </div>
                   )}
-                  {membership.role === "ORGANIZER" &&
-                    correctionRegistration && (
-                      <ImportedRegistrationCorrection
-                        key={registration.id}
-                        organizationId={organizationId}
-                        registration={correctionRegistration}
-                        onDirtyChange={setCorrectionDirty}
-                        onError={onCorrectionError}
-                        onSaved={() => {
-                          detail.refreshInBackground();
-                          onChanged();
-                        }}
-                      />
-                    )}
                 </DetailSection>
               )}
 
               <DetailSection
                 title="Histórico e vínculo"
-                summary={`${registration.history.length} ${registration.history.length === 1 ? "registro" : "registros"}`}
+                summary={`${registration.history.length + (registration.corrections?.length ?? 0)} registros`}
                 {...sectionProps("history")}
               >
+                {registration.corrections && (
+                  <div className="registration-detail-corrections">
+                    <h4>Edições da ficha</h4>
+                    {registration.corrections.length ? (
+                      <ol className="registration-detail-history">
+                        {registration.corrections.map((correction) => (
+                          <li key={correction.id}>
+                            <p>
+                              <strong>
+                                {correction.actor.name ||
+                                  correction.actor.email ||
+                                  "Organizador"}
+                              </strong>
+                              {" · "}
+                              {dateTime(correction.createdAt)}
+                            </p>
+                            {correction.reason !==
+                              "Correção da ficha pela organização." && (
+                              <p>{correction.reason}</p>
+                            )}
+                            <dl className="registration-detail-answers">
+                              {correction.changes.map((change) => (
+                                <div key={change.field}>
+                                  <dt>{change.label}</dt>
+                                  <dd>
+                                    <span>Antes: </span>
+                                    {correctedValue(change.before)}
+                                    <br />
+                                    <span>Depois: </span>
+                                    {correctedValue(change.after)}
+                                  </dd>
+                                </div>
+                              ))}
+                            </dl>
+                          </li>
+                        ))}
+                      </ol>
+                    ) : (
+                      <p className="muted">Nenhuma edição registrada.</p>
+                    )}
+                  </div>
+                )}
                 {registration.history.length ? (
                   <ol className="registration-detail-history">
                     {registration.history.map((item) => (
@@ -1008,7 +1089,10 @@ export function RegistrationDetail({
                 )}
               </DetailSection>
             </div>
-            <p className="registration-detail-health-note muted">
+            <p
+              className="registration-detail-health-note muted"
+              hidden={editing}
+            >
               Informações médicas ficam na área de cuidados, com autorização
               específica.
             </p>

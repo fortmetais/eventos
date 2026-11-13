@@ -86,6 +86,7 @@ try {
   for (const script of [
     "01_acesso_e_administrador.sql",
     "02_organizacoes_e_responsaveis.sql",
+    "21_correcoes_fichas.sql",
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
   ]) {
@@ -118,6 +119,7 @@ try {
     TEST_FUNCTION_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_function_tests?schema=acesso`,
     TEST_IMPORT_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_import_tests?schema=acesso`,
     TEST_EVENT_IMPORT_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_event_import_tests?schema=acesso`,
+    TEST_REGISTRATION_CORRECTIONS_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_registration_corrections_tests?schema=acesso`,
   };
   run(binary("psql"), [
     "-h",
@@ -134,6 +136,7 @@ try {
   for (const script of [
     "01_acesso_e_administrador.sql",
     "02_organizacoes_e_responsaveis.sql",
+    "21_correcoes_fichas.sql",
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
     "05_eventos_e_periodos.sql",
@@ -185,6 +188,7 @@ try {
   for (const script of [
     "01_acesso_e_administrador.sql",
     "02_organizacoes_e_responsaveis.sql",
+    "21_correcoes_fichas.sql",
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
     "05_eventos_e_periodos.sql",
@@ -223,6 +227,7 @@ try {
   for (const script of [
     "01_acesso_e_administrador.sql",
     "02_organizacoes_e_responsaveis.sql",
+    "21_correcoes_fichas.sql",
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
     "05_eventos_e_periodos.sql",
@@ -263,6 +268,7 @@ try {
   for (const script of [
     "01_acesso_e_administrador.sql",
     "02_organizacoes_e_responsaveis.sql",
+    "21_correcoes_fichas.sql",
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
     "05_eventos_e_periodos.sql",
@@ -299,6 +305,7 @@ try {
   for (const file of [
     join(root, "database/manual/01_acesso_e_administrador.sql"),
     join(root, "database/manual/02_organizacoes_e_responsaveis.sql"),
+    join(root, "database/manual/21_correcoes_fichas.sql"),
     join(root, "apps/api/tests/fixtures/organization-functions-legacy.sql"),
     join(root, "database/manual/11_funcoes_organizacao.sql"),
     join(root, "database/manual/05_eventos_e_periodos.sql"),
@@ -333,6 +340,7 @@ try {
   for (const script of [
     "01_acesso_e_administrador.sql",
     "02_organizacoes_e_responsaveis.sql",
+    "21_correcoes_fichas.sql",
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
     "05_eventos_e_periodos.sql",
@@ -366,6 +374,7 @@ try {
     for (const script of [
       "13_cadastros_anteriores.sql",
       "16_importacao_candidaturas.sql",
+      "21_correcoes_fichas.sql",
       "17_mensagens_aceite.sql",
       "19_respostas_espiritualidade.sql",
     ])
@@ -421,6 +430,7 @@ try {
   for (let attempt = 0; attempt < 2; attempt++)
     for (const script of [
       "16_importacao_candidaturas.sql",
+      "21_correcoes_fichas.sql",
       "17_mensagens_aceite.sql",
       "19_respostas_espiritualidade.sql",
     ])
@@ -438,7 +448,26 @@ try {
         "-f",
         join(root, "database/manual", script),
       ]);
-  run(process.execPath, [npmCli, "run", "test"], env);
+  // Correções e importações possuem bases independentes para testar em paralelo.
+  run(binary("psql"), [
+    "-h",
+    "127.0.0.1",
+    "-p",
+    String(port),
+    "-U",
+    "fac_test",
+    "-d",
+    "postgres",
+    "-c",
+    "CREATE DATABASE fac_registration_corrections_tests TEMPLATE fac_event_import_tests",
+  ]);
+  // Algumas suítes reaplicam DDL na mesma base; não executar arquivos da API em paralelo.
+  run(
+    process.execPath,
+    [npmCli, "run", "test", "-w", "@fac/api", "--", "--no-file-parallelism"],
+    env,
+  );
+  run(process.execPath, [npmCli, "run", "test", "-w", "@fac/web"], env);
 } finally {
   if (started) run(binary("pg_ctl"), ["-D", data, "-w", "-m", "fast", "stop"]);
   console.info(

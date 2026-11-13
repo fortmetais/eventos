@@ -198,9 +198,10 @@ export class DecisionNoticesService {
     }
     const snapshot = registration.snapshot as {
       email?: string;
+      contactEmail?: string;
       phone?: string;
     };
-    const email = snapshot.email?.trim() || null;
+    const email = (snapshot.contactEmail ?? snapshot.email)?.trim() || null;
     let phone = (snapshot.phone ?? "").replace(/\D/g, "");
     if (phone.length === 10 || phone.length === 11) phone = `55${phone}`;
     return {

@@ -163,6 +163,7 @@ export interface Payload {
   birthDate?: string;
   phone?: string;
   email?: string;
+  contactEmail?: string;
   cpf?: string;
   address?: string;
   shirt?: string;
@@ -237,6 +238,18 @@ export interface RegistrationDecisionSummary {
   };
 }
 export interface Registration {
+  corrections?: {
+    id: string;
+    createdAt: string;
+    actor: { id: string; name: string | null; email: string | null };
+    reason: string;
+    changes: {
+      field: string;
+      label: string;
+      before: Answer | null;
+      after: Answer | null;
+    }[];
+  }[];
   spiritualityResponse?: boolean | null;
   spiritualityRespondedAt?: string | null;
   spiritualityAt?: string | null;

@@ -87,9 +87,17 @@ const operations: Operation[] = [
   },
   {
     method: "patch",
+    path: "/organizations/{organizationId}/registrations/{registrationId}/corrections",
+    summary:
+      "Corrigir dados de ficha nativa ou importada; somente organizador, com justificativa, revisão concorrente e auditoria. Não altera saúde, aceites, decisão ou vaga. E-mail altera somente contato.",
+    security: "account",
+    body: "RegistrationCorrection",
+  },
+  {
+    method: "patch",
     path: "/organizations/{organizationId}/registrations/{registrationId}/imported-data",
     summary:
-      "Corrigir dados de candidatura importada com justificativa e controle de atualização",
+      "Compatibilidade para correção auditada de ficha importada; novo fluxo em /corrections",
     security: "account",
   },
   {
@@ -541,6 +549,33 @@ const organization = {
   logoUrl: { type: "string", format: "uri", nullable: true },
 };
 const schemas = {
+  RegistrationCorrection: object(
+    {
+      updatedAt: {
+        ...string,
+        format: "date-time",
+        description: "Versão atual da ficha; divergências retornam 409.",
+      },
+      reason: { ...string, minLength: 3, maxLength: 1000 },
+      overrides: {
+        type: "object",
+        minProperties: 1,
+        maxProperties: 100,
+        description:
+          "Campos básicos permitidos ou question:<id> visível da versão original. Somente campos alterados; null limpa opcionais. email corrige apenas snapshot.contactEmail; não altera e-mail original, conta ou comprovação. Saúde, aceites, foto, vaga e identificadores não são editáveis.",
+        additionalProperties: {
+          nullable: true,
+          oneOf: [
+            string,
+            { type: "number" },
+            boolean,
+            { type: "array", items: string },
+          ],
+        },
+      },
+    },
+    ["updatedAt", "overrides", "reason"],
+  ),
   PrefillIdentity: object(
     {
       name: { ...string, maxLength: 150 },
