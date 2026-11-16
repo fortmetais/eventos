@@ -166,6 +166,15 @@ export interface EventRegistrationSummary {
     id: string;
     kind: "CAMPER" | "VOLUNTEER";
   })[];
+  departmentsAvailable?: boolean;
+  departments?: {
+    id: string;
+    name: string;
+    capacity: number | null;
+    occupied: number;
+    available: number | null;
+    occupiedByCampaign: Record<string, number>;
+  }[];
 }
 export interface PublicCampaign extends Campaign {
   event: EventEdition & { organization: Organization };

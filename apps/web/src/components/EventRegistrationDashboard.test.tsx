@@ -210,6 +210,60 @@ describe("Visão geral de inscrições por evento", () => {
       "campaign=",
     );
   });
+  it("abre as barras com evento e campanha atuais sem herdar filtros antigos ou consultar cada departamento", async () => {
+    mocks.api.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.endsWith("/events")
+          ? [edition()]
+          : {
+              ...summary(),
+              departmentsAvailable: true,
+              departments: [
+                {
+                  id: "welcome",
+                  name: "Acolhida",
+                  capacity: 12,
+                  occupied: 8,
+                  available: 4,
+                  occupiedByCampaign: { volunteer: 5, camper: 3 },
+                },
+              ],
+            },
+      ),
+    );
+    view(
+      "/organizacao/org?evento=a&campaign=camper&q=antiga&team=antigo&status=CANCELLED&page=7",
+    );
+    const department = await screen.findByRole("link", {
+      name: "Ver inscrições de Acolhida",
+    });
+    expect(department).toHaveAccessibleDescription(
+      "8 de 12 vagas ocupadas · 3 nesta campanha · 5 de outras campanhas · 4 livres",
+    );
+    const status = screen.getByRole("link", {
+      name: "Recusada: 2 inscrições. Ver inscrições",
+    });
+    for (const [link, filters] of [
+      [
+        department,
+        { team: "welcome", sort: "ACCEPTED_FIRST", includeClosed: "true" },
+      ],
+      [status, { status: "REJECTED", includeClosed: "true" }],
+    ] as const) {
+      expect(
+        Object.fromEntries(
+          new URL(link.getAttribute("href")!, "https://example.test")
+            .searchParams,
+        ),
+      ).toEqual({
+        evento: "a",
+        aba: "inscricoes",
+        campaign: "camper",
+        ...filters,
+      });
+    }
+    expect(mocks.api).toHaveBeenCalledTimes(2);
+  });
   it("mostra zero verdadeiro e presença indisponível sem transformar erro em contagem zero", async () => {
     const zero = counts(0);
     for (const key of Object.keys(

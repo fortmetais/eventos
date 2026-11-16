@@ -11,6 +11,7 @@ import {
   type Role,
 } from "../lib/types";
 import { Empty, Field, Loading, Notice } from "./ui";
+import { EventDashboardCharts } from "./EventDashboardCharts";
 import "./EventRegistrationDashboard.css";
 
 const eventLabels: Record<EventEdition["status"], string> = {
@@ -374,6 +375,12 @@ export function EventRegistrationDashboard({
                       ),
                     )}
                   </div>
+                  <EventDashboardCharts
+                    counts={counts}
+                    summary={summary!}
+                    campaignId={campaignId}
+                    registrationsLink={registrationsLink}
+                  />
                   <p className="event-dashboard-updated">
                     Atualizado em {dateTime(summary!.generatedAt)} · horário de
                     Brasília

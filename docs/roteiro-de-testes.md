@@ -2,6 +2,9 @@
 
 ## Dashboard do evento na organização
 
+- Conferir os gráficos **Situação das inscrições** e **Ocupação dos departamentos**, com barras clicáveis por mouse, teclado e toque. Quantidades e proporções dos estados devem seguir a campanha selecionada; clicar deve abrir evento/campanha/situação corretos, incluindo recusadas e canceladas.
+- Conferir departamentos com aceitos/confirmados alocados e indicações sem reserva. O gráfico conta somente as vagas ocupadas; o atalho abre todas as inscrições do departamento, com aceitos e confirmados primeiro. Ao selecionar uma campanha, outras campanhas continuam ocupando a capacidade compartilhada e não viram vagas livres.
+- Conferir capacidade não definida, zero, ocupação excedente, evento sem departamentos, estrutura indisponível e nomes longos. Não pode haver divisão por zero, porcentagem inválida, dados antigos de outro evento ou rolagem horizontal no celular. Valores e rótulos não devem depender somente da cor.
 - Abrir **Visão geral** sem seleção e conferir a escolha de evento publicado em andamento, próximo evento e edição anterior, incluindo a virada de data em Brasília. Rascunhos e cancelados só devem abrir por escolha manual. Conferir organização sem eventos.
 - Trocar **Evento** e **Campanha**, atualizar a página e voltar pelo navegador. A seleção deve permanecer na URL; durante uma troca, números de outra edição não podem aparecer como se fossem do novo evento.
 - Conferir os cinco indicadores com todas as situações administrativas e inscrições nativas/importadas: total inclui recusadas/canceladas; Aceitos inclui somente Aceita; Vagas confirmadas e Vou participar continuam separados. Rascunhos e linhas de importação pendentes ficam de fora.

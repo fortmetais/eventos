@@ -29,12 +29,22 @@ export type EventRegistrationMetrics = {
   byStatus: Record<RegistrationStatus, number>;
   candidateGoing: number | null;
 };
+export type EventDepartmentOccupancy = {
+  id: string;
+  name: string;
+  capacity: number | null;
+  occupied: number;
+  available: number | null;
+  occupiedByCampaign: Record<string, number>;
+};
 export type EventRegistrationSummary = {
   eventId: string;
   generatedAt: string;
   presenceAvailable: boolean;
   totals: EventRegistrationMetrics;
   campaigns: (EventRegistrationMetrics & { id: string; kind: CampaignKind })[];
+  departmentsAvailable: boolean;
+  departments: EventDepartmentOccupancy[];
 };
 function emptyMetrics(presenceAvailable: boolean): EventRegistrationMetrics {
   return {
@@ -76,10 +86,12 @@ export class EventRegistrationSummaryService {
         });
         assert(event, 404, "Evento não encontrado.");
         const [stage] = await tx.$queryRaw<
-          { registrations: boolean; presence: boolean }[]
+          { registrations: boolean; presence: boolean; departments: boolean }[]
         >`
         SELECT to_regclass('inscricoes.inscricoes') IS NOT NULL AS registrations,
-          to_regclass('inscricoes.avisos_decisao') IS NOT NULL AS presence`;
+          to_regclass('inscricoes.avisos_decisao') IS NOT NULL AS presence,
+          EXISTS (SELECT 1 FROM information_schema.columns
+            WHERE table_schema='eventos' AND table_name='equipes' AND column_name='vagas') AS departments`;
         assert(
           stage?.registrations,
           503,
@@ -87,6 +99,7 @@ export class EventRegistrationSummaryService {
           "EVENT_REGISTRATION_SUMMARY_SETUP_REQUIRED",
         );
         const presenceAvailable = Boolean(stage.presence);
+        const departmentsAvailable = Boolean(stage.departments);
         const campaigns = event.campaigns.map((campaign) => ({
           ...campaign,
           ...emptyMetrics(presenceAvailable),
@@ -129,6 +142,63 @@ export class EventRegistrationSummaryService {
               campaign.candidateGoing! += Number(row.candidateGoing ?? 0);
           }
         }
+        const departments: EventDepartmentOccupancy[] = [];
+        if (departmentsAvailable) {
+          // Capacity is shared by the event. Include allocations from every campaign
+          // in the total, while exposing campaign-level counts only for permitted campaigns.
+          const rows = await tx.$queryRaw<
+            {
+              id: string;
+              name: string;
+              capacity: number | null;
+              campaignId: string | null;
+              occupied: bigint;
+            }[]
+          >(Prisma.sql`
+            SELECT t.equipe_id::text AS id, t.nome AS name, t.vagas AS capacity,
+              r.campanha_id::text AS "campaignId", count(r.inscricao_id) AS occupied
+            FROM eventos.equipes t
+            JOIN eventos.eventos e ON e.evento_id=t.evento_id
+            LEFT JOIN inscricoes.inscricoes r ON r.equipe_id=t.equipe_id
+              AND r.situacao::text IN ('APROVADA','CONFIRMADA')
+              AND EXISTS (SELECT 1 FROM eventos.campanhas c
+                JOIN eventos.eventos v ON v.evento_id=c.evento_id
+                WHERE c.campanha_id=r.campanha_id AND v.organizacao_id=${organizationId}::uuid)
+            WHERE e.organizacao_id=${organizationId}::uuid AND t.evento_id=${eventId}::uuid
+            GROUP BY t.equipe_id, t.nome, t.vagas, r.campanha_id
+            ORDER BY t.nome ASC, t.equipe_id ASC, r.campanha_id ASC`);
+          const byDepartment = new Map<string, EventDepartmentOccupancy>();
+          for (const row of rows) {
+            let department = byDepartment.get(row.id);
+            if (!department) {
+              department = {
+                id: row.id,
+                name: row.name,
+                capacity: row.capacity,
+                occupied: 0,
+                available: null,
+                occupiedByCampaign: Object.fromEntries(
+                  campaigns.map((campaign) => [campaign.id, 0]),
+                ),
+              };
+              byDepartment.set(row.id, department);
+            }
+            const occupied = Number(row.occupied);
+            department.occupied += occupied;
+            if (
+              row.campaignId &&
+              Object.hasOwn(department.occupiedByCampaign, row.campaignId)
+            )
+              department.occupiedByCampaign[row.campaignId] += occupied;
+          }
+          for (const department of byDepartment.values()) {
+            department.available =
+              department.capacity === null
+                ? null
+                : Math.max(0, department.capacity - department.occupied);
+            departments.push(department);
+          }
+        }
         const totals = emptyMetrics(presenceAvailable);
         for (const campaign of campaigns) {
           totals.total += campaign.total;
@@ -143,6 +213,8 @@ export class EventRegistrationSummaryService {
           presenceAvailable,
           totals,
           campaigns,
+          departmentsAvailable,
+          departments,
         };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },

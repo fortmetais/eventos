@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { chromium, expect } from "@playwright/test";
 
 // Painel React real com autenticação e serviços fictícios somente neste navegador.
-const target = process.env.PREVIEW_URL ?? "http://127.0.0.1:5192";
+const target = process.env.PREVIEW_URL ?? "http://127.0.0.1:5193";
 const origin = new URL(target).origin;
 if (!["localhost", "127.0.0.1"].includes(new URL(target).hostname))
   throw new Error("Execute somente contra a aplicação local.");
@@ -117,7 +117,32 @@ const events = definitions.map(
     city: "Cidade fictícia",
     type: { name: "FAC" },
     departmentsReady: true,
-    teams: [],
+    teams: [
+      {
+        id: uuid(670 + index * 3),
+        eventId: uuid(610 + index),
+        name: "Acolhida e acompanhamento dos participantes",
+        capacity: 12,
+        occupied: 8,
+        available: 4,
+      },
+      {
+        id: uuid(671 + index * 3),
+        eventId: uuid(610 + index),
+        name: "Secretaria",
+        capacity: null,
+        occupied: 4,
+        available: null,
+      },
+      {
+        id: uuid(672 + index * 3),
+        eventId: uuid(610 + index),
+        name: "Manutenção",
+        capacity: 0,
+        occupied: 0,
+        available: 0,
+      },
+    ],
     campaigns: [
       {
         id: uuid(630 + index * 2),
@@ -150,6 +175,15 @@ const statuses = [
   "REJECTED",
   "CANCELLED",
 ];
+const statusLabels = {
+  RECEIVED: "Recebida",
+  REVIEW: "Em análise",
+  APPROVED: "Aprovada",
+  CONFIRMED: "Confirmada",
+  WAITLIST: "Lista de espera",
+  REJECTED: "Recusada",
+  CANCELLED: "Cancelada",
+};
 function summary(event, volunteersOnly = false) {
   const campaigns = event.campaigns
     .filter((campaign) => !volunteersOnly || campaign.kind === "VOLUNTEER")
@@ -173,6 +207,20 @@ function summary(event, volunteersOnly = false) {
     eventId: event.id,
     generatedAt: fixedTime.toISOString(),
     presenceAvailable: true,
+    departmentsAvailable: true,
+    departments: event.teams.map((team, index) => ({
+      id: team.id,
+      name: team.name,
+      capacity: team.capacity,
+      occupied: team.occupied,
+      available: team.available,
+      occupiedByCampaign: {
+        [event.campaigns[0].id]: [5, 2, 0][index],
+        ...(event.campaigns[1]
+          ? { [event.campaigns[1].id]: [3, 2, 0][index] }
+          : {}),
+      },
+    })),
     totals: {
       total: campaigns.reduce((sum, campaign) => sum + campaign.total, 0),
       byStatus: Object.fromEntries(
@@ -390,6 +438,175 @@ function card(page, label, value) {
     exact: true,
   });
 }
+const metricLinks = (page) =>
+  page.locator(".event-dashboard-metrics").getByRole("link");
+const chartPanel = (page, title) =>
+  page.getByRole("region", { name: title, exact: true });
+const statusLink = (panel, status, count) =>
+  panel.getByRole("link", {
+    name: `${statusLabels[status]}: ${count} ${count === 1 ? "inscrição" : "inscrições"}. Ver inscrições`,
+    exact: true,
+  });
+async function verifyCharts(page, event, value, campaign) {
+  const counts = campaign ?? value.totals;
+  const situation = chartPanel(page, "Situação das inscrições");
+  const departments = chartPanel(page, "Ocupação dos departamentos");
+  await expect(
+    situation.getByRole("heading", {
+      name: "Situação das inscrições",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    departments.getByRole("heading", {
+      name: "Ocupação dos departamentos",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(situation.getByRole("link")).toHaveCount(7);
+  for (const status of statuses) {
+    const link = statusLink(situation, status, counts.byStatus[status]);
+    await expect(link).toBeVisible();
+    const url = new URL(await link.getAttribute("href"), target);
+    assert.equal(url.pathname, `/organizacao/${orgId}/inscricoes`);
+    assert.equal(url.searchParams.get("evento"), event.id);
+    assert.equal(url.searchParams.get("campaign"), campaign?.id ?? null);
+    assert.equal(url.searchParams.get("status"), status);
+    assert.equal(url.searchParams.get("presence"), null);
+    if (["REJECTED", "CANCELLED"].includes(status))
+      assert.equal(url.searchParams.get("includeClosed"), "true");
+    await expect(link).toHaveAttribute("aria-describedby", /\S+/);
+    const description = await link.evaluate((element) =>
+      element
+        .getAttribute("aria-describedby")
+        .split(/\s+/)
+        .map((id) => document.getElementById(id)?.textContent ?? "")
+        .join(" "),
+    );
+    assert(
+      description.includes("%"),
+      "Cada situação precisa informar sua proporção do total.",
+    );
+    assert(
+      !/NaN|Infinity|undefined/.test(description),
+      "Percentuais devem continuar válidos quando o total é zero.",
+    );
+  }
+  if (
+    value.departmentsAvailable === false ||
+    !Array.isArray(value.departments)
+  ) {
+    await expect(departments.getByRole("link")).toHaveCount(0);
+    await expect(
+      departments.getByText("Dados dos departamentos indisponíveis.", {
+        exact: true,
+      }),
+    ).toBeVisible();
+    return;
+  }
+  await expect(departments.getByRole("link")).toHaveCount(
+    value.departments.length,
+  );
+  for (const department of value.departments) {
+    const link = departments.getByRole("link", {
+      name: `Ver inscrições de ${department.name}`,
+      exact: true,
+    });
+    await expect(link).toBeVisible();
+    const url = new URL(await link.getAttribute("href"), target);
+    assert.equal(url.pathname, `/organizacao/${orgId}/inscricoes`);
+    assert.equal(url.searchParams.get("evento"), event.id);
+    assert.equal(url.searchParams.get("campaign"), campaign?.id ?? null);
+    assert.equal(url.searchParams.get("team"), department.id);
+    assert.equal(url.searchParams.get("sort"), "ACCEPTED_FIRST");
+    assert.equal(
+      url.searchParams.get("status"),
+      null,
+      "Departamento deve incluir todas as situações.",
+    );
+    assert.equal(url.searchParams.get("presence"), null);
+    assert.equal(url.searchParams.get("includeClosed"), "true");
+    await expect(link).toHaveAttribute("aria-describedby", /\S+/);
+    if (department.capacity == null) {
+      await expect(link).toContainText(
+        `${department.occupied} ocupadas · Vagas não definidas`,
+      );
+      await expect(
+        link.locator(".event-dashboard-chart-track > span"),
+      ).toHaveCount(0);
+    } else {
+      await expect(link).toContainText(
+        `${department.occupied} de ${department.capacity} vagas ocupadas`,
+      );
+      await expect(link).toContainText(`${department.available} livres`);
+      const selected = campaign
+        ? (department.occupiedByCampaign[campaign.id] ?? 0)
+        : department.occupied;
+      const other = Math.max(0, department.occupied - selected);
+      const free = department.available ?? 0;
+      const scale = Math.max(
+        department.capacity,
+        department.occupied,
+        selected + other + free,
+        1,
+      );
+      const expectedWidths = [selected, ...(campaign ? [other] : []), free].map(
+        (count) => (count / scale) * 100,
+      );
+      const widths = await link
+        .locator(".event-dashboard-chart-track > span")
+        .evaluateAll((segments) =>
+          segments.map((segment) => Number.parseFloat(segment.style.width)),
+        );
+      assert.equal(widths.length, expectedWidths.length);
+      widths.forEach((width, index) =>
+        assert(
+          Number.isFinite(width) &&
+            Math.abs(width - expectedWidths[index]) < 0.01,
+          "O gráfico deve usar a capacidade global, incluindo outras campanhas e vagas livres.",
+        ),
+      );
+    }
+    if (campaign) {
+      const selected = department.occupiedByCampaign[campaign.id] ?? 0;
+      await expect(link).toContainText(`${selected} nesta campanha`);
+      await expect(link).toContainText(
+        `${Math.max(0, department.occupied - selected)} de outras campanhas`,
+      );
+    }
+  }
+  if (value.departments.length)
+    await expect(departments).toContainText(
+      "Vagas ocupadas por aceitos/confirmados.",
+    );
+}
+async function verifyChartLayout(page, mobile) {
+  const situation = await chartPanel(
+    page,
+    "Situação das inscrições",
+  ).boundingBox();
+  const departments = await chartPanel(
+    page,
+    "Ocupação dos departamentos",
+  ).boundingBox();
+  assert(situation && departments);
+  if (mobile)
+    assert(
+      departments.y >= situation.y + situation.height - 1,
+      "Os gráficos devem ficar empilhados no celular.",
+    );
+  else {
+    assert(
+      Math.abs(situation.y - departments.y) <= 2,
+      "Os gráficos devem ficar lado a lado no computador.",
+    );
+    assert(
+      departments.x >= situation.x + situation.width - 1,
+      "Os gráficos não podem se sobrepor.",
+    );
+  }
+  await noOverflow(page);
+}
 async function verifyCards(page, event, counts, campaign) {
   await expect(
     page.getByRole("heading", { name: "Visão geral", exact: true }),
@@ -406,14 +623,13 @@ async function verifyCards(page, event, counts, campaign) {
     if (definition.includeClosed)
       assert.equal(url.searchParams.get("includeClosed"), "true");
   }
-  await expect(
-    page.getByRole("link", { name: /\. Ver inscrições$/ }),
-  ).toHaveCount(5);
-  assert.notEqual(
-    counts.byStatus.CONFIRMED,
-    counts.candidateGoing,
-    "A fixture deve distinguir vaga confirmada de resposta Vou participar.",
-  );
+  await expect(metricLinks(page)).toHaveCount(5);
+  if (counts.total > 0)
+    assert.notEqual(
+      counts.byStatus.CONFIRMED,
+      counts.candidateGoing,
+      "A fixture deve distinguir vaga confirmada de resposta Vou participar.",
+    );
 }
 async function noOverflow(page) {
   assert(
@@ -444,8 +660,14 @@ try {
   for (const viewport of [
     { width: 1536, height: 1000 },
     { width: 390, height: 844 },
+    { width: 320, height: 740 },
   ]) {
-    const screen = viewport.width <= 800 ? "mobile" : "desktop";
+    const mobile = viewport.width <= 800;
+    const screen = mobile
+      ? viewport.width === 390
+        ? "mobile"
+        : `mobile-${viewport.width}`
+      : "desktop";
     const { context, page, state } = await fixtureContext(browser, viewport);
     try {
       await page.goto(dashboardUrl());
@@ -461,6 +683,8 @@ try {
       });
       await expect(eventSelector).toHaveValue(active.id);
       await verifyCards(page, active, current.totals);
+      await verifyCharts(page, active, current);
+      await verifyChartLayout(page, mobile);
       assert.equal(new URL(page.url()).searchParams.get("evento"), active.id);
       assert.equal(
         state.summaries[0].eventId,
@@ -474,7 +698,7 @@ try {
         page.getByText("Eventos publicados", { exact: true }),
       ).toHaveCount(0);
       await noOverflow(page);
-      if (screen === "mobile") {
+      if (mobile) {
         const boxes = await Promise.all(
           cards.map((definition) =>
             card(
@@ -510,6 +734,7 @@ try {
       const summaryReads = state.summaries.length;
       await campaignSelector.selectOption(campaign.id);
       await verifyCards(page, active, campaign, campaign);
+      await verifyCharts(page, active, current, campaign);
       assert.equal(
         new URL(page.url()).searchParams.get("campaign"),
         campaign.id,
@@ -537,17 +762,66 @@ try {
       await expect(eventSelector).toHaveValue(active.id);
       await expect(campaignSelector).toHaveValue(campaign.id);
       await verifyCards(page, active, campaign, campaign);
+      await verifyCharts(page, active, current, campaign);
+
+      // As barras também são links de teclado para a lista filtrada.
+      const received = statusLink(
+        chartPanel(page, "Situação das inscrições"),
+        "RECEIVED",
+        campaign.byStatus.RECEIVED,
+      );
+      await received.focus();
+      await expect(received).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get("status"))
+        .toBe("RECEIVED");
+      await expect
+        .poll(() => state.registrationQueries.at(-1)?.status)
+        .toBe("RECEIVED");
+      await page.goBack();
+      await verifyCharts(page, active, current, campaign);
+      const department = current.departments[0];
+      const departmentLink = chartPanel(
+        page,
+        "Ocupação dos departamentos",
+      ).getByRole("link", {
+        name: `Ver inscrições de ${department.name}`,
+        exact: true,
+      });
+      await departmentLink.focus();
+      await expect(departmentLink).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get("team"))
+        .toBe(department.id);
+      await expect
+        .poll(() => state.registrationQueries.at(-1)?.teamId)
+        .toBe(department.id);
+      assert.equal(
+        new URL(page.url()).searchParams.get("sort"),
+        "ACCEPTED_FIRST",
+      );
+      assert.equal(
+        new URL(page.url()).searchParams.get("campaign"),
+        campaign.id,
+      );
+      await page.goBack();
+      await verifyCharts(page, active, current, campaign);
       await campaignSelector.selectOption("");
       await verifyCards(page, active, current.totals);
+      await verifyCharts(page, active, current);
 
       const historic = byKey.pastRecent;
       await eventSelector.selectOption(historic.id);
       await verifyCards(page, historic, summary(historic).totals);
+      await verifyCharts(page, historic, summary(historic));
       assert.equal(new URL(page.url()).searchParams.get("evento"), historic.id);
       assert.equal(new URL(page.url()).searchParams.get("campaign"), null);
       await page.reload();
       await expect(eventSelector).toHaveValue(historic.id);
       await verifyCards(page, historic, summary(historic).totals);
+      await verifyCharts(page, historic, summary(historic));
       await capture(page, `${screen}-historic`);
 
       // A resposta demorada de outro evento não pode substituir o evento atual.
@@ -559,10 +833,12 @@ try {
       ).toHaveCount(0);
       await eventSelector.selectOption(active.id);
       await verifyCards(page, active, current.totals);
+      await verifyCharts(page, active, current);
       state.delayed.release();
       await state.delayed.done;
       await page.waitForTimeout(100);
       await verifyCards(page, active, current.totals);
+      await verifyCharts(page, active, current);
       await expect(eventSelector).toHaveValue(active.id);
 
       const updated = structuredClone(current);
@@ -599,20 +875,87 @@ try {
         page.getByText("Vou participar", { exact: true }),
       ).toBeVisible();
       await expect(page.getByText("—", { exact: true })).toBeVisible();
-      await expect(
-        page.getByRole("link", { name: /\. Ver inscrições$/ }),
-      ).toHaveCount(4);
+      await expect(metricLinks(page)).toHaveCount(4);
       await noOverflow(page);
       await capture(page, `${screen}-presence-unavailable`);
       assert.deepEqual(state.errors, []);
       console.log(
-        `event-dashboard ${screen}: evento, cinco totais, campanhas, links, atualização e resposta antiga OK`,
+        `event-dashboard ${screen}: evento, cinco totais, gráficos, campanhas, links de teclado, atualização e resposta antiga OK`,
       );
     } catch (error) {
       await capture(page, `${screen}-failure`).catch(() => {});
       throw error;
     } finally {
       state.delayed?.release();
+      await context.close();
+    }
+  }
+
+  {
+    const { context, page, state } = await fixtureContext(browser, {
+      width: 320,
+      height: 740,
+    });
+    try {
+      const active = byKey.ongoingNear;
+      const zero = summary(active);
+      for (const counts of [zero.totals, ...zero.campaigns]) {
+        counts.total = 0;
+        counts.candidateGoing = 0;
+        counts.byStatus = Object.fromEntries(
+          statuses.map((status) => [status, 0]),
+        );
+      }
+      zero.departments = zero.departments.map((department) => ({
+        ...department,
+        occupied: 0,
+        available: department.capacity,
+        occupiedByCampaign: Object.fromEntries(
+          zero.campaigns.map((campaign) => [campaign.id, 0]),
+        ),
+      }));
+      state.overrides.set(active.id, zero);
+      await page.goto(dashboardUrl(active));
+      await verifyCards(page, active, zero.totals);
+      await verifyCharts(page, active, zero);
+      await verifyChartLayout(page, true);
+      await expect(
+        chartPanel(page, "Situação das inscrições"),
+      ).not.toContainText(/NaN|Infinity|undefined/);
+      await expect(
+        chartPanel(page, "Ocupação dos departamentos"),
+      ).not.toContainText(/NaN|Infinity|undefined/);
+      await capture(page, "mobile-320-zero-charts");
+
+      const unavailable = {
+        ...zero,
+        departmentsAvailable: false,
+        departments: [],
+      };
+      state.overrides.set(active.id, unavailable);
+      await page
+        .getByRole("button", { name: "Atualizar resumo", exact: true })
+        .click();
+      await verifyCards(page, active, zero.totals);
+      await verifyCharts(page, active, unavailable);
+      await noOverflow(page);
+      await capture(page, "mobile-320-departments-unavailable");
+
+      // O resumo anterior à adição dos departamentos continua utilizável.
+      const legacy = structuredClone(zero);
+      delete legacy.departmentsAvailable;
+      delete legacy.departments;
+      state.overrides.set(active.id, legacy);
+      await page
+        .getByRole("button", { name: "Atualizar resumo", exact: true })
+        .click();
+      await verifyCards(page, active, zero.totals);
+      await verifyCharts(page, active, legacy);
+      assert.deepEqual(state.errors, []);
+      console.log(
+        "event-dashboard zero/indisponível/legado: gráficos sem números inválidos e cartões preservados OK",
+      );
+    } finally {
       await context.close();
     }
   }
@@ -657,9 +1000,7 @@ try {
     try {
       await page.goto(dashboardUrl());
       await expect(page.getByText(/Nenhum evento/i).first()).toBeVisible();
-      await expect(
-        page.getByRole("link", { name: /\. Ver inscrições$/ }),
-      ).toHaveCount(0);
+      await expect(metricLinks(page)).toHaveCount(0);
       assert.equal(state.summaries.length, 0);
       await noOverflow(page);
       await capture(page, "mobile-no-events");
@@ -685,9 +1026,7 @@ try {
         0,
         "Saúde não deve solicitar o resumo de inscrições.",
       );
-      await expect(
-        page.getByRole("link", { name: /\. Ver inscrições$/ }),
-      ).toHaveCount(0);
+      await expect(metricLinks(page)).toHaveCount(0);
       assert.deepEqual(state.errors, []);
       console.log("event-dashboard HEALTH: nenhum resumo solicitado OK");
     } finally {

@@ -562,6 +562,11 @@ const schemas = {
       eventId: uuid,
       generatedAt: { ...string, format: "date-time" },
       presenceAvailable: boolean,
+      departmentsAvailable: boolean,
+      departments: {
+        type: "array",
+        items: { $ref: "#/components/schemas/EventDepartmentOccupancy" },
+      },
       totals: { $ref: "#/components/schemas/EventRegistrationMetrics" },
       campaigns: {
         type: "array",
@@ -577,7 +582,48 @@ const schemas = {
         ),
       },
     },
-    ["eventId", "generatedAt", "presenceAvailable", "totals", "campaigns"],
+    [
+      "eventId",
+      "generatedAt",
+      "presenceAvailable",
+      "totals",
+      "campaigns",
+      "departmentsAvailable",
+      "departments",
+    ],
+  ),
+  EventDepartmentOccupancy: object(
+    {
+      id: uuid,
+      name: string,
+      capacity: {
+        type: "integer",
+        minimum: 0,
+        nullable: true,
+        description:
+          "Capacidade compartilhada do evento; null indica falta de configuração.",
+      },
+      occupied: {
+        type: "integer",
+        minimum: 0,
+        description:
+          "Alocações APPROVED ou CONFIRMED em todas as campanhas, inclusive campanhas ausentes do mapa por liberação.",
+      },
+      available: {
+        type: "integer",
+        minimum: 0,
+        nullable: true,
+        description:
+          "max(0, capacity - occupied); null quando a capacidade não foi configurada.",
+      },
+      occupiedByCampaign: {
+        type: "object",
+        additionalProperties: { type: "integer", minimum: 0 },
+        description:
+          "Somente os identificadores das campanhas permitidas ao resumo.",
+      },
+    },
+    ["id", "name", "capacity", "occupied", "available", "occupiedByCampaign"],
   ),
   EventRegistrationMetrics: object(
     {
