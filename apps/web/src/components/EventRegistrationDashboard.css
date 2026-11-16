@@ -1,0 +1,130 @@
+.event-registration-dashboard {
+  min-width: 0;
+  margin-bottom: 24px;
+}
+.event-registration-dashboard .event-dashboard-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.event-registration-dashboard .event-dashboard-heading h1 {
+  margin: 0;
+  font-size: 24px;
+}
+.event-registration-dashboard .event-dashboard-refresh {
+  min-height: 44px;
+  padding: 10px 14px;
+}
+.event-registration-dashboard .event-dashboard-selectors {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(140px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.event-registration-dashboard .field {
+  min-width: 0;
+  margin-bottom: 8px;
+}
+.event-registration-dashboard .field select {
+  min-height: 44px;
+  width: 100%;
+  min-width: 0;
+}
+.event-registration-dashboard .event-dashboard-context {
+  color: var(--muted);
+  margin: 4px 0 18px;
+  font-size: 12px;
+}
+.event-registration-dashboard .event-dashboard-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+.event-registration-dashboard .event-dashboard-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 18px 16px;
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--purple);
+  border-radius: 12px;
+  background: #fff;
+  text-decoration: none;
+  color: #364055;
+}
+.event-registration-dashboard a.event-dashboard-metric:hover {
+  background: #faf9ff;
+  border-color: #b9b1ea;
+}
+.event-registration-dashboard a.event-dashboard-metric:focus-visible {
+  outline: 2px solid var(--purple);
+  outline-offset: 3px;
+}
+.event-registration-dashboard .event-dashboard-metric span {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.event-registration-dashboard .event-dashboard-metric strong {
+  font-family: "Manrope", sans-serif;
+  font-size: 30px;
+  line-height: 1.2;
+}
+.event-registration-dashboard .event-dashboard-metric small {
+  color: var(--muted);
+  font-size: 10px;
+  margin-top: auto;
+}
+.event-registration-dashboard .metric-accepted {
+  border-top-color: #a78629;
+}
+.event-registration-dashboard .metric-rejected {
+  border-top-color: #c56a7a;
+}
+.event-registration-dashboard .metric-confirmed {
+  border-top-color: #4c9576;
+}
+.event-registration-dashboard .metric-presence {
+  border-top-color: #588da9;
+}
+.event-registration-dashboard .event-dashboard-updated {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+@media (max-width: 1100px) {
+  .event-registration-dashboard .event-dashboard-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 800px) {
+  .event-registration-dashboard .event-dashboard-heading {
+    margin-bottom: 12px;
+  }
+  .event-registration-dashboard .event-dashboard-heading h1 {
+    font-size: 20px;
+  }
+  .event-registration-dashboard .event-dashboard-refresh span {
+    display: none;
+  }
+  .event-registration-dashboard .event-dashboard-selectors {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .event-registration-dashboard .event-dashboard-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .event-registration-dashboard .event-dashboard-metric {
+    padding: 14px 12px;
+    gap: 6px;
+  }
+  .event-registration-dashboard .event-dashboard-metric strong {
+    font-size: 26px;
+  }
+  .event-registration-dashboard .event-dashboard-metric:last-child {
+    grid-column: 1 / -1;
+  }
+}

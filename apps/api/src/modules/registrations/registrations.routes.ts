@@ -23,6 +23,12 @@ export function registrationsRoutes(
   );
   const organizer = organizationAccess(db, ["ORGANIZER"]);
   const corrections = new RegistrationCorrectionsService(db, volunteersOnly);
+  r.get(
+    "/organizations/:organizationId/events/:eventId/registration-summary",
+    auth,
+    read,
+    c.summary,
+  );
   r.patch(
     "/organizations/:organizationId/registrations/:registrationId/corrections",
     auth,

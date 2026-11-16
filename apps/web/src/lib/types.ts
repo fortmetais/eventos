@@ -152,6 +152,21 @@ export interface EventEdition {
   campaigns: Campaign[];
   teams: Team[];
 }
+export interface EventRegistrationCounts {
+  total: number;
+  byStatus: Record<RegistrationStatus, number>;
+  candidateGoing: number | null;
+}
+export interface EventRegistrationSummary {
+  eventId: string;
+  generatedAt: string;
+  presenceAvailable: boolean;
+  totals: EventRegistrationCounts;
+  campaigns: (EventRegistrationCounts & {
+    id: string;
+    kind: "CAMPER" | "VOLUNTEER";
+  })[];
+}
 export interface PublicCampaign extends Campaign {
   event: EventEdition & { organization: Organization };
   form: FormVersion;

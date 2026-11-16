@@ -37,6 +37,7 @@ import { requireOrganizationManager } from "../organizations/organization-functi
 import { requiresGuardian } from "./guardian.validation.js";
 import { sanitizeHidden } from "@fac/form-layout";
 import { readRegistrationCorrections } from "./registration-corrections-history.js";
+import { EventRegistrationSummaryService } from "./event-registration-summary.service.js";
 
 type PendingInformationRecord = {
   id: string;
@@ -55,6 +56,12 @@ export class RegistrationsService {
     private notices?: DecisionNoticesService,
     private guardians?: GuardianService,
   ) {}
+  summary(organizationId: string, eventId: string) {
+    return new EventRegistrationSummaryService(
+      this.repo.db,
+      this.volunteersOnly,
+    ).read(organizationId, eventId);
+  }
   private async guardianAuthorizationTableReady() {
     // Existing signatures remain evidence even when link sending is not configured.
     const [result] = await this.repo.db.$queryRaw<{ ready: boolean }[]>`

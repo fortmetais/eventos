@@ -418,6 +418,14 @@ const operations: Operation[] = [
   },
   {
     method: "get",
+    path: "/organizations/{organizationId}/events/{eventId}/registration-summary",
+    summary:
+      "Resumo privado de fichas do evento e campanhas permitidas; totais por estado e resposta VOU distintos, incluindo recusadas/canceladas e histórico vencido. Mesma permissão de leitura da listagem de inscrições.",
+    security: "account",
+    response: "EventRegistrationSummary",
+  },
+  {
+    method: "get",
     path: "/organizations/{organizationId}/registrations/{registrationId}",
     summary: "Consultar ficha e histórico sem saúde",
     security: "account",
@@ -549,6 +557,64 @@ const organization = {
   logoUrl: { type: "string", format: "uri", nullable: true },
 };
 const schemas = {
+  EventRegistrationSummary: object(
+    {
+      eventId: uuid,
+      generatedAt: { ...string, format: "date-time" },
+      presenceAvailable: boolean,
+      totals: { $ref: "#/components/schemas/EventRegistrationMetrics" },
+      campaigns: {
+        type: "array",
+        items: object(
+          {
+            id: uuid,
+            kind: { enum: ["VOLUNTEER", "CAMPER"] },
+            total: { type: "integer", minimum: 0 },
+            byStatus: { $ref: "#/components/schemas/RegistrationStatusCounts" },
+            candidateGoing: { type: "integer", minimum: 0, nullable: true },
+          },
+          ["id", "kind", "total", "byStatus", "candidateGoing"],
+        ),
+      },
+    },
+    ["eventId", "generatedAt", "presenceAvailable", "totals", "campaigns"],
+  ),
+  EventRegistrationMetrics: object(
+    {
+      total: { type: "integer", minimum: 0 },
+      byStatus: { $ref: "#/components/schemas/RegistrationStatusCounts" },
+      candidateGoing: {
+        type: "integer",
+        minimum: 0,
+        nullable: true,
+        description:
+          "Quantidade de respostas VOU vigentes; null se a infraestrutura de avisos não está instalada. Independente de CONFIRMED administrativo.",
+      },
+    },
+    ["total", "byStatus", "candidateGoing"],
+  ),
+  RegistrationStatusCounts: object(
+    Object.fromEntries(
+      [
+        "RECEIVED",
+        "REVIEW",
+        "APPROVED",
+        "CONFIRMED",
+        "WAITLIST",
+        "REJECTED",
+        "CANCELLED",
+      ].map((status) => [status, { type: "integer", minimum: 0 }]),
+    ),
+    [
+      "RECEIVED",
+      "REVIEW",
+      "APPROVED",
+      "CONFIRMED",
+      "WAITLIST",
+      "REJECTED",
+      "CANCELLED",
+    ],
+  ),
   RegistrationCorrection: object(
     {
       updatedAt: {

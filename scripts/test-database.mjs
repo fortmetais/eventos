@@ -120,6 +120,7 @@ try {
     TEST_IMPORT_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_import_tests?schema=acesso`,
     TEST_EVENT_IMPORT_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_event_import_tests?schema=acesso`,
     TEST_REGISTRATION_CORRECTIONS_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_registration_corrections_tests?schema=acesso`,
+    TEST_EVENT_SUMMARY_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_event_summary_tests?schema=acesso`,
   };
   run(binary("psql"), [
     "-h",
@@ -460,6 +461,10 @@ try {
     "postgres",
     "-c",
     "CREATE DATABASE fac_registration_corrections_tests TEMPLATE fac_event_import_tests",
+  ]);
+  run(binary("psql"), [
+    "-h", "127.0.0.1", "-p", String(port), "-U", "fac_test", "-d", "postgres",
+    "-c", "CREATE DATABASE fac_event_summary_tests TEMPLATE fac_event_import_tests",
   ]);
   // Algumas suítes reaplicam DDL na mesma base; não executar arquivos da API em paralelo.
   run(

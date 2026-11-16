@@ -1,5 +1,17 @@
 # Roteiro de testes da aplicação Encontro
 
+## Dashboard do evento na organização
+
+- Abrir **Visão geral** sem seleção e conferir a escolha de evento publicado em andamento, próximo evento e edição anterior, incluindo a virada de data em Brasília. Rascunhos e cancelados só devem abrir por escolha manual. Conferir organização sem eventos.
+- Trocar **Evento** e **Campanha**, atualizar a página e voltar pelo navegador. A seleção deve permanecer na URL; durante uma troca, números de outra edição não podem aparecer como se fossem do novo evento.
+- Conferir os cinco indicadores com todas as situações administrativas e inscrições nativas/importadas: total inclui recusadas/canceladas; Aceitos inclui somente Aceita; Vagas confirmadas e Vou participar continuam separados. Rascunhos e linhas de importação pendentes ficam de fora.
+- Abrir cada indicador e comparar o número com o total da listagem, usando mais de 20 registros. Verificar evento/campanha, filtro correto, ausência de pesquisa/departamento antigos e inclusão de encerradas para Inscritos/Recusados.
+- Conferir respostas positivas vencidas e de eventos concluídos, ignorando avisos revogados e candidaturas que deixaram de estar aceitas/confirmadas. Estrutura de respostas ausente deve exibir indisponibilidade, nunca zero artificial.
+- Conferir atualização manual, a cada 30 segundos apenas com a página visível e ao retornar. Validar falhas de consulta, nova tentativa, eventos sem inscrições e navegação durante uma resposta atrasada.
+- Testar organizador e secretaria nos modos completos e de servos, perfil Saúde, outra organização e campistas ainda não liberados. Conferir cards compactos no computador e em duas colunas no celular, sem rolagem horizontal.
+
+O percurso `scripts/browser-event-dashboard-check.mjs` usa somente pessoas, sessão e serviços fictícios. A suíte da API usa uma base PostgreSQL descartável própria. Consulte [Dashboard do evento na organização](dashboard-da-organizacao.md).
+
 ## Edição simplificada das fichas
 
 - Como organizador, abrir uma ficha nativa e uma importada e usar **Editar ficha** no próprio modal. Corrigir nome, telefone, contato e respostas gerais; usar **Salvar alterações** e conferir a lista, a ficha e **Histórico e vínculo → Edições da ficha**. Não deve haver campo de justificativa manual nem seção separada de correções.

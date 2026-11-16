@@ -32,6 +32,10 @@ import { useRemote } from "../lib/hooks";
 import { api } from "../lib/api";
 import { OrganizationForm } from "../components/OrganizationForm";
 import { InvitationLinkActions } from "../components/InvitationLinkActions";
+import {
+  EventRegistrationDashboard,
+  registrationDashboardAvailable,
+} from "../components/EventRegistrationDashboard";
 import type {
   EventEdition,
   Membership,
@@ -109,8 +113,9 @@ export function OrganizationLayout() {
   const mobileMenuButton = useRef<HTMLButtonElement>(null);
   const navigationId = useId();
   const base = `/organizacao/${organizationId}`;
-  const compactMobileNavigation =
-    location.pathname.replace(/\/$/, "") === `${base}/inscricoes`;
+  const compactMobileNavigation = [base, `${base}/inscricoes`].includes(
+    location.pathname.replace(/\/$/, ""),
+  );
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [location.pathname]);
@@ -257,9 +262,17 @@ export function OrganizationDashboard() {
   const { organizationId, membership, organization } = useOrganization();
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const showRegistrationDashboard =
+    membership.active !== false &&
+    registrationDashboardAvailable(auth, membership.role);
   return (
     <>
-      {!auth.eventsEnabled && auth.eventManagementEnabled ? (
+      {showRegistrationDashboard ? (
+        <EventRegistrationDashboard
+          key={organizationId}
+          organizationId={organizationId}
+        />
+      ) : !auth.eventsEnabled && auth.eventManagementEnabled ? (
         <EventPreparationDashboard />
       ) : (
         <FullOrganizationDashboard />

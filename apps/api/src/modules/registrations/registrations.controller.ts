@@ -33,6 +33,14 @@ const filters = z.object({
 });
 export class RegistrationsController {
   constructor(private service: RegistrationsService) {}
+  summary = async (req: Request, res: Response) => {
+    res.json(
+      await this.service.summary(
+        param(req, "organizationId"),
+        param(req, "eventId"),
+      ),
+    );
+  };
   create = async (req: Request, res: Response) => {
     res
       .status(201)
