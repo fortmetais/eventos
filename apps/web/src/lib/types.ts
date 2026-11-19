@@ -1,3 +1,8 @@
+import type { FormConfiguration as FormConfig } from "@fac/form-layout";
+export type {
+  FormConfiguration as FormConfig,
+  FormQuestion as Question,
+} from "@fac/form-layout";
 export type Role = "ORGANIZER" | "SECRETARY" | "HEALTH";
 export type RegistrationStatus =
   | "RECEIVED"
@@ -66,44 +71,7 @@ export interface Page<T> {
   page: number;
   pageSize: number;
 }
-export interface Question {
-  id: string;
-  label: string;
-  type: "text" | "number" | "date" | "boolean" | "single" | "multiple";
-  required: boolean;
-  options: string[];
-  hint?: string;
-  maxSelections?: number;
-  exclusiveOption?: string;
-  mustBeTrue?: boolean;
-}
-export interface FormConfig {
-  banner?: {
-    url: string;
-    bucket: string;
-    key: string;
-    width: number;
-    height: number;
-  } | null;
-  layout?: import("@fac/form-layout").FormLayout;
-  askCpf: boolean;
-  askAddress: boolean;
-  askShirt: boolean;
-  questions: Question[];
-  terms: string;
-  volunteer?: {
-    template: "VOLUNTEER_INTENTION_V1";
-    description?: string;
-    requirements: string;
-    training: string;
-  };
-  camper?: {
-    template: "CAMPER_REGISTRATION_V1";
-    description?: string;
-    requirements: string;
-    arrivalInstructions: string;
-  };
-}
+
 export interface FormVersion {
   id: string;
   version: number;

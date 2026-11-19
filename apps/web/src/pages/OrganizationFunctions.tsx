@@ -6,6 +6,7 @@ import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { roleLabels, type OrganizationFunction, type Role } from "../lib/types";
 import { Field, Loading, Notice, PageHeading } from "../components/ui";
+import { useUnsavedChanges } from "../lib/unsaved-changes";
 
 const profiles: Record<Role, string> = {
   ORGANIZER:
@@ -34,6 +35,16 @@ export function OrganizationFunctions() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const saving = useRef(false);
+  const baseline = editing
+    ? {
+        name: editing.name,
+        description: editing.description ?? "",
+        role: editing.role,
+        active: editing.active,
+      }
+    : blank;
+  const dirty = editor && JSON.stringify(values) !== JSON.stringify(baseline);
+  const { run, markSaved } = useUnsavedChanges(dirty, { busy });
   useEffect(() => {
     setEditor(false);
     setEditing(null);
@@ -43,21 +54,23 @@ export function OrganizationFunctions() {
   }, [organizationId]);
   function begin(value?: OrganizationFunction) {
     if (saving.current) return;
-    setEditing(value ?? null);
-    setValues(
-      value
-        ? {
-            name: value.name,
-            description: value.description ?? "",
-            role: value.role,
-            active: value.active,
-          }
-        : blank,
-    );
-    setError("");
-    setSuccess("");
-    setEditor(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    void run(() => {
+      setEditing(value ?? null);
+      setValues(
+        value
+          ? {
+              name: value.name,
+              description: value.description ?? "",
+              role: value.role,
+              active: value.active,
+            }
+          : blank,
+      );
+      setError("");
+      setSuccess("");
+      setEditor(true);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
   }
   async function save(e: FormEvent) {
     e.preventDefault();
@@ -75,6 +88,7 @@ export function OrganizationFunctions() {
         `/organizations/${organizationId}/functions${editing ? "/" + editing.id : ""}`,
         { method: editing ? "PUT" : "POST", body: values },
       );
+      markSaved();
       setEditor(false);
       setSuccess(
         result.affected &&
@@ -104,7 +118,10 @@ export function OrganizationFunctions() {
       setSuccess(
         "Função inativada. Membros vinculados mantêm o acesso e convites válidos continuam podendo ser aceitos.",
       );
-      if (editing?.id === value.id) setEditor(false);
+      if (editing?.id === value.id) {
+        markSaved();
+        setEditor(false);
+      }
       state.refresh();
     } catch (error) {
       setError((error as Error).message);
@@ -209,10 +226,14 @@ export function OrganizationFunctions() {
               <button
                 type="button"
                 className="button outline"
-                onClick={() => {
-                  setEditor(false);
-                  setError("");
-                }}
+                onClick={() =>
+                  void run(() => {
+                    setEditor(false);
+                    setEditing(null);
+                    setValues(blank);
+                    setError("");
+                  })
+                }
               >
                 Cancelar edição
               </button>
@@ -283,7 +304,13 @@ export function OrganizationFunctions() {
                               className="text-button danger"
                               aria-label={`Inativar ${value.name}`}
                               disabled={busy}
-                              onClick={() => void deactivate(value)}
+                              onClick={() => {
+                                if (editing?.id === value.id)
+                                  void run(() => {
+                                    void deactivate(value);
+                                  });
+                                else void deactivate(value);
+                              }}
                             >
                               Inativar
                             </button>

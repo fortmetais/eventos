@@ -1,3 +1,4 @@
+import { UnsavedChangesProvider } from "../lib/unsaved-changes";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
@@ -9,7 +10,7 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { EventParticipantImportWizard } from "./EventParticipantImportWizard";
-import { ApiError } from "../lib/api";
+import { ApiError, type ApiRequestOptions } from "../lib/api";
 import { loadBrazilianCities, normalizeCitySearch } from "../lib/brazil-cities";
 import type {
   EventImportBatch,
@@ -151,7 +152,7 @@ beforeEach(() => {
   mocks.api
     .mockReset()
     .mockImplementation(
-      async (path: string, options?: { method?: string; body?: any }) => {
+      async (path: string, options?: ApiRequestOptions) => {
         if (path === `${base}/event`) return structuredClone(batch);
         if (path === "/organizations/org/registrations/native")
           return {
@@ -180,14 +181,17 @@ beforeEach(() => {
           return value;
         }
         if (path === `${base}/batch/settings`) {
+          const body = options?.body as Partial<
+            Pick<EventImportBatch, "mapping" | "rules" | "step">
+          >;
           if (rejectSettings)
             throw new ApiError(
               "O lote foi alterado por outro organizador.",
               409,
             );
-          if (options!.body.mapping) batch.mapping = options!.body.mapping;
-          if (options!.body.rules) batch.rules = options!.body.rules;
-          if (options!.body.step) batch.step = options!.body.step;
+          if (body.mapping) batch.mapping = body.mapping;
+          if (body.rules) batch.rules = body.rules;
+          if (body.step) batch.step = body.step;
           batch.revision++;
           if (batch.step >= 3) batch.state = "REVIEW";
           return structuredClone(batch);
@@ -196,25 +200,32 @@ beforeEach(() => {
           path === `${base}/batch/rows/row2` ||
           path === `${base}/batch/rows/row`
         ) {
+          const body = options?.body as Pick<
+            EventImportRow,
+            "overrides" | "decision"
+          > & {
+            overrides: EventImportRow["overrides"] & { phone?: string };
+          };
           const row = batch.rows.find((item) =>
             path.endsWith(`/rows/${item.id}`),
           )!;
-          row.overrides = options!.body.overrides;
-          row.decision = options!.body.decision;
+          row.overrides = body.overrides;
+          row.decision = body.decision;
           row.reviewed = true;
           row.revision++;
           row.payload.phone =
-            options!.body.overrides.phone ?? row.payload.phone;
-          if (options!.body.overrides["question:cidade"])
+            body.overrides.phone ?? row.payload.phone;
+          if (body.overrides["question:cidade"])
             row.payload.answers!.cidade =
-              options!.body.overrides["question:cidade"];
+              body.overrides["question:cidade"];
           row.errors = [];
           batch.revision++;
           return structuredClone(batch);
         }
         if (path === `${base}/batch/review`) {
+          const body = options?.body as { rowIds: string[] };
           for (const row of batch.rows)
-            if (options!.body.rowIds.includes(row.id)) {
+            if (body.rowIds.includes(row.id)) {
               row.reviewed = true;
               row.decision = "KEEP";
               row.ready = true;
@@ -224,8 +235,9 @@ beforeEach(() => {
           return structuredClone(batch);
         }
         if (path === `${base}/batch/confirm`) {
+          const body = options?.body as { rowIds: string[] };
           for (const row of batch.rows)
-            if (options!.body.rowIds.includes(row.id)) {
+            if (body.rowIds.includes(row.id)) {
               row.executionState = "IMPORTED";
               row.registrationId = `registration-${row.id}`;
             }
@@ -250,12 +262,12 @@ afterEach(cleanup);
 function view(initialBatchId?: string, meta = metadata) {
   render(
     <MemoryRouter initialEntries={["/minha-organizacao/cadastros-anteriores"]}>
-      <EventParticipantImportWizard
+      <UnsavedChangesProvider><EventParticipantImportWizard
         organizationId="org"
         metadata={meta}
         initialBatchId={initialBatchId}
         onRefresh={mocks.refresh}
-      />
+      /></UnsavedChangesProvider>
     </MemoryRouter>,
   );
 }
@@ -564,6 +576,7 @@ describe("Assistente de candidaturas importadas", () => {
     rejectSettings = false;
     batch.revision = 9;
     fireEvent.click(screen.getByRole("button", { name: "Recarregar lote" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Descartar alterações" }));
     await waitFor(() =>
       expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
     );

@@ -27,9 +27,7 @@ export class ProfilesService {
       : this.eventsEnabled;
   }
   async registrations(accountId: string) {
-    return (await this.enabled())
-      ? this.repo.registrations(accountId)
-      : Promise.resolve([]);
+    return (await this.enabled()) ? this.repo.registrations(accountId) : [];
   }
   async update(accountId: string, input: unknown) {
     const data = profileSchema.parse(input);

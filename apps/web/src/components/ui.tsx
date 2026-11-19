@@ -1,12 +1,28 @@
-import type { ReactNode } from "react";
-import { AlertCircle, ArrowRight, Church, LoaderCircle } from "lucide-react";
+import {
+  Children,
+  Fragment,
+  cloneElement,
+  isValidElement,
+  useId,
+  type AriaAttributes,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import {
+  AlertCircle,
+  ArrowRight,
+  CheckCircle2,
+  Church,
+  Info,
+  LoaderCircle,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import type { Organization, RegistrationStatus } from "../lib/types";
 import { statusLabels } from "../lib/types";
 export function Loading() {
   return (
     <div className="loading" role="status">
-      <LoaderCircle className="spin" size={22} />
+      <LoaderCircle className="spin" size={22} aria-hidden="true" />
       Carregando…
     </div>
   );
@@ -18,15 +34,70 @@ export function Notice({
   children: ReactNode;
   kind?: "error" | "success" | "info";
 }) {
+  const Icon =
+    kind === "success" ? CheckCircle2 : kind === "info" ? Info : AlertCircle;
   return (
     <div
       className={`notice ${kind}`}
       role={kind === "error" ? "alert" : "status"}
     >
-      <AlertCircle size={18} />
+      <Icon size={18} aria-hidden="true" focusable="false" />
       <div>{children}</div>
     </div>
   );
+}
+
+type FieldChildProps = AriaAttributes & {
+  id?: string;
+  type?: string;
+  children?: ReactNode;
+};
+function fieldControl(node: ReactElement<FieldChildProps>) {
+  return (
+    typeof node.type === "string" &&
+    ["input", "select", "textarea"].includes(node.type) &&
+    !(node.type === "input" && node.props.type === "hidden")
+  );
+}
+// Inspect only HTML and fragments; composite controls keep their own ARIA contract.
+function fieldControls(children: ReactNode): ReactElement<FieldChildProps>[] {
+  const controls: ReactElement<FieldChildProps>[] = [];
+  Children.forEach(children, (child) => {
+    if (!isValidElement<FieldChildProps>(child)) return;
+    if (fieldControl(child)) controls.push(child);
+    else if (child.type === Fragment || typeof child.type === "string")
+      controls.push(...fieldControls(child.props.children));
+  });
+  return controls;
+}
+function describeField(
+  existing: string | undefined,
+  ...ids: (string | undefined)[]
+) {
+  return (
+    [
+      ...new Set([
+        ...(existing?.split(/\s+/).filter(Boolean) ?? []),
+        ...ids.filter(Boolean),
+      ]),
+    ].join(" ") || undefined
+  );
+}
+function associateField(
+  children: ReactNode,
+  control: ReactElement<FieldChildProps>,
+  attributes: FieldChildProps,
+): ReactNode {
+  return Children.map(children, (child) => {
+    if (!isValidElement<FieldChildProps>(child)) return child;
+    if (child === control) return cloneElement(child, attributes);
+    if (child.type === Fragment || typeof child.type === "string") {
+      return cloneElement(child, {
+        children: associateField(child.props.children, control, attributes),
+      });
+    }
+    return child;
+  });
 }
 export function Field({
   label,
@@ -35,6 +106,7 @@ export function Field({
   required,
   hint,
   group = false,
+  id,
 }: {
   label: string;
   children: ReactNode;
@@ -42,21 +114,59 @@ export function Field({
   required?: boolean;
   hint?: string;
   group?: boolean;
+  id?: string;
 }) {
+  const generatedId = useId();
+  const labelId = `${generatedId}-label`;
+  const hintId = hint ? `${generatedId}-hint` : undefined;
+  const errorId = error ? `${generatedId}-error` : undefined;
+  const controls = group ? [] : fieldControls(children);
+  const control = controls.length === 1 ? controls[0] : undefined;
+  const controlId = control
+    ? control.props.id || id || `${generatedId}-control`
+    : undefined;
+  const describedChildren = control
+    ? associateField(children, control, {
+        id: controlId,
+        "aria-labelledby":
+          control.props["aria-labelledby"] ||
+          (control.props["aria-label"] ? undefined : labelId),
+        "aria-describedby": describeField(
+          control.props["aria-describedby"],
+          hintId,
+          errorId,
+        ),
+        "aria-invalid": error ? true : control.props["aria-invalid"],
+      })
+    : children;
   const Container = group ? "div" : "label";
   return (
     <Container
       className={`field ${error ? "invalid" : ""}`}
+      id={group ? id : undefined}
+      htmlFor={group ? undefined : controlId}
       role={group ? "group" : undefined}
       aria-label={group ? label : undefined}
+      aria-describedby={
+        group ? describeField(undefined, hintId, errorId) : undefined
+      }
+      aria-invalid={group && error ? true : undefined}
     >
-      <span>
+      <span id={labelId}>
         {label}
         {required && <b aria-label="obrigatório"> *</b>}
       </span>
-      {children}
-      {hint && <small className="field-hint">{hint}</small>}
-      {error && <small className="field-error">{error}</small>}
+      {describedChildren}
+      {hint && (
+        <small className="field-hint" id={hintId}>
+          {hint}
+        </small>
+      )}
+      {error && (
+        <small className="field-error" id={errorId}>
+          {error}
+        </small>
+      )}
     </Container>
   );
 }

@@ -1,3 +1,4 @@
+import type { FormQuestion, FormConfiguration } from "@fac/form-layout";
 import { z } from "zod";
 import { id } from "../../core/security.js";
 import { validateLayout, syncLegacyFlags } from "@fac/form-layout";
@@ -102,7 +103,7 @@ export const questionSchema = z
         path: ["mustBeTrue"],
         message: "O aceite deve ser uma pergunta de sim/não.",
       });
-  });
+  }) satisfies z.ZodType<FormQuestion>;
 export const formSchema = z
   .object({
     askCpf: z.boolean(),
@@ -191,7 +192,9 @@ export const formSchema = z
     for (const message of validateLayout(value))
       ctx.addIssue({ code: "custom", path: ["layout"], message });
   })
-  .transform((value) => syncLegacyFlags(value));
+  .transform((value) =>
+    syncLegacyFlags(value),
+  ) satisfies z.ZodType<FormConfiguration>;
 export type FormConfig = z.infer<typeof formSchema>;
 export const eventStatusSchema = z
   .object({ status: z.enum(["DRAFT", "PUBLISHED", "CANCELLED", "COMPLETED"]) })

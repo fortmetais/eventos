@@ -11,6 +11,7 @@ export function Health() {
   );
   const [eventId, setEventId] = useState("");
   const [selected, setSelected] = useState("");
+  const [query, setQuery] = useState("");
   const people = useRemote<
     {
       id: string;
@@ -28,6 +29,8 @@ export function Health() {
       ? `/organizations/${organizationId}/registrations/${selected}/health`
       : null,
   );
+  const searchKey = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("pt-BR").trim();
+  const filteredPeople = people.data?.filter((person) => searchKey(person.person.name).includes(searchKey(query))) ?? [];
   return (
     <>
       <PageHeading eyebrow="ACESSO RESTRITO" title="Cuidados de saúde">
@@ -44,6 +47,7 @@ export function Health() {
           onChange={(e) => {
             setEventId(e.target.value);
             setSelected("");
+            setQuery("");
           }}
         >
           <option value="">Selecione</option>
@@ -64,11 +68,16 @@ export function Health() {
         <div className="health-layout">
           <section className="panel">
             <h2>Participantes</h2>
-            {people.data.length ? (
-              people.data.map((p) => (
+            <Field label="Pesquisar participante">
+              <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nome do participante" autoComplete="off" />
+            </Field>
+            <p className="health-participant-count" role="status">{filteredPeople.length} de {people.data.length} participantes</p>
+            {filteredPeople.length ? (
+              filteredPeople.map((p) => (
                 <button
                   className={`person-button ${selected === p.id ? "selected" : ""}`}
                   key={p.id}
+                  aria-pressed={selected === p.id}
                   onClick={() => setSelected(p.id)}
                 >
                   <strong>{p.person.name}</strong>
@@ -79,7 +88,9 @@ export function Health() {
                 </button>
               ))
             ) : (
-              <Empty title="Nenhum participante" />
+              <Empty title={query ? "Nenhum participante encontrado" : "Nenhum participante"}>
+                {query && <button type="button" className="text-button" onClick={() => setQuery("")}>Limpar pesquisa</button>}
+              </Empty>
             )}
           </section>
           <section className="panel">

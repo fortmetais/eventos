@@ -17,6 +17,8 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { OrganizationForm } from "./OrganizationForm";
+import { MemoryRouter } from "react-router-dom";
+import { UnsavedChangesProvider } from "../lib/unsaved-changes";
 import type { Organization } from "../lib/types";
 
 const mocks = vi.hoisted(() => ({ api: vi.fn() }));
@@ -236,5 +238,88 @@ describe("Ficha da organização e envio de logotipo", () => {
       finish();
     });
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+  });
+});
+
+function showGuardedOrganization() {
+  return render(
+    <MemoryRouter>
+      <UnsavedChangesProvider>
+        <OrganizationForm
+          organization={org}
+          onSaved={onSaved}
+          onClose={onClose}
+          onBusyChange={onBusyChange}
+        />
+      </UnsavedChangesProvider>
+    </MemoryRouter>,
+  );
+}
+function unsavedOrganization() {
+  const event = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+describe("Alterações não salvas da organização", () => {
+  it("compara a ficha e as máscaras com os valores iniciais reais e confirma antes de fechar", async () => {
+    showGuardedOrganization();
+    expect(unsavedOrganization()).toBe(false);
+    fireEvent.change(field("CNPJ"), { target: { value: "12345678000195" } });
+    expect(unsavedOrganization()).toBe(false);
+    fireEvent.change(field("Rua / avenida"), {
+      target: { value: "Rua revisada" },
+    });
+    expect(unsavedOrganization()).toBe(true);
+    await userEvent.click(screen.getByRole("button", { name: "Fechar" }));
+    expect(
+      screen.getByRole("dialog", { name: "Alterações não salvas" }),
+    ).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Continuar editando" }),
+    );
+    expect(onClose).not.toHaveBeenCalled();
+    expect(field("Rua / avenida")).toHaveValue("Rua revisada");
+    await userEvent.click(screen.getByRole("button", { name: "Fechar" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Descartar alterações" }),
+    );
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+  it("protege somente o logotipo ainda não salvo e limpa a proteção ao descartá-lo", async () => {
+    showGuardedOrganization();
+    await userEvent.upload(
+      fileInput(),
+      new File(["png"], "novo.png", { type: "image/png" }),
+    );
+    expect(unsavedOrganization()).toBe(true);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Descartar arquivo selecionado" }),
+    );
+    expect(unsavedOrganization()).toBe(false);
+    await userEvent.click(screen.getByRole("button", { name: "Fechar" }));
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  it("mantém a proteção após falha e encerra sem confirmação redundante após salvar", async () => {
+    mocks.api.mockRejectedValueOnce(new Error("Falha no salvamento."));
+    showGuardedOrganization();
+    fireEvent.change(field("Nome fantasia"), {
+      target: { value: "Nome revisado" },
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Salvar organização" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Falha no salvamento.",
+    );
+    expect(unsavedOrganization()).toBe(true);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Salvar organização" }),
+    );
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(unsavedOrganization()).toBe(false);
+    await userEvent.click(screen.getByRole("button", { name: "Fechar" }));
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

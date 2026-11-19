@@ -4,22 +4,12 @@ import { pageQuery, param } from "../../core/security.js";
 import { publicFilters } from "./events.validation.js";
 import { eventReference } from "./event-slug.js";
 import type { EventsService } from "./events.service.js";
-import { AppError } from "../../core/errors.js";
-function formInput(req: Request) {
-  if (!req.is("multipart/form-data")) return req.body;
-  try {
-    return JSON.parse(req.body.data);
-  } catch {
-    throw new AppError(400, "Os dados da ficha não puderam ser lidos.");
-  }
-}
+import { parseMultipartBody } from "../../core/http-input.js";
+import { eventArtworkFile } from "./event-artwork-upload.js";
+const formInput = (req: Request) =>
+  parseMultipartBody(req, "Os dados da ficha não puderam ser lidos.");
 export class EventsController {
   constructor(private service: EventsService) {}
-  private artwork(req: Request, name: string) {
-    return (req.files as Record<string, Express.Multer.File[]> | undefined)?.[
-      name
-    ]?.[0];
-  }
   camperForm = async (req: Request, res: Response) => {
     res.json(
       await this.service.camperForm(
@@ -57,8 +47,8 @@ export class EventsController {
           param(req, "organizationId"),
           account(req).id,
           formInput(req),
-          this.artwork(req, "artwork"),
-          this.artwork(req, "mobileArtwork"),
+          eventArtworkFile(req, "artwork"),
+          eventArtworkFile(req, "mobileArtwork"),
         ),
       );
   };
@@ -68,8 +58,8 @@ export class EventsController {
         param(req, "organizationId"),
         param(req, "eventId"),
         formInput(req),
-        this.artwork(req, "artwork"),
-        this.artwork(req, "mobileArtwork"),
+        eventArtworkFile(req, "artwork"),
+        eventArtworkFile(req, "mobileArtwork"),
       ),
     );
   };

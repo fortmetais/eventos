@@ -135,10 +135,7 @@ try {
         assert.equal(body.data.familyPhone, "(44) 98888-7777");
         assert.equal(body.data.phone, "(44) 98777-6666");
         assert.equal(body.data.cpf, "529.982.247-25");
-        assert.equal(
-          body.data.participantCpf,
-          mobile ? "111.444.777-35" : "",
-        );
+        assert.equal(body.data.participantCpf, mobile ? "111.444.777-35" : "");
         assert.equal(body.data.city, "Toledo - PR");
         assert.equal(
           body.data.relationship,
@@ -276,7 +273,7 @@ try {
       x: rect.x + x * rect.width,
       y: rect.y + y * rect.height,
     }));
-    if (mobile) {
+    if (mobile && browser.browserType().name() === "chromium") {
       const cdp = await context.newCDPSession(page);
       await cdp.send("Input.dispatchTouchEvent", {
         type: "touchStart",
@@ -292,6 +289,8 @@ try {
         touchPoints: [],
       });
     } else {
+      // Playwright WebKit has native taps but no touch-drag API. Exercise the
+      // signature pointer path with a mouse; city selection above still uses tap.
       await page.mouse.move(points[0].x, points[0].y);
       await page.mouse.down();
       for (const point of points.slice(1))

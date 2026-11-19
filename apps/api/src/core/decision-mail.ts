@@ -1,5 +1,6 @@
-import nodemailer from "nodemailer";
 import { config } from "../config.js";
+import { createSmtpTransport } from "./smtp-transport.js";
+import { logOperationalEvent } from "./operational-log.js";
 
 export type DeliveryResult = "ENVIADA" | "FALHA" | "SEM_CONFIGURACAO";
 export interface DecisionEmailSender {
@@ -13,16 +14,10 @@ export interface DecisionEmailSender {
 export const decisionEmailSender: DecisionEmailSender = {
   async send(message) {
     if (!config.SMTP_HOST || !config.SMTP_FROM) return "SEM_CONFIGURACAO";
-    const transport = nodemailer.createTransport({
-      host: config.SMTP_HOST,
-      port: config.SMTP_PORT,
-      secure: config.SMTP_PORT === 465,
+    const transport = createSmtpTransport({
       connectionTimeout: 10000,
       greetingTimeout: 10000,
       socketTimeout: 15000,
-      ...(config.SMTP_USER
-        ? { auth: { user: config.SMTP_USER, pass: config.SMTP_PASSWORD } }
-        : {}),
     });
     try {
       const result = await transport.sendMail({
@@ -31,9 +26,7 @@ export const decisionEmailSender: DecisionEmailSender = {
       });
       return result.accepted?.length ? "ENVIADA" : "FALHA";
     } catch {
-      console.error(
-        JSON.stringify({ level: "error", event: "decision_email_failed" }),
-      );
+      logOperationalEvent({ level: "error", event: "decision_email_failed" });
       return "FALHA";
     } finally {
       transport.close();

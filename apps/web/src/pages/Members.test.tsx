@@ -12,12 +12,12 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { Members } from "./Organization";
 
-const mocks = vi.hoisted(() => ({ api: vi.fn() }));
+const mocks = vi.hoisted(() => ({ api: vi.fn(), platformAdmin: false }));
 vi.mock("../lib/api", () => ({ api: mocks.api }));
 vi.mock("../lib/auth", () => ({
   useAuth: () => ({
     refresh: async () => {},
-    access: { account: { platformAdmin: false } },
+    access: { account: { platformAdmin: mocks.platformAdmin } },
   }),
 }));
 
@@ -83,7 +83,47 @@ function expectAccepted() {
 }
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.platformAdmin = false;
   vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+});
+
+describe("Acesso temporário de convidados", () => {
+  const action = "Liberar acesso com senha temporária";
+  it("fica oculto para organizadores sem administração geral", async () => {
+    mocks.api.mockResolvedValue(response(false));
+    renderMembers();
+    await screen.findByText("Organizador · Aguardando aceite");
+    expect(
+      screen.queryByRole("button", { name: action }),
+    ).not.toBeInTheDocument();
+  });
+  it("aparece para o administrador geral em convite válido, independentemente da cópia de links", async () => {
+    mocks.platformAdmin = true;
+    mocks.api.mockResolvedValue({
+      ...response(false),
+      invitationLinksReady: false,
+    });
+    renderMembers();
+    expect(await screen.findByRole("button", { name: action })).toBeEnabled();
+  });
+  it.each(["aceito", "revogado", "expirado", "data inválida"])(
+    "não aparece para convite %s mesmo para administrador geral",
+    async (state) => {
+      mocks.platformAdmin = true;
+      const data = response(state === "aceito");
+      if (state === "revogado")
+        data.invitations[0].revokedAt = "2026-10-08T12:00:00Z";
+      if (state === "expirado")
+        data.invitations[0].expiresAt = "2000-01-01T00:00:00Z";
+      if (state === "data inválida") data.invitations[0].expiresAt = "invalid";
+      mocks.api.mockResolvedValue(data);
+      renderMembers();
+      await screen.findAllByText(email);
+      expect(
+        screen.queryByRole("button", { name: action }),
+      ).not.toBeInTheDocument();
+    },
+  );
 });
 afterEach(() => {
   cleanup();

@@ -7,7 +7,8 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
+import { UnsavedChangesProvider } from "../lib/unsaved-changes";
 import { EventMessages } from "./EventMessages";
 const mocks = vi.hoisted(() => ({ api: vi.fn() }));
 vi.mock("../lib/api", () => ({ api: mocks.api }));
@@ -63,7 +64,20 @@ afterEach(cleanup);
 const view = () =>
   render(
     <MemoryRouter initialEntries={["/mensagens?evento=event"]}>
-      <EventMessages />
+      <UnsavedChangesProvider>
+        <Routes>
+          <Route
+            path="/mensagens"
+            element={
+              <>
+                <EventMessages />
+                <Link to="/fora">Sair da página</Link>
+              </>
+            }
+          />
+          <Route path="/fora" element={<h1>Outra página</h1>} />
+        </Routes>
+      </UnsavedChangesProvider>
     </MemoryRouter>,
   );
 describe("Editor de mensagem de aceite", () => {
@@ -394,5 +408,78 @@ describe("Editor de mensagem de aceite", () => {
     expect(
       screen.queryByText(/Alterações ainda não salvas/),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("Proteção do rascunho da mensagem", () => {
+  it("solicita descarte ao trocar o evento e conserva o rascunho ao cancelar", async () => {
+    const base = mocks.api.getMockImplementation()!;
+    mocks.api.mockImplementation(async (url, options) => {
+      if (url.endsWith("/events"))
+        return [
+          { id: "event", name: "FAC Teste" },
+          { id: "second", name: "Segundo evento" },
+        ];
+      if (url.includes("/events/second/"))
+        return { ...initial, event: { id: "second", name: "Segundo evento" } };
+      return base(url, options);
+    });
+    view();
+    const editor = await screen.findByRole("textbox", {
+      name: /Texto da mensagem/,
+    });
+    await waitFor(() => expect(editor).toHaveValue(standard));
+    const draft = standard + " Texto ainda não salvo.";
+    fireEvent.change(editor, { target: { value: draft } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Evento" }), {
+      target: { value: "second" },
+    });
+    expect(
+      await screen.findByRole("dialog", { name: "Alterações não salvas" }),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+    expect(screen.getByRole("combobox", { name: "Evento" })).toHaveValue(
+      "event",
+    );
+    expect(editor).toHaveValue(draft);
+    expect(
+      mocks.api.mock.calls.some(([url]) => url.includes("/events/second/")),
+    ).toBe(false);
+    fireEvent.change(screen.getByRole("combobox", { name: "Evento" }), {
+      target: { value: "second" },
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Descartar alterações" }),
+    );
+    expect(
+      await screen.findByRole("heading", {
+        name: "Aceite para servir · Segundo evento",
+      }),
+    ).toBeVisible();
+    expect(
+      mocks.api.mock.calls.some(([, options]) => options?.method === "PUT"),
+    ).toBe(false);
+  });
+  it("protege a navegação e libera depois do sucesso do salvamento", async () => {
+    view();
+    const editor = await screen.findByRole("textbox", {
+      name: /Texto da mensagem/,
+    });
+    await waitFor(() => expect(editor).toHaveValue(standard));
+    fireEvent.change(editor, {
+      target: { value: standard + " Aguardamos você!" },
+    });
+    fireEvent.click(screen.getByRole("link", { name: "Sair da página" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Continuar editando" }),
+    );
+    expect(editor).toHaveValue(standard + " Aguardamos você!");
+    fireEvent.click(screen.getByRole("button", { name: "Salvar mensagem" }));
+    await screen.findByText(/Mensagem salva para este evento/);
+    fireEvent.click(screen.getByRole("link", { name: "Sair da página" }));
+    expect(
+      await screen.findByRole("heading", { name: "Outra página" }),
+    ).toBeVisible();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

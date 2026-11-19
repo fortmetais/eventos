@@ -76,7 +76,8 @@ WITH esperado (etapa, esquema, tabela, coluna, tipo, aceita_nulo) AS (
     ('17 - mensagens de aceite', 'eventos', 'mensagens_aceite', 'conteudo', 'text', 'YES'),
     ('17 - mensagens de aceite', 'eventos', 'mensagens_aceite', 'revisao', 'int4', 'NO'),
     ('17 - mensagens de aceite', 'eventos', 'mensagens_aceite', 'atualizado_por', 'uuid', 'NO'),
-    ('17 - mensagens de aceite', 'eventos', 'mensagens_aceite', 'atualizado_em', 'timestamptz', 'NO')
+    ('17 - mensagens de aceite', 'eventos', 'mensagens_aceite', 'atualizado_em', 'timestamptz', 'NO'),
+    ('20 - acesso temporario', 'organizacoes', 'auditoria', 'detalhes', 'jsonb', 'YES')
 )
 SELECT current_database() AS banco,
        e.etapa,

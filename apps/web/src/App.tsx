@@ -8,6 +8,7 @@ import {
 } from "react-router-dom";
 import { AuthProvider, useAuth } from "./lib/auth";
 import { Layout } from "./components/Layout";
+import { UnsavedChangesProvider } from "./lib/unsaved-changes";
 import { Loading, Notice } from "./components/ui";
 import { Explore } from "./pages/Explore";
 const EventDetail = lazy(() =>
@@ -115,7 +116,7 @@ function Protected({
     return (
       <Navigate
         replace
-        to={`/entrar?next=${encodeURIComponent(location.pathname)}`}
+        to={`/entrar?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`}
       />
     );
   if (auth.access?.passwordChangeRequired)
@@ -146,6 +147,7 @@ export function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <UnsavedChangesProvider>
         <Routes>
           <Route element={<Layout />}>
             <Route index element={<Explore />} />
@@ -244,6 +246,7 @@ export function App() {
             />
           </Route>
         </Routes>
+        </UnsavedChangesProvider>
       </BrowserRouter>
     </AuthProvider>
   );

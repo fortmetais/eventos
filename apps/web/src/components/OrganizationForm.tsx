@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { api, ApiError } from "../lib/api";
+import { api, apiFieldErrorMessage } from "../lib/api";
 import type { Organization } from "../lib/types";
 import { Field, Notice } from "./ui";
+import { useUnsavedChanges } from "../lib/unsaved-changes";
 
 function formatCnpj(value: string) {
   return value
@@ -67,6 +68,13 @@ export function OrganizationForm({
   const [preview, setPreview] = useState("");
   const [logoError, setLogoError] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  const [baseline, setBaseline] = useState(() => ({ values, active }));
+  const savedLogo = useRef<File | null>(null);
+  const dirty =
+    JSON.stringify(values) !== JSON.stringify(baseline.values) ||
+    (scope === "platform" && active !== baseline.active) ||
+    Boolean(logo && logo !== savedLogo.current);
+  const { run, markSaved } = useUnsavedChanges(dirty, { busy });
   useEffect(() => {
     if (!logo) {
       setPreview("");
@@ -113,15 +121,12 @@ export function OrganizationForm({
           body,
         },
       );
+      savedLogo.current = logo;
+      setBaseline({ values, active });
+      markSaved();
       onSaved();
     } catch (error) {
-      const fields =
-        error instanceof ApiError ? error.fields?.fieldErrors : undefined;
-      setError(
-        fields
-          ? Object.values(fields).flat().join(" ") || (error as Error).message
-          : (error as Error).message,
-      );
+      setError(apiFieldErrorMessage(error) || (error as Error).message);
     } finally {
       saving.current = false;
       setBusy(false);
@@ -297,7 +302,11 @@ export function OrganizationForm({
                 ? "Salvar organização"
                 : "Cadastrar organização"}
           </button>
-          <button type="button" className="button outline" onClick={onClose}>
+          <button
+            type="button"
+            className="button outline"
+            onClick={() => void run(onClose)}
+          >
             Fechar
           </button>
         </div>

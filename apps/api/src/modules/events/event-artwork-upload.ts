@@ -1,6 +1,16 @@
 import multer from "multer";
-import type { RequestHandler } from "express";
+import type { Request, RequestHandler } from "express";
 import { AppError } from "../../core/errors.js";
+
+export function eventArtworkFile(
+  req: Pick<Request, "files">,
+  name: "artwork" | "mobileArtwork",
+) {
+  return (req.files as Record<string, Express.Multer.File[]> | undefined)?.[
+    name
+  ]?.[0];
+}
+
 export function eventArtworkUpload(): RequestHandler {
   const fileUpload = multer({
     storage: multer.memoryStorage(),

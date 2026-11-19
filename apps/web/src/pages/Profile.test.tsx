@@ -8,7 +8,8 @@ import {
   waitFor,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { UnsavedChangesProvider } from "../lib/unsaved-changes";
 import type { Profile as ProfileData } from "../lib/types";
 import { Profile } from "./Profile";
 
@@ -90,7 +91,12 @@ afterEach(() => {
 const view = () =>
   render(
     <MemoryRouter>
-      <Profile />
+      <UnsavedChangesProvider>
+        <Routes>
+          <Route path="/" element={<Profile />} />
+          <Route path="/nova-senha" element={<h1>Página de senha</h1>} />
+        </Routes>
+      </UnsavedChangesProvider>
     </MemoryRouter>,
   );
 async function edit() {
@@ -388,9 +394,11 @@ describe("Persistência da foto do perfil", () => {
       .closest("form")!;
     fireEvent.submit(form);
     fireEvent.submit(form);
-    await waitFor(() => expect(
-      mocks.api.mock.calls.filter(([path]) => path === "/me/photo"),
-    ).toHaveLength(1));
+    await waitFor(() =>
+      expect(
+        mocks.api.mock.calls.filter(([path]) => path === "/me/photo"),
+      ).toHaveLength(1),
+    );
     expect(
       mocks.api.mock.calls.filter(([, options]) => options?.method === "PUT"),
     ).toHaveLength(0);
@@ -531,5 +539,108 @@ describe("Persistência da foto do perfil", () => {
     expect(
       mocks.api.mock.calls.filter(([, options]) => options?.method === "PUT"),
     ).toHaveLength(0);
+  });
+});
+
+describe("Edição protegida do perfil", () => {
+  it("oferece Cancelar edição e descarta somente depois de confirmar", async () => {
+    view();
+    await edit();
+    fireEvent.change(screen.getByLabelText(/Nome completo/), {
+      target: { value: "Alteração local" },
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Cancelar edição" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Continuar editando" }),
+    );
+    expect(screen.getByLabelText(/Nome completo/)).toHaveValue(
+      "Alteração local",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Cancelar edição" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Descartar alterações" }),
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Olá, Pessoa." }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Salvar perfil" }),
+    ).not.toBeInTheDocument();
+    expect(
+      mocks.api.mock.calls.some(([, options]) => options?.method === "PUT"),
+    ).toBe(false);
+  });
+  it("protege a saída para senha quando os dados ainda não foram salvos", async () => {
+    view();
+    await edit();
+    fireEvent.change(screen.getByLabelText(/Nome completo/), {
+      target: { value: "Alteração local" },
+    });
+    await userEvent.click(
+      screen.getByRole("link", { name: "Definir ou alterar senha" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Continuar editando" }),
+    );
+    expect(screen.getByLabelText(/Nome completo/)).toHaveValue(
+      "Alteração local",
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Página de senha" }),
+    ).not.toBeInTheDocument();
+  });
+  it("aplica a máscara de telefone e preserva a cidade histórica fora do catálogo até a edição", async () => {
+    saved.city = "Comunidade rural (cadastro antigo)";
+    saved.phone = "5544999999999";
+    view();
+    await edit();
+    const city = screen.getByRole("combobox", { name: "Cidade" });
+    expect(city).toHaveValue("Comunidade rural (cadastro antigo)");
+    expect(screen.getByLabelText("Telefone")).toHaveValue("(44) 99999-9999");
+    fireEvent.change(screen.getByLabelText("Telefone"), {
+      target: { value: "44988887777" },
+    });
+    expect(screen.getByLabelText("Telefone")).toHaveValue("(44) 98888-7777");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Salvar perfil" }),
+    );
+    await screen.findByText(/Perfil atualizado/);
+    expect(saved).toMatchObject({
+      city: "Comunidade rural (cadastro antigo)",
+      phone: "(44) 98888-7777",
+    });
+  });
+  it("permite escolher a cidade padronizada e mantém a foto já salva ao cancelar outros dados", async () => {
+    view();
+    await edit();
+    fireEvent.change(screen.getByRole("combobox", { name: "Cidade" }), {
+      target: { value: "Toledo" },
+    });
+    await userEvent.click(
+      await screen.findByRole("option", { name: "Toledo - PR" }),
+    );
+    expect(screen.getByRole("combobox", { name: "Cidade" })).toHaveValue(
+      "Toledo - PR",
+    );
+    await selectFile();
+    await usePhoto();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Cancelar edição" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Descartar alterações" }),
+    );
+    expect(
+      await screen.findByRole("img", { name: "Sua foto de perfil" }),
+    ).toHaveAttribute("src", "/new-photo.jpg");
+    expect(saved.photoAssetId).toBe(photoId);
+    expect(saved.city).toBe("Loanda");
+    expect(
+      mocks.api.mock.calls.some(([, options]) => options?.method === "PUT"),
+    ).toBe(false);
   });
 });

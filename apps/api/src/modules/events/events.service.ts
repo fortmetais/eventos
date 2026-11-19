@@ -32,6 +32,7 @@ import {
   type EventArtworkValues,
 } from "./event-artwork.js";
 import { z } from "zod";
+import { logOperationalEvent } from "../../core/operational-log.js";
 
 export class EventsService {
   constructor(
@@ -78,7 +79,12 @@ export class EventsService {
     } catch (error) {
       await this.bannerStorage
         .remove(banner.bucket, banner.key)
-        .catch(() => console.warn("form_banner_cleanup_failed"));
+        .catch(() =>
+          logOperationalEvent({
+            level: "warn",
+            event: "form_banner_cleanup_failed",
+          }),
+        );
       throw error;
     }
   }

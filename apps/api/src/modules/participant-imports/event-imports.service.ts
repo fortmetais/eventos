@@ -4,6 +4,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { AppError, assert } from "../../core/errors.js";
 import { id, json } from "../../core/security.js";
+import { asJsonObject as asObject } from "../../core/json-object.js";
 import type { FormConfig } from "../events/events.validation.js";
 import { registrationInclude } from "../registrations/registrations.repository.js";
 import {
@@ -13,8 +14,15 @@ import {
   validateEventMapping,
   normalizeEventRow,
   type EventImportNormalizedRow,
+  type OriginalImportRow,
 } from "./event-import-domain.js";
-import { normalizeName, normalizePhone } from "./workbook.js";
+import {
+  identityOf,
+  candidateMatches,
+  incomingMatches,
+  protectedMerge,
+} from "./event-import-matching.js";
+import { normalizeName } from "./workbook.js";
 
 type Tx = Prisma.TransactionClient;
 const value = z.union([
@@ -78,7 +86,6 @@ const batchInclude = {
 type Batch = Prisma.ParticipantImportGetPayload<{
   include: typeof batchInclude;
 }>;
-type Candidate = Prisma.RegistrationGetPayload<{ include: { person: true } }>;
 type Mapping = z.infer<typeof mappingSchema>;
 type Rules = z.infer<typeof rulesSchema>;
 type Overrides = z.infer<typeof rowSchema>["overrides"];
@@ -90,79 +97,8 @@ const mutable = (batch: Batch) =>
   );
 // JSONB can reorder object keys; compare structure, never serialization order.
 const same = isDeepStrictEqual;
-const asObject = (x: unknown): Record<string, any> =>
-  x && typeof x === "object" && !Array.isArray(x)
-    ? (x as Record<string, any>)
-    : {};
 const originalOf = (row: Batch["rows"][number]) =>
   row.original as unknown as { headers: string[]; cells: string[] };
-function identityOf(candidate: Candidate) {
-  return `${normalizeName(candidate.person.name)}|${candidate.person.birthDate.toISOString().slice(0, 10)}`;
-}
-function candidateMatches(candidate: Candidate, nameBirth: string) {
-  if (identityOf(candidate) === nameBirth) return true;
-  if (candidate.origin !== "IMPORT") return false;
-  const data = asObject(candidate.importData),
-    baseline = asObject(data.baseline);
-  const baselineIdentity =
-    typeof baseline.name === "string" && typeof baseline.birthDate === "string"
-      ? `${normalizeName(baseline.name)}|${baseline.birthDate}`
-      : "";
-  return (
-    baselineIdentity === nameBirth ||
-    (Array.isArray(data.identityAliases) &&
-      data.identityAliases.includes(nameBirth))
-  );
-}
-function incomingMatches(current: unknown, incoming: unknown): boolean {
-  const a = asObject(current),
-    b = asObject(incoming);
-  return Object.keys(b).every((key) =>
-    key === "answers"
-      ? Object.entries(asObject(b.answers)).every(([k, v]) =>
-          same(asObject(a.answers)[k], v),
-        )
-      : same(a[key], b[key]),
-  );
-}
-/** Keep later edits: an import update only replaces an unchanged imported baseline. */
-function protectedMerge(
-  current: unknown,
-  baseline: unknown,
-  incoming: unknown,
-) {
-  const result = { ...asObject(current) };
-  const old = asObject(baseline);
-  const nextBaseline = { ...old };
-  const mayReplace = (
-    present: Record<string, any>,
-    previous: Record<string, any>,
-    key: string,
-  ) =>
-    Object.hasOwn(previous, key)
-      ? same(present[key], previous[key])
-      : !Object.hasOwn(present, key);
-  for (const [key, next] of Object.entries(asObject(incoming))) {
-    if (key === "answers") {
-      const answers = { ...asObject(result.answers) },
-        previous = asObject(old.answers),
-        baselineAnswers = { ...previous };
-      for (const [answer, val] of Object.entries(asObject(next))) {
-        if (mayReplace(answers, previous, answer)) {
-          answers[answer] = val;
-          baselineAnswers[answer] = val;
-        }
-      }
-      result.answers = answers;
-      nextBaseline.answers = baselineAnswers;
-    } else if (mayReplace(result, old, key)) {
-      result[key] = next;
-      nextBaseline[key] = next;
-    }
-  }
-  return { snapshot: result, baseline: nextBaseline };
-}
-
 export class EventImportsService {
   constructor(private db: PrismaClient) {}
   async ready() {
@@ -1331,7 +1267,8 @@ export class EventImportsService {
           "IMPORT_REVISION_CONFLICT",
         );
         const previous = asObject(registration.importData),
-          source = asObject(previous.source);
+          source = asObject(previous.source),
+          original = previous.original as OriginalImportRow | undefined;
         const batch = await tx.participantImport.findFirst({
           where: {
             id: source.batchId ?? "00000000-0000-0000-0000-000000000000",
@@ -1343,8 +1280,8 @@ export class EventImportsService {
         });
         assert(
           batch &&
-            Array.isArray(previous.original?.headers) &&
-            Array.isArray(previous.original?.cells),
+            Array.isArray(original?.headers) &&
+            Array.isArray(original?.cells),
           409,
           "A origem desta candidatura precisa de conferência antes da correção.",
         );
@@ -1375,13 +1312,14 @@ export class EventImportsService {
         for (const target of allowed) {
           if (target.startsWith("question:")) {
             const key = target.slice(9);
-            if (Object.hasOwn(answers, key)) overrides[target] = answers[key];
+            if (Object.hasOwn(answers, key))
+              overrides[target] = answers[key] as Overrides[string];
           } else if (Object.hasOwn(current, target))
-            overrides[target] = current[target];
+            overrides[target] = current[target] as Overrides[string];
         }
         Object.assign(overrides, data.overrides);
         const normalized = normalizeEventRow(
-          previous.original,
+          original,
           batch.mapping as unknown as Mapping,
           batch.rules as unknown as Rules,
           form,
@@ -1390,12 +1328,13 @@ export class EventImportsService {
           overrides,
         );
         assert(!normalized.errors.length, 422, normalized.errors.join(" "));
-        const snapshot: Record<string, any> & { answers: Record<string, any> } =
-          {
-            ...current,
-            ...normalized.payload,
-            answers: { ...answers, ...normalized.payload.answers },
-          };
+        const snapshot: Record<string, unknown> & {
+          answers: Record<string, unknown>;
+        } = {
+          ...current,
+          ...normalized.payload,
+          answers: { ...answers, ...normalized.payload.answers },
+        };
         // An explicit clearing is a correction too, and must remain cleared on reimport.
         for (const target of Object.keys(data.overrides)) {
           if (target.startsWith("question:")) {

@@ -281,7 +281,8 @@ describe("Preparação de eventos", () => {
     await userEvent.click(
       screen.getByRole("button", { name: "Salvar evento" }),
     );
-    expect(screen.getByRole("button", { name: "Novo evento" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Novo evento" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Salvando evento…" })).toBeDisabled();
     expect(
       screen.queryByRole("button", { name: "Editar evento" }),
     ).not.toBeInTheDocument();

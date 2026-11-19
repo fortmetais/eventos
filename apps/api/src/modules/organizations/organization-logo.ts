@@ -4,6 +4,17 @@ import { uploadImagePair } from "../../core/image-thumbnails.js";
 import { AppError, assert } from "../../core/errors.js";
 import type { ArtworkStorage } from "../../core/artwork-storage.js";
 
+export function organizationLogoFields(
+  logo: Awaited<ReturnType<typeof uploadOrganizationLogo>>,
+) {
+  return {
+    logoUrl: logo.url,
+    logoBucket: logo.bucket,
+    logoKey: logo.key,
+    logoThumbnailKey: logo.thumbnailKey,
+  };
+}
+
 export async function uploadOrganizationLogo(
   storage: ArtworkStorage,
   organizationId: string,
@@ -35,7 +46,8 @@ export async function uploadOrganizationLogo(
       422,
       "Escolha um logotipo JPEG, PNG ou WebP sem animação.",
     );
-    buffer = await image.clone()
+    buffer = await image
+      .clone()
       .rotate()
       .resize(800, 800, {
         fit: "inside",
@@ -43,7 +55,11 @@ export async function uploadOrganizationLogo(
       })
       .webp({ quality: 90 })
       .toBuffer();
-    thumbnail = await image.autoOrient().resize(160, 160, { fit: "inside", withoutEnlargement: true }).webp({ quality: 88 }).toBuffer();
+    thumbnail = await image
+      .autoOrient()
+      .resize(160, 160, { fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 88 })
+      .toBuffer();
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw new AppError(
@@ -51,7 +67,8 @@ export async function uploadOrganizationLogo(
       "Não foi possível ler o logotipo. Escolha outra imagem.",
     );
   }
-  return uploadImagePair(storage,
+  return uploadImagePair(
+    storage,
     `organizacoes/${organizationId}/logotipo/${randomUUID()}.webp`,
     buffer,
     thumbnail,

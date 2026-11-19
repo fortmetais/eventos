@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
+import { useUnsavedChanges } from "../lib/unsaved-changes";
 import { Link, useParams } from "react-router-dom";
 import { useOrganization } from "./Organization";
 import { useRemote } from "../lib/hooks";
-import { api, ApiError } from "../lib/api";
+import { api, apiFieldErrorMessage } from "../lib/api";
 import {
   dateTime,
   type Campaign,
@@ -133,6 +134,9 @@ function Editor({
   const [busy, setBusy] = useState(false);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const bannerPreview = useBannerPreview(bannerFile, fieldsConfig.banner?.url);
+  const draftSnapshot = JSON.stringify({ fieldsConfig, description, requirements, training, capacity, allowWaitlist, terms });
+  const savedSnapshot = useRef(draftSnapshot);
+  useUnsavedChanges(savedSnapshot.current !== draftSnapshot || Boolean(bannerFile), { busy });
   const config: FormConfig = {
     ...fieldsConfig,
     terms,
@@ -201,15 +205,11 @@ function Editor({
         method: "POST",
         body: formBannerBody(config, bannerFile),
       });
+      savedSnapshot.current = draftSnapshot;
+      setBannerFile(null);
       refresh();
     } catch (error) {
-      const fields =
-        error instanceof ApiError
-          ? Object.values(error.fields?.fieldErrors ?? {})
-              .flat()
-              .join(" ")
-          : "";
-      setError(fields || (error as Error).message);
+      setError(apiFieldErrorMessage(error) || (error as Error).message);
     } finally {
       setBusy(false);
     }

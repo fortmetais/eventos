@@ -87,6 +87,7 @@ try {
     "01_acesso_e_administrador.sql",
     "02_organizacoes_e_responsaveis.sql",
     "21_correcoes_fichas.sql",
+    "20_auditoria_acesso_temporario.sql",
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
   ]) {
@@ -121,6 +122,7 @@ try {
     TEST_EVENT_IMPORT_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_event_import_tests?schema=acesso`,
     TEST_REGISTRATION_CORRECTIONS_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_registration_corrections_tests?schema=acesso`,
     TEST_EVENT_SUMMARY_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_event_summary_tests?schema=acesso`,
+    TEST_TEMPORARY_ACCESS_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_temporary_access_tests?schema=acesso`,
   };
   run(binary("psql"), [
     "-h",
@@ -138,6 +140,7 @@ try {
     "01_acesso_e_administrador.sql",
     "02_organizacoes_e_responsaveis.sql",
     "21_correcoes_fichas.sql",
+    "20_auditoria_acesso_temporario.sql",
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
     "05_eventos_e_periodos.sql",
@@ -190,6 +193,7 @@ try {
     "01_acesso_e_administrador.sql",
     "02_organizacoes_e_responsaveis.sql",
     "21_correcoes_fichas.sql",
+    "20_auditoria_acesso_temporario.sql",
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
     "05_eventos_e_periodos.sql",
@@ -229,6 +233,7 @@ try {
     "01_acesso_e_administrador.sql",
     "02_organizacoes_e_responsaveis.sql",
     "21_correcoes_fichas.sql",
+    "20_auditoria_acesso_temporario.sql",
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
     "05_eventos_e_periodos.sql",
@@ -270,6 +275,7 @@ try {
     "01_acesso_e_administrador.sql",
     "02_organizacoes_e_responsaveis.sql",
     "21_correcoes_fichas.sql",
+    "20_auditoria_acesso_temporario.sql",
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
     "05_eventos_e_periodos.sql",
@@ -307,6 +313,7 @@ try {
     join(root, "database/manual/01_acesso_e_administrador.sql"),
     join(root, "database/manual/02_organizacoes_e_responsaveis.sql"),
     join(root, "database/manual/21_correcoes_fichas.sql"),
+    join(root, "database/manual/20_auditoria_acesso_temporario.sql"),
     join(root, "apps/api/tests/fixtures/organization-functions-legacy.sql"),
     join(root, "database/manual/11_funcoes_organizacao.sql"),
     join(root, "database/manual/05_eventos_e_periodos.sql"),
@@ -342,6 +349,7 @@ try {
     "01_acesso_e_administrador.sql",
     "02_organizacoes_e_responsaveis.sql",
     "21_correcoes_fichas.sql",
+    "20_auditoria_acesso_temporario.sql",
     "11_funcoes_organizacao.sql",
     "03_pessoas_e_participantes.sql",
     "05_eventos_e_periodos.sql",
@@ -430,6 +438,7 @@ try {
   // O SQL manual também deve aceitar reaplicação numa instalação por migrations.
   for (let attempt = 0; attempt < 2; attempt++)
     for (const script of [
+      "20_auditoria_acesso_temporario.sql",
       "16_importacao_candidaturas.sql",
       "21_correcoes_fichas.sql",
       "17_mensagens_aceite.sql",
@@ -449,6 +458,40 @@ try {
         "-f",
         join(root, "database/manual", script),
       ]);
+  run(binary("psql"), [
+    "-h",
+    "127.0.0.1",
+    "-p",
+    String(port),
+    "-U",
+    "fac_test",
+    "-d",
+    "postgres",
+    "-c",
+    "CREATE DATABASE fac_temporary_access_tests",
+  ]);
+  for (const script of [
+    "01_acesso_e_administrador.sql",
+    "02_organizacoes_e_responsaveis.sql",
+    "21_correcoes_fichas.sql",
+    "11_funcoes_organizacao.sql",
+    "20_auditoria_acesso_temporario.sql",
+    "20_auditoria_acesso_temporario.sql",
+  ])
+    run(binary("psql"), [
+      "-h",
+      "127.0.0.1",
+      "-p",
+      String(port),
+      "-U",
+      "fac_test",
+      "-d",
+      "fac_temporary_access_tests",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-f",
+      join(root, "database/manual", script),
+    ]);
   // Correções e importações possuem bases independentes para testar em paralelo.
   run(binary("psql"), [
     "-h",

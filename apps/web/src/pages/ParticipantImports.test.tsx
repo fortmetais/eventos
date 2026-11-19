@@ -9,7 +9,8 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { ParticipantImports } from "./ParticipantImports";
-import type { ImportBatch } from "../lib/participant-imports";
+import type { ImportBatch, ImportRow } from "../lib/participant-imports";
+import type { ApiRequestOptions } from "../lib/api";
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
   role: "ORGANIZER",
@@ -66,7 +67,7 @@ beforeEach(() => {
   mocks.api
     .mockReset()
     .mockImplementation(
-      async (path: string, options?: { body?: any; method?: string }) => {
+      async (path: string, options?: ApiRequestOptions) => {
         if (path === base)
           return { ready: mocks.ready, prefillEnabled: false, batches: [] };
         if (path.includes("previous-participants"))
@@ -99,8 +100,9 @@ beforeEach(() => {
         if (path === base + "/preview" || path.startsWith(base + "/batch?"))
           return structuredClone(batch);
         if (path === base + "/batch/rows/row") {
-          batch.rows[0].values = options!.body.values;
-          batch.rows[0].decision = options!.body.decision;
+          const body = options?.body as Pick<ImportRow, "values" | "decision">;
+          batch.rows[0].values = body.values;
+          batch.rows[0].decision = body.decision;
           batch.rows[0].pending = false;
           batch.rows[0].errors = [];
           batch.summary.pending = 0;

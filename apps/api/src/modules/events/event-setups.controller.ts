@@ -1,22 +1,12 @@
 import type { Request, Response } from "express";
 import { account } from "../../core/auth.js";
 import { param } from "../../core/security.js";
-import { AppError } from "../../core/errors.js";
+import { parseMultipartBody } from "../../core/http-input.js";
 import type { EventSetupsService } from "./event-setups.service.js";
+import { eventArtworkFile } from "./event-artwork-upload.js";
 
-function input(req: Request) {
-  if (!req.is("multipart/form-data")) return req.body;
-  try {
-    return JSON.parse(req.body.data);
-  } catch {
-    throw new AppError(400, "Os dados do evento não puderam ser lidos.");
-  }
-}
-function file(req: Request, name: string) {
-  return (req.files as Record<string, Express.Multer.File[]> | undefined)?.[
-    name
-  ]?.[0];
-}
+const input = (req: Request) =>
+  parseMultipartBody(req, "Os dados do evento não puderam ser lidos.");
 export class EventSetupsController {
   constructor(private service: EventSetupsService) {}
   list = async (req: Request, res: Response) => {
@@ -30,9 +20,9 @@ export class EventSetupsController {
           param(req, "organizationId"),
           account(req).id,
           input(req),
-          file(req, "artwork"),
+          eventArtworkFile(req, "artwork"),
           undefined,
-          file(req, "mobileArtwork"),
+          eventArtworkFile(req, "mobileArtwork"),
         ),
       );
   };
@@ -42,9 +32,9 @@ export class EventSetupsController {
         param(req, "organizationId"),
         account(req).id,
         input(req),
-        file(req, "artwork"),
+        eventArtworkFile(req, "artwork"),
         param(req, "eventId"),
-        file(req, "mobileArtwork"),
+        eventArtworkFile(req, "mobileArtwork"),
       ),
     );
   };
@@ -55,8 +45,8 @@ export class EventSetupsController {
         account(req).id,
         param(req, "eventId"),
         input(req),
-        file(req, "artwork"),
-        file(req, "mobileArtwork"),
+        eventArtworkFile(req, "artwork"),
+        eventArtworkFile(req, "mobileArtwork"),
       ),
     );
   };

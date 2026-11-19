@@ -54,3 +54,39 @@ export function sanitizeHidden<P extends object, H extends object>(
   payload: P,
   health: H,
 ): { payload: P; health: H };
+
+// Wire contracts shared by the API schema and the web application.
+export interface FormQuestion {
+  id: string;
+  label: string;
+  type: "text" | "number" | "date" | "boolean" | "single" | "multiple";
+  required: boolean;
+  options: string[];
+  hint?: string;
+  maxSelections?: number;
+  exclusiveOption?: string;
+  mustBeTrue?: boolean;
+}
+export interface FormConfiguration extends LayoutForm {
+  banner?: {
+    url: string;
+    bucket: string;
+    key: string;
+    width: number;
+    height: number;
+  } | null;
+  questions: FormQuestion[];
+  terms: string;
+  volunteer?: {
+    template: "VOLUNTEER_INTENTION_V1";
+    description?: string;
+    requirements: string;
+    training: string;
+  };
+  camper?: {
+    template: "CAMPER_REGISTRATION_V1";
+    description?: string;
+    requirements: string;
+    arrivalInstructions: string;
+  };
+}

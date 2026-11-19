@@ -9,6 +9,14 @@ import {
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { CamperFormSetup } from "./VolunteerFormSetup";
+import type {
+  Campaign,
+  EventEdition,
+  FormConfig,
+  FormVersion,
+  Team,
+} from "../lib/types";
+import type { ApiRequestOptions } from "../lib/api";
 const mocks = vi.hoisted(() => ({ api: vi.fn(), role: "ORGANIZER" }));
 vi.mock("../lib/api", async (original) => ({
   ...(await original<typeof import("../lib/api")>()),
@@ -55,8 +63,19 @@ const template = {
       options: [],
     },
   ],
+} satisfies FormConfig;
+type SetupFixture = {
+  event: Pick<EventEdition, "id" | "name" | "status">;
+  campaign: Pick<
+    Campaign,
+    "id" | "opensAt" | "closesAt" | "capacity" | "allowWaitlist" | "paused"
+  >;
+  form: Pick<FormVersion, "id" | "version" | "publishedAt" | "config"> | null;
+  departmentsReady: boolean;
+  departments: Team[];
+  template: FormConfig;
 };
-let setup: any;
+let setup: SetupFixture;
 beforeEach(() => {
   mocks.role = "ORGANIZER";
   mocks.api.mockReset();
@@ -75,9 +94,12 @@ beforeEach(() => {
     departments: [],
     template,
   };
-  mocks.api.mockImplementation(async (_path, options) => {
+  mocks.api.mockImplementation(async (_path: string, options?: ApiRequestOptions) => {
     if (options?.method === "PUT") {
-      setup.campaign = { ...setup.campaign, ...options.body };
+      setup.campaign = {
+        ...setup.campaign,
+        ...(options.body as Partial<Campaign>),
+      };
       return setup.campaign;
     }
     if (options?.method === "POST") {
@@ -85,7 +107,7 @@ beforeEach(() => {
         id: "form",
         version: 1,
         publishedAt: "2026-10-14T12:00:00Z",
-        config: options.body,
+        config: options.body as FormConfig,
       };
       return { form: setup.form };
     }

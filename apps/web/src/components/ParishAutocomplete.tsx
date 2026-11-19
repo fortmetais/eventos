@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useSuggestionNavigation } from "../lib/suggestion-navigation";
 import { api } from "../lib/api";
 import { normalizeCitySearch } from "../lib/brazil-cities";
 
@@ -25,10 +26,8 @@ export function ParishAutocomplete({
   const listId = `${id}-parishes`;
   const helpId = `${id}-help`;
   const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLUListElement>(null);
   const [parishes, setParishes] = useState<Parish[] | null>(null);
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(-1);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -52,6 +51,10 @@ export function ParishAutocomplete({
     );
   }, [catalog, value]);
   const matches = filtered.slice(0, 20);
+  const { listRef, active, setActive, moveActive } = useSuggestionNavigation(
+    open,
+    matches.length,
+  );
 
   useEffect(() => {
     if (disabled) {
@@ -79,11 +82,6 @@ export function ParishAutocomplete({
       cancelled = true;
     };
   }, [open, parishes, retry, disabled]);
-
-  useEffect(() => {
-    if (open && active >= 0)
-      listRef.current?.children[active]?.scrollIntoView?.({ block: "nearest" });
-  }, [active, open]);
 
   function choose(parish: (typeof catalog)[number]) {
     onChange(parish.label);
@@ -134,14 +132,7 @@ export function ParishAutocomplete({
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
             setOpen(true);
-            if (matches.length)
-              setActive((current) =>
-                event.key === "ArrowDown"
-                  ? Math.min(current + 1, matches.length - 1)
-                  : current < 0
-                    ? matches.length - 1
-                    : Math.max(current - 1, 0),
-              );
+            moveActive(event.key === "ArrowDown" ? "next" : "previous");
           } else if (event.key === "Enter" && open) {
             event.preventDefault();
             if (active >= 0 && matches[active]) choose(matches[active]);

@@ -1,3 +1,4 @@
+import { UnsavedChangesProvider } from "../lib/unsaved-changes";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanup,
@@ -62,14 +63,14 @@ function view(role: Role = "ORGANIZER", eventManagementEnabled = true) {
   });
   render(
     <MemoryRouter initialEntries={["/organizacao/org-a"]}>
-      <Routes>
+      <UnsavedChangesProvider><Routes>
         <Route
           path="/organizacao/:organizationId"
           element={<OrganizationLayout />}
         >
           <Route index element={<OrganizationDashboard />} />
         </Route>
-      </Routes>
+      </Routes></UnsavedChangesProvider>
     </MemoryRouter>,
   );
 }
@@ -150,6 +151,7 @@ describe("Edição da própria organização", () => {
     expect(screen.getByLabelText(/Nome \*/)).toHaveValue("Novo nome");
     expect(mocks.refresh).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button", { name: "Fechar" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Descartar alterações" }));
     expect(
       screen.getByRole("button", { name: "Editar informações" }),
     ).toBeInTheDocument();

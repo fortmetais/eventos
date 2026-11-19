@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -39,4 +40,20 @@ describe("Navegação pública com cartaz no início", () => {
     ).toHaveAttribute("href", "/");
     expect(screen.getByText("Ficha de teste")).toBeInTheDocument();
   });
+});
+
+it("exposes a keyboard accessible main menu and a skip link", async () => {
+  state.temporaryHome = false;
+  render(<MemoryRouter initialEntries={["/inscricao/teste"]}><Routes>
+    <Route element={<Layout />}><Route path="inscricao/:id" element={<h1>Ficha de teste</h1>} /></Route>
+  </Routes></MemoryRouter>);
+  expect(screen.getByRole("link", { name: "Ir para o conteúdo" })).toHaveAttribute("href", "#conteudo-principal");
+  const toggle = screen.getByRole("button", { name: "Abrir menu principal" });
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await userEvent.click(toggle);
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  screen.getByRole("link", { name: "Explorar eventos" }).focus();
+  await userEvent.keyboard("{Escape}");
+  expect(toggle).toHaveFocus();
+  expect(toggle).toHaveAttribute("aria-expanded", "false");
 });

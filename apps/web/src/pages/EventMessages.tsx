@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useOrganization } from "./Organization";
 import { useRemote } from "../lib/hooks";
 import { api } from "../lib/api";
+import { useUnsavedChanges } from "../lib/unsaved-changes";
 import type { EventEdition } from "../lib/types";
 import { Field, Loading, Notice, PageHeading } from "../components/ui";
 
@@ -24,7 +25,10 @@ const defaultRequiredFields = [
 export function EventMessages() {
   const { organizationId, membership } = useOrganization();
   const [params, setParams] = useSearchParams();
-  const [eventId, setEventId] = useState(params.get("evento") ?? "");
+  const eventId = params.get("evento") ?? "";
+  const [editorDirty, setEditorDirty] = useState(false);
+  const [editorBusy, setEditorBusy] = useState(false);
+  const { run } = useUnsavedChanges(editorDirty, { busy: editorBusy });
   const events = useRemote<EventEdition[]>(
     `/organizations/${organizationId}/events`,
   );
@@ -42,10 +46,14 @@ export function EventMessages() {
         <Field label="Evento">
           <select
             value={eventId}
+            disabled={editorBusy || events.loading}
             onChange={(e) => {
-              setEventId(e.target.value);
-              setParams(e.target.value ? { evento: e.target.value } : {}, {
-                replace: true,
+              const nextEvent = e.target.value;
+              void run(() => {
+                const next = new URLSearchParams(params);
+                if (nextEvent) next.set("evento", nextEvent);
+                else next.delete("evento");
+                setParams(next, { replace: true });
               });
             }}
           >
@@ -62,9 +70,11 @@ export function EventMessages() {
       </section>
       {eventId && (
         <MessageEditor
-          key={eventId}
+          key={`${organizationId}:${eventId}`}
           organizationId={organizationId}
           eventId={eventId}
+          onDirtyChange={setEditorDirty}
+          onBusyChange={setEditorBusy}
         />
       )}
     </>
@@ -73,9 +83,13 @@ export function EventMessages() {
 function MessageEditor({
   organizationId,
   eventId,
+  onDirtyChange,
+  onBusyChange,
 }: {
   organizationId: string;
   eventId: string;
+  onDirtyChange: (dirty: boolean) => void;
+  onBusyChange: (busy: boolean) => void;
 }) {
   const path = `/organizations/${organizationId}/events/${eventId}/accept-message`;
   const remote = useRemote<MessageSettings>(path);
@@ -89,6 +103,20 @@ function MessageEditor({
     if (remote.data) setText(remote.data.template);
   }, [remote.data]);
   const data = remote.data;
+  const unsaved = Boolean(data?.ready && text !== data.template);
+  useLayoutEffect(() => {
+    onDirtyChange(unsaved);
+  }, [onDirtyChange, unsaved]);
+  useLayoutEffect(() => {
+    onBusyChange(busy);
+  }, [onBusyChange, busy]);
+  useLayoutEffect(
+    () => () => {
+      onDirtyChange(false);
+      onBusyChange(false);
+    },
+    [onDirtyChange, onBusyChange],
+  );
   if (remote.loading) return <Loading />;
   if (remote.error) return <Notice>{remote.error}</Notice>;
   if (!data) return null;
@@ -98,7 +126,6 @@ function MessageEditor({
   const missing = (data.requiredFields ?? defaultRequiredFields).filter(
     (field) => !field.keys.some((key) => variables.has(key)),
   );
-  const unsaved = text !== data.template;
   function edit(value: string) {
     setText(value);
     setError("");

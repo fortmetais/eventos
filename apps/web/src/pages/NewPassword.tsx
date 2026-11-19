@@ -76,9 +76,17 @@ export function NewPassword() {
       setMessage(
         "Senha salva. Nos próximos acessos, você poderá entrar com seu e-mail e essa senha.",
       );
-    } catch {
+    } catch (cause) {
+      const accessPending =
+        requiredChange &&
+        typeof cause === "object" &&
+        cause !== null &&
+        "code" in cause &&
+        cause.code === "TEMPORARY_ACCESS_IN_PROGRESS";
       setError(
-        "Não foi possível salvar a senha. Confira sua conexão e tente novamente.",
+        accessPending
+          ? "A liberação de acesso ainda precisa ser concluída ou conferida pela administração. Aguarde antes de trocar a senha."
+          : "Não foi possível salvar a senha. Confira sua conexão e tente novamente.",
       );
     } finally {
       saving.current = false;

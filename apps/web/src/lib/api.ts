@@ -12,14 +12,22 @@ export class ApiError extends Error {
     super(message);
   }
 }
+
+export function apiFieldErrorMessage(error: unknown) {
+  if (!(error instanceof ApiError)) return "";
+  return Object.values(error.fields?.fieldErrors ?? {}).flat().join(" ");
+}
+
+export interface ApiRequestOptions {
+  method?: string;
+  body?: unknown;
+  draftToken?: string;
+  signal?: AbortSignal;
+}
+
 export async function api<T>(
   path: string,
-  options: {
-    method?: string;
-    body?: unknown;
-    draftToken?: string;
-    signal?: AbortSignal;
-  } = {},
+  options: ApiRequestOptions = {},
 ): Promise<T> {
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;

@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useSuggestionNavigation } from "../lib/suggestion-navigation";
 import {
   findBrazilianCities,
   loadBrazilianCities,
@@ -26,16 +27,18 @@ export function CityAutocomplete({
   const listId = `${id}-cities`;
   const helpId = `${id}-help`;
   const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLUListElement>(null);
   const [cities, setCities] = useState<BrazilianCity[] | null>(null);
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(-1);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [retry, setRetry] = useState(0);
   const { matches, hasMore } = useMemo(
     () => findBrazilianCities(cities ?? [], value),
     [cities, value],
+  );
+  const { listRef, active, setActive, moveActive } = useSuggestionNavigation(
+    open,
+    matches.length,
   );
 
   useEffect(() => {
@@ -64,11 +67,6 @@ export function CityAutocomplete({
       cancelled = true;
     };
   }, [open, cities, retry, disabled]);
-
-  useEffect(() => {
-    if (open && active >= 0)
-      listRef.current?.children[active]?.scrollIntoView?.({ block: "nearest" });
-  }, [active, open]);
 
   function choose(city: BrazilianCity) {
     onChange(city.label);
@@ -120,14 +118,7 @@ export function CityAutocomplete({
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
             setOpen(true);
-            if (matches.length)
-              setActive((current) =>
-                event.key === "ArrowDown"
-                  ? Math.min(current + 1, matches.length - 1)
-                  : current < 0
-                    ? matches.length - 1
-                    : Math.max(current - 1, 0),
-              );
+            moveActive(event.key === "ArrowDown" ? "next" : "previous");
           } else if (event.key === "Enter" && open) {
             event.preventDefault();
             if (active >= 0 && matches[active]) choose(matches[active]);

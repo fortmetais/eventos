@@ -15,11 +15,14 @@ function setup(required = true) {
     platformAdmin: true,
   };
   const rowLock = vi.fn().mockResolvedValue([{ conta_id: accountId }]);
+  const pendingAudit = vi.fn().mockResolvedValue(null);
   const db = {
     account: { upsert: vi.fn().mockResolvedValue(account) },
     membership: { findMany: vi.fn().mockResolvedValue([]), create: vi.fn() },
     invitation: { update: vi.fn() },
-    $transaction: vi.fn(async (work) => work({ $queryRaw: rowLock })),
+    $transaction: vi.fn(async (work) =>
+      work({ $queryRaw: rowLock, auditLog: { findFirst: pendingAudit } }),
+    ),
   };
   const updater = vi.fn().mockResolvedValue(undefined);
   const app = createApp({
@@ -32,7 +35,7 @@ function setup(required = true) {
     rateLimits: false,
     firstPasswordUpdater: updater,
   });
-  return { app, db, updater, rowLock };
+  return { app, db, updater, rowLock, pendingAudit };
 }
 
 describe("troca obrigatória da primeira senha", () => {
@@ -98,13 +101,31 @@ describe("troca obrigatória da primeira senha", () => {
       .expect(200);
     expect(response.body).toEqual({ passwordChanged: true, signInAgain: true });
     expect(updater).toHaveBeenCalledExactlyOnceWith(accountId, strongPassword);
-    expect(rowLock).toHaveBeenCalledOnce();
+    expect(rowLock).toHaveBeenCalledTimes(2);
     expect(rowLock.mock.invocationCallOrder[0]).toBeLessThan(
       updater.mock.invocationCallOrder[0],
     );
     expect(db.membership.create).not.toHaveBeenCalled();
     expect(db.invitation.update).not.toHaveBeenCalled();
   });
+
+  it.each(["PENDING", "POSSIBLY_APPLIED"])(
+    "bloqueia troca pessoal enquanto uma liberação administrativa está %s",
+    async (status) => {
+      const { app, updater, pendingAudit } = setup();
+      pendingAudit.mockResolvedValue({
+        id: "operation-under-review",
+        details: { status },
+      });
+      const response = await request(app)
+        .post("/api/v1/me/first-password")
+        .set("Authorization", "Bearer temporary-session")
+        .send({ password: strongPassword })
+        .expect(409);
+      expect(response.body.error.code).toBe("TEMPORARY_ACCESS_IN_PROGRESS");
+      expect(updater).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     {},

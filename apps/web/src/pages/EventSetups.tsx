@@ -1,10 +1,11 @@
-import { useRef, useState, type FormEvent } from "react";
+import { useUnsavedChanges } from "../lib/unsaved-changes";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { CalendarDays, Plus } from "lucide-react";
 import { useOrganization } from "./Organization";
 import { Link } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { useRemote } from "../lib/hooks";
-import { api, ApiError } from "../lib/api";
+import { api, apiFieldErrorMessage } from "../lib/api";
 import { EventPresentationEditor } from "../components/EventPresentationEditor";
 import { normalizeEventSlug, publicEventPath } from "../lib/event-presentation";
 import { date, dateTime, type EventEdition } from "../lib/types";
@@ -74,6 +75,15 @@ export function EventSetups() {
   const saving = useRef(false);
   const [editorVersion, setEditorVersion] = useState(0);
   const editable = membership.role === "ORGANIZER";
+  const initialDraft = useRef<string | null>(null);
+  const currentDraft = JSON.stringify({ values, range, periods, departments, removeMobileArtwork });
+  useEffect(() => {
+    initialDraft.current = editor ? currentDraft : null;
+  }, [editor, editorVersion]);
+  const { run: discardDraft } = useUnsavedChanges(
+    editor && initialDraft.current !== null && (initialDraft.current !== currentDraft || Boolean(artwork || mobileArtwork)),
+    { busy },
+  );
   function begin(event?: EventEdition) {
     if (saving.current) return;
     setEditorVersion((value) => value + 1);
@@ -180,13 +190,7 @@ export function EventSetups() {
       );
       state.refresh();
     } catch (error) {
-      const details =
-        error instanceof ApiError
-          ? Object.values(error.fields?.fieldErrors ?? {})
-              .flat()
-              .join(" ")
-          : "";
-      setError(details || (error as Error).message);
+      setError(apiFieldErrorMessage(error) || (error as Error).message);
     } finally {
       saving.current = false;
       setBusy(false);
@@ -197,7 +201,7 @@ export function EventSetups() {
       <PageHeading
         title="Eventos"
         action={
-          editable && !state.loading && !state.error ? (
+          editable && !editor && !state.loading && !state.error ? (
             <button
               className="button primary"
               disabled={busy}
@@ -436,12 +440,12 @@ export function EventSetups() {
               <button
                 type="button"
                 className="button outline"
-                onClick={() => {
+                onClick={() => void discardDraft(() => {
                   setEditor(false);
                   setArtwork(null);
                   setMobileArtwork(null);
                   setError("");
-                }}
+                })}
               >
                 Cancelar edição
               </button>

@@ -137,10 +137,45 @@ describe("Definição de senha", () => {
     submit();
     await screen.findByRole("alert");
     expect(
+      screen.getByText(
+        "Não foi possível salvar a senha. Confira sua conexão e tente novamente.",
+      ),
+    ).toBeVisible();
+    expect(
       screen.queryByRole("heading", { name: "Senha atualizada" }),
     ).not.toBeInTheDocument();
     expect(mocks.logout).not.toHaveBeenCalled();
     expect(mocks.updateUser).not.toHaveBeenCalled();
+  });
+  it("orienta aguardar a administração quando a liberação temporária está pendente", async () => {
+    mocks.useAuth.mockReturnValue({
+      ...mocks.useAuth(),
+      access: { passwordChangeRequired: true },
+    });
+    mocks.api.mockRejectedValue({
+      status: 409,
+      code: "TEMPORARY_ACCESS_IN_PROGRESS",
+      message: "Detalhe interno não destinado à tela",
+    });
+    view(`/nova-senha?next=${encodeURIComponent(invitation)}`);
+    fill();
+    submit();
+    expect(
+      await screen.findByText(
+        "A liberação de acesso ainda precisa ser concluída ou conferida pela administração. Aguarde antes de trocar a senha.",
+      ),
+    ).toBeVisible();
+    expect(mocks.logout).not.toHaveBeenCalled();
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole("heading", { name: "Senha atualizada" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Entrar com a nova senha" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/Detalhe interno/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Nova senha")).toHaveValue(password);
+    expect(screen.getByRole("button", { name: "Salvar senha" })).toBeEnabled();
   });
   it("recusa senhas curtas e confirmação diferente sem chamar o provedor", () => {
     view();

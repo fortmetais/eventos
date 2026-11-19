@@ -7,6 +7,7 @@ import { requiresGuardian } from "./guardian.validation.js";
 import { readRegistrationCorrections } from "./registration-corrections-history.js";
 import { normalizeName } from "../participant-imports/workbook.js";
 import type { FormConfig } from "../events/events.validation.js";
+import { correctedPersonIdentity } from "./registration-corrections.identity.js";
 import {
   asCorrectionObject,
   correctionImportPending,
@@ -133,14 +134,17 @@ export class RegistrationCorrectionsService {
           "GUARDIAN_REVIEW_REQUIRED",
         );
 
+        const identity = correctedPersonIdentity(
+          person,
+          result.snapshot,
+          changed,
+        );
         const personChanges: Prisma.PersonUpdateInput = {};
-        if (changed.includes("name")) personChanges.name = result.snapshot.name;
+        if (changed.includes("name")) personChanges.name = identity.name;
         if (changed.includes("birthDate"))
-          personChanges.birthDate = new Date(result.snapshot.birthDate);
-        if (changed.includes("phone"))
-          personChanges.phone = result.snapshot.phone;
-        if (changed.includes("cpf"))
-          personChanges.cpf = result.snapshot.cpf ?? null;
+          personChanges.birthDate = identity.birthDate;
+        if (changed.includes("phone")) personChanges.phone = identity.phone;
+        if (changed.includes("cpf")) personChanges.cpf = identity.cpf;
         let personId = person.id;
         if (Object.keys(personChanges).length) {
           const count = await tx.registration.count({
@@ -150,18 +154,7 @@ export class RegistrationCorrectionsService {
             const copy = await tx.person.create({
               data: {
                 organizationId: person.organizationId,
-                name: changed.includes("name")
-                  ? result.snapshot.name
-                  : person.name,
-                birthDate: changed.includes("birthDate")
-                  ? new Date(result.snapshot.birthDate)
-                  : person.birthDate,
-                phone: changed.includes("phone")
-                  ? result.snapshot.phone
-                  : person.phone,
-                cpf: changed.includes("cpf")
-                  ? (result.snapshot.cpf ?? null)
-                  : person.cpf,
+                ...identity,
                 email: person.email,
               },
             });

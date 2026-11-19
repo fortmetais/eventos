@@ -5,7 +5,6 @@ import type { FormConfig } from "../events/events.validation.js";
 import { ageAt } from "../registrations/registrations.validation.js";
 import {
   normalizeName,
-  normalizePhone,
   normalizeShirt,
   normalized,
   readWorkbook,
@@ -290,8 +289,6 @@ export function eventImportCatalog(
   }
   return base;
 }
-export const buildImportCatalog = eventImportCatalog;
-
 export function suggestEventMapping(
   headers: string[],
   catalog: EventImportTarget[],
@@ -333,8 +330,6 @@ export function suggestEventMapping(
     return { column, target, confirmed: false };
   });
 }
-export const suggestedEventMapping = suggestEventMapping;
-
 export function validateEventMapping(
   mapping: EventImportMapping,
   headers: string[],

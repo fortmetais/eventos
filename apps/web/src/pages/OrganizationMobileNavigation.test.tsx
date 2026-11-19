@@ -78,7 +78,7 @@ describe("Navegação compacta da organização em Inscrições", () => {
     expect(toggle).toHaveFocus();
   });
 
-  it("fecha ao escolher outra página e não ativa o novo layout nas demais telas", async () => {
+  it("fecha ao escolher outra página e mantém o menu compacto nas demais telas", async () => {
     const { container } = view();
     await userEvent.click(
       screen.getByRole("button", { name: "Menu da organização" }),
@@ -90,8 +90,9 @@ describe("Navegação compacta da organização em Inscrições", () => {
       await screen.findByRole("heading", { name: "Eventos da organização" }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: "Menu da organização" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "Menu da organização" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    expect(container.querySelector(".admin-shell--mobile-navigation")).toBeInTheDocument();
     expect(
       container.querySelector(".admin-shell--registrations"),
     ).not.toBeInTheDocument();

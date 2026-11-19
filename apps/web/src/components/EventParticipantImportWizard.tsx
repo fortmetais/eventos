@@ -1,3 +1,4 @@
+import { useUnsavedChanges } from "../lib/unsaved-changes";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, ApiError } from "../lib/api";
@@ -108,6 +109,13 @@ export function EventParticipantImportWizard({
       mapping.some((m) => m.target === target),
     );
   const eventBatches = metadata.batches.filter((b) => b.mode === "EVENT");
+  const originalRow = editing ? batch?.rows.find((row) => row.id === editing.id) : null;
+  const reviewDraft = (row: EventImportRow, reason: string) => JSON.stringify({ decision: row.decision, overrides: row.overrides, replaceId: row.replaceId, distinctReason: reason });
+  const unsaved = batch ? !frozen && (JSON.stringify(mapping) !== JSON.stringify(batch.mapping ?? []) || JSON.stringify(rules) !== JSON.stringify(batch.rules ?? []) || Boolean(editing && originalRow && reviewDraft(editing, distinctReason) !== reviewDraft(originalRow, originalRow.distinctReason ?? ""))) : Boolean(file);
+  const { run: confirmDiscard, markSaved } = useUnsavedChanges(unsaved, { busy });
+  function navigateImport(action: () => Promise<void>) {
+    void confirmDiscard(() => { void run(action); });
+  }
   const canImport = (row: EventImportRow) =>
     row.executionState === "PENDING" &&
     (row.ready ??
@@ -118,6 +126,7 @@ export function EventParticipantImportWizard({
           row.reviewed)));
 
   function adopt(value: EventImportBatch, rowId?: string) {
+    markSaved();
     setBatch(value);
     setMapping(value.mapping ?? []);
     setRules(value.rules ?? []);
@@ -162,7 +171,7 @@ export function EventParticipantImportWizard({
     adopt(value, rowId);
   }
   function openRelatedRow(rowId: string, batchId = batch!.id) {
-    void run(() => openBatch(batchId, 1, "all", rowId));
+    void navigateImport(() => openBatch(batchId, 1, "all", rowId));
   }
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -327,7 +336,8 @@ export function EventParticipantImportWizard({
               value={batch?.id ?? ""}
               disabled={busy}
               onChange={(e) => {
-                if (e.target.value) void run(() => openBatch(e.target.value));
+                const nextBatch = e.currentTarget.value;
+                if (nextBatch) void navigateImport(() => openBatch(nextBatch));
               }}
             >
               <option value="">Selecione um lote</option>
@@ -343,13 +353,14 @@ export function EventParticipantImportWizard({
             <button
               className="text-button"
               disabled={busy}
-              onClick={() => {
+              onClick={() => void confirmDiscard(() => {
+                markSaved();
                 setBatch(null);
                 setSelected([]);
                 setFile(null);
                 setSheets([]);
                 setParams({ modo: "evento" }, { replace: true });
-              }}
+              })}
             >
               Iniciar outra importação
             </button>
@@ -504,7 +515,7 @@ export function EventParticipantImportWizard({
                 className="text-button"
                 disabled={busy}
                 onClick={() =>
-                  void run(() =>
+                  void navigateImport(() =>
                     openBatch(
                       batch.id,
                       batch.page,
@@ -520,7 +531,7 @@ export function EventParticipantImportWizard({
                 className="button outline"
                 disabled={busy}
                 onClick={() =>
-                  void run(() => openBatch(batch.id, 1, "duplicates"))
+                  void navigateImport(() => openBatch(batch.id, 1, "duplicates"))
                 }
               >
                 7. Conferir possíveis duplicidades
@@ -768,7 +779,7 @@ export function EventParticipantImportWizard({
                     <button
                       className="button outline"
                       disabled={busy || frozen}
-                      onClick={() => void run(() => saveSettings({ step: 2 }))}
+                      onClick={() => void navigateImport(() => saveSettings({ step: 2 }))}
                     >
                       Voltar às associações
                     </button>
@@ -973,10 +984,10 @@ export function EventParticipantImportWizard({
                               <button
                                 className="text-button"
                                 disabled={busy}
-                                onClick={() => {
+                                onClick={() => void confirmDiscard(() => {
                                   setEditing(structuredClone(row));
                                   setDistinctReason(row.distinctReason ?? "");
-                                }}
+                                })}
                               >
                                 {row.executionState === "PENDING"
                                   ? "Revisar"
@@ -997,7 +1008,7 @@ export function EventParticipantImportWizard({
                       className="button outline"
                       disabled={busy || batch.page <= 1}
                       onClick={() =>
-                        void run(() => openBatch(batch.id, batch.page - 1))
+                        void navigateImport(() => openBatch(batch.id, batch.page - 1))
                       }
                     >
                       Linhas anteriores
@@ -1016,7 +1027,7 @@ export function EventParticipantImportWizard({
                         batch.page * batch.pageSize >= batch.summary.total
                       }
                       onClick={() =>
-                        void run(() => openBatch(batch.id, batch.page + 1))
+                        void navigateImport(() => openBatch(batch.id, batch.page + 1))
                       }
                     >
                       Próximas linhas
@@ -1296,7 +1307,7 @@ export function EventParticipantImportWizard({
                       )}
                       <button
                         className="text-button"
-                        onClick={() => setEditing(null)}
+                        onClick={() => void confirmDiscard(() => setEditing(null))}
                       >
                         Fechar revisão
                       </button>
@@ -1320,7 +1331,7 @@ export function EventParticipantImportWizard({
                       className="button outline"
                       disabled={busy || frozen}
                       onClick={() =>
-                        void run(() =>
+                        void navigateImport(() =>
                           saveSettings({ step: step === 4 ? 3 : 4 }),
                         )
                       }
@@ -1334,7 +1345,7 @@ export function EventParticipantImportWizard({
                         className="button primary"
                         disabled={busy || frozen}
                         onClick={() =>
-                          void run(() => saveSettings({ step: 5 }))
+                          void navigateImport(() => saveSettings({ step: 5 }))
                         }
                       >
                         Continuar para confirmação
@@ -1428,7 +1439,7 @@ export function EventParticipantImportWizard({
                       className="button outline"
                       disabled={busy || batch.page <= 1}
                       onClick={() =>
-                        void run(() =>
+                        void navigateImport(() =>
                           openBatch(batch.id, batch.page - 1, "duplicates"),
                         )
                       }
@@ -1450,7 +1461,7 @@ export function EventParticipantImportWizard({
                           (batch.filteredTotal ?? 0)
                       }
                       onClick={() =>
-                        void run(() =>
+                        void navigateImport(() =>
                           openBatch(batch.id, batch.page + 1, "duplicates"),
                         )
                       }
@@ -1460,7 +1471,7 @@ export function EventParticipantImportWizard({
                     <button
                       className="text-button"
                       disabled={busy}
-                      onClick={() => void run(() => openBatch(batch.id))}
+                      onClick={() => void navigateImport(() => openBatch(batch.id))}
                     >
                       Voltar ao lote
                     </button>
@@ -1492,7 +1503,7 @@ export function EventParticipantImportWizard({
                       className="button outline"
                       disabled={busy}
                       onClick={() =>
-                        void run(() => openBatch(batch.id, 1, "duplicates"))
+                        void navigateImport(() => openBatch(batch.id, 1, "duplicates"))
                       }
                     >
                       Continuar para etapa 7
@@ -1508,7 +1519,7 @@ export function EventParticipantImportWizard({
                         className="button outline"
                         disabled={busy}
                         onClick={() =>
-                          void run(() => saveSettings({ step: 4 }))
+                          void navigateImport(() => saveSettings({ step: 4 }))
                         }
                       >
                         Revisar linhas restantes

@@ -161,6 +161,12 @@ Importação é restrita ao organizador. Manter REGISTRATION_PREFILL_ENABLED=fal
 até revisar o primeiro lote; depois ativar e reiniciar a API. Guia completo:
 docs/cadastros-anteriores.md. Não cria inscrições, aceites nem une históricos.
 
+Liberação administrativa por senha temporária: executar somente
+20_auditoria_acesso_temporario.sql após 02 antes de publicar a funcionalidade.
+Acrescenta detalhes opcionais à auditoria existente e índice de reservas,
+sem apagar registros. API e interface devem acompanhar a alteração.
+Situação e autorização de publicação: deploy/PROXIMA_SINCRONIZACAO.md.
+
 https://www.postgresql.org/docs/current/ddl-schemas.html
 https://www.prisma.io/docs/orm/v6/prisma-schema/data-model/multi-schema
 https://supabase.com/docs/guides/auth/managing-user-data

@@ -1,10 +1,14 @@
-import type { Account } from "@prisma/client";
+import type { Account, Organization } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { organizationThumbnail } from "../../core/image-thumbnails.js";
 import type { ArtworkStorage } from "../../core/artwork-storage.js";
-import { uploadOrganizationLogo } from "./organization-logo.js";
+import {
+  organizationLogoFields,
+  uploadOrganizationLogo,
+} from "./organization-logo.js";
 import { z } from "zod";
 import { assert } from "../../core/errors.js";
+import { logOperationalEvent } from "../../core/operational-log.js";
 import { hashToken, newToken } from "../../core/security.js";
 import type { InvitationMailer } from "../../core/mail.js";
 import { config } from "../../config.js";
@@ -23,6 +27,11 @@ import {
   membershipSchema,
   organizationSchema,
 } from "./organizations.validation.js";
+
+type StoredOrganizationLogo = Pick<
+  Organization,
+  "logoBucket" | "logoKey" | "logoThumbnailKey"
+>;
 
 export class OrganizationsService {
   constructor(
@@ -53,14 +62,7 @@ export class OrganizationsService {
           data: {
             ...data,
             id,
-            ...(logo
-              ? {
-                  logoUrl: logo.url,
-                  logoBucket: logo.bucket,
-                  logoKey: logo.key,
-                  logoThumbnailKey: logo.thumbnailKey,
-                }
-              : {}),
+            ...(logo ? organizationLogoFields(logo) : {}),
           },
         }),
       );
@@ -76,12 +78,10 @@ export class OrganizationsService {
   ) {
     if (thumbnailKey) await this.removeLogo(bucket, thumbnailKey);
     await this.logoStorage.remove(bucket, key).catch(() => {
-      console.warn(
-        JSON.stringify({
-          level: "warn",
-          event: "organization_logo_cleanup_failed",
-        }),
-      );
+      logOperationalEvent({
+        level: "warn",
+        event: "organization_logo_cleanup_failed",
+      });
     });
   }
   async mine(accountId: string) {
@@ -351,12 +351,8 @@ export class OrganizationsService {
     const logo = file
       ? await uploadOrganizationLogo(this.logoStorage, organizationId, file)
       : null;
-    let previous: {
-      logoBucket: string | null;
-      logoKey: string | null;
-      logoThumbnailKey: string | null;
-    } | null = null;
-    let result;
+    let previous: StoredOrganizationLogo | null = null;
+    let result: Organization;
     try {
       result = await this.repo.db.$transaction(async (tx) => {
         if (allowStatusChange)
@@ -374,12 +370,7 @@ export class OrganizationsService {
           data: {
             ...data,
             ...(logo
-              ? {
-                  logoUrl: logo.url,
-                  logoBucket: logo.bucket,
-                  logoKey: logo.key,
-                  logoThumbnailKey: logo.thumbnailKey,
-                }
+              ? organizationLogoFields(logo)
               : replaced
                 ? { logoBucket: null, logoKey: null, logoThumbnailKey: null }
                 : {}),
@@ -400,11 +391,7 @@ export class OrganizationsService {
       throw error;
     }
     // Só excluir após confirmar o novo cadastro; nunca usar bucket/chave da requisição.
-    const old = previous as {
-      logoBucket: string | null;
-      logoKey: string | null;
-      logoThumbnailKey: string | null;
-    } | null;
+    const old = previous as StoredOrganizationLogo | null;
     if (old?.logoBucket && old.logoKey)
       await this.removeLogo(old.logoBucket, old.logoKey, old.logoThumbnailKey);
     return organizationThumbnail(result);
@@ -415,8 +402,7 @@ export class OrganizationsService {
     actorId: string,
     input: unknown,
   ) {
-    const data: z.infer<typeof membershipSchema> =
-      membershipSchema.parse(input);
+    const data = membershipSchema.parse(input);
     return this.repo.db.$transaction(async (tx) => {
       await requireOrganizationManager(tx, organizationId, actorId);
       const member = await tx.membership.findFirst({

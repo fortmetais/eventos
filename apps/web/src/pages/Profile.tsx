@@ -15,6 +15,9 @@ import {
   PageHeading,
 } from "../components/ui";
 import { PhotoPicker, type PhotoPickerHandle } from "../components/PhotoPicker";
+import { CityAutocomplete } from "../components/CityAutocomplete";
+import { formatBrazilianPhone } from "../lib/phone";
+import { useUnsavedChanges } from "../lib/unsaved-changes";
 export function Profile() {
   const auth = useAuth();
   const profile = useRemote<{
@@ -35,10 +38,33 @@ export function Profile() {
   const photoRequest = useRef(0);
   const photoPicker = useRef<PhotoPickerHandle>(null);
   const saving = useRef(false);
+  const baseline = useRef<ProfileData>({ name: "" });
+  const dirty =
+    editing &&
+    (photoPending ||
+      ["name", "phone", "birthDate", "city"].some(
+        (key) =>
+          (values[key as keyof ProfileData] ?? "") !==
+          (baseline.current[key as keyof ProfileData] ?? ""),
+      ));
+  const { run, markSaved } = useUnsavedChanges(dirty, {
+    busy: busy || photoUploading,
+  });
+  function cancelEditing() {
+    if (busy || photoUploading) return;
+    void run(() => {
+      setValues({ ...baseline.current });
+      setPhotoPending(false);
+      setEditing(false);
+      setError("");
+      setInfo("");
+    });
+  }
   useEffect(() => {
     let active = true;
     const request = ++photoRequest.current;
     if (profile.data) {
+      baseline.current = { ...profile.data.profile };
       setValues(profile.data.profile);
       setPhotoError("");
       if (profile.data.profile.photoAssetId)
@@ -72,6 +98,13 @@ export function Profile() {
       delete fields.photoAssetId;
       if ((await photoPicker.current?.uploadPendingPhoto()) === false) return;
       await api("/me/profile", { method: "PUT", body: fields });
+      baseline.current = {
+        ...fields,
+        ...(baseline.current.photoAssetId
+          ? { photoAssetId: baseline.current.photoAssetId }
+          : {}),
+      };
+      markSaved();
       profile.refresh();
       await auth.refresh();
       setEditing(false);
@@ -99,7 +132,7 @@ export function Profile() {
               disabled={
                 busy || photoUploading || photoPending || profile.loading
               }
-              onClick={() => setEditing((v) => !v)}
+              onClick={() => (editing ? cancelEditing() : setEditing(true))}
             >
               Editar meu perfil
             </button>
@@ -133,6 +166,7 @@ export function Profile() {
               uploadedMessage="Foto do perfil salva. Os demais campos são salvos em Salvar perfil."
               onUploaded={(id, url) => {
                 photoRequest.current += 1;
+                baseline.current = { ...baseline.current, photoAssetId: id };
                 setValues((v) => ({ ...v, photoAssetId: id }));
                 setPhoto(url);
                 setPhotoError("");
@@ -161,9 +195,13 @@ export function Profile() {
                 autoComplete="tel"
                 type="tel"
                 disabled={busy}
-                value={values.phone ?? ""}
+                placeholder="(00) 00000-0000"
+                value={formatBrazilianPhone(values.phone ?? "")}
                 onChange={(e) =>
-                  setValues((v) => ({ ...v, phone: e.target.value }))
+                  setValues((v) => ({
+                    ...v,
+                    phone: formatBrazilianPhone(e.target.value),
+                  }))
                 }
               />
             </Field>
@@ -181,15 +219,12 @@ export function Profile() {
               />
             </Field>
             <Field label="Cidade">
-              <input
-                id="profile-city"
+              <CityAutocomplete
                 name="city"
-                autoComplete="address-level2"
+                label="Cidade"
                 disabled={busy}
                 value={values.city ?? ""}
-                onChange={(e) =>
-                  setValues((v) => ({ ...v, city: e.target.value }))
-                }
+                onChange={(city) => setValues((v) => ({ ...v, city }))}
               />
             </Field>
           </div>
@@ -200,12 +235,24 @@ export function Profile() {
               também pode confirmar em “Usar esta foto” ou descartá-la.
             </Notice>
           )}
-          <button
-            className="button primary"
-            disabled={busy || photoUploading || profile.loading}
-          >
-            Salvar perfil
-          </button>
+          <div className="button-row">
+            <button
+              className="button primary"
+              aria-label="Salvar perfil"
+              aria-busy={busy || photoUploading}
+              disabled={busy || photoUploading || profile.loading}
+            >
+              {busy ? "Salvando…" : "Salvar perfil"}
+            </button>
+            <button
+              type="button"
+              className="button outline"
+              disabled={busy || photoUploading}
+              onClick={cancelEditing}
+            >
+              Cancelar edição
+            </button>
+          </div>
         </form>
       ) : (
         photo && (

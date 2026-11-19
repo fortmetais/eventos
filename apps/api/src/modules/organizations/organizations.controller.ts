@@ -2,15 +2,9 @@ import type { Request, Response } from "express";
 import { account } from "../../core/auth.js";
 import { invitationToken, pageQuery, param } from "../../core/security.js";
 import type { OrganizationsService } from "./organizations.service.js";
-import { AppError } from "../../core/errors.js";
-function input(req: Request) {
-  if (!req.is("multipart/form-data")) return req.body;
-  try {
-    return JSON.parse(req.body.data);
-  } catch {
-    throw new AppError(400, "Os dados da organização não puderam ser lidos.");
-  }
-}
+import { parseMultipartBody } from "../../core/http-input.js";
+const input = (request: Request) =>
+  parseMultipartBody(request, "Os dados da organização não puderam ser lidos.");
 export class OrganizationsController {
   constructor(private service: OrganizationsService) {}
   publicParishes = async (_req: Request, res: Response) => {

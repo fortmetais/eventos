@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
+import { UnsavedChangesProvider } from "../lib/unsaved-changes";
 import { OrganizationFunctions } from "./OrganizationFunctions";
 import { Members } from "./Organization";
 
@@ -316,5 +317,114 @@ describe("Funções em membros e convites", () => {
     expect(
       screen.getByRole("button", { name: "Enviar convite" }),
     ).toBeDisabled();
+  });
+});
+
+function guardedFunctions() {
+  render(
+    <MemoryRouter initialEntries={["/organizations/org-a/functions"]}>
+      <UnsavedChangesProvider>
+        <Link to="/outside">Sair das funções</Link>
+        <Routes>
+          <Route
+            path="/organizations/:organizationId/functions"
+            element={<OrganizationFunctions />}
+          />
+          <Route path="/outside" element={<p>Outra página</p>} />
+        </Routes>
+      </UnsavedChangesProvider>
+    </MemoryRouter>,
+  );
+}
+describe("Alterações não salvas das funções", () => {
+  it("preserva a edição ao cancelar a troca e só troca de função após descartar", async () => {
+    guardedFunctions();
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Editar Coordenação de inscrições",
+      }),
+    );
+    await userEvent.type(screen.getByLabelText(/^Descrição/), " revisada");
+    await userEvent.click(screen.getByRole("button", { name: "Nova função" }));
+    expect(
+      screen.getByRole("dialog", { name: "Alterações não salvas" }),
+    ).toBeVisible();
+    await userEvent.click(
+      screen.getByRole("button", { name: "Continuar editando" }),
+    );
+    expect(screen.getByLabelText(/^Descrição/)).toHaveValue(
+      "Acompanhar as candidaturas revisada",
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Editar Organizador" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Descartar alterações" }),
+    );
+    expect(screen.getByLabelText(/^Nome da função/)).toHaveValue("Organizador");
+    expect(screen.getByLabelText(/^Descrição/)).toHaveValue("");
+  });
+  it("não exige confirmação em formulário intacto e confirma cancelamento de alterações", async () => {
+    guardedFunctions();
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Nova função" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Cancelar edição" }),
+    );
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Nova função" }));
+    await userEvent.type(screen.getByLabelText(/^Nome da função/), "Recepção");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Cancelar edição" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Descartar alterações" }),
+    );
+    expect(screen.queryByLabelText(/^Nome da função/)).not.toBeInTheDocument();
+    expect(
+      mocks.api.mock.calls.some(([, options]) => options?.method === "POST"),
+    ).toBe(false);
+  });
+  it("bloqueia saída após falha e navega sem pergunta depois de salvar a edição", async () => {
+    mocks.api.mockImplementation(async (_path, options) => {
+      if (options?.method === "PUT")
+        throw new Error("Falha ao salvar a função.");
+      return functions;
+    });
+    guardedFunctions();
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Editar Coordenação de inscrições",
+      }),
+    );
+    await userEvent.type(screen.getByLabelText(/^Descrição/), " revisada");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Salvar função" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Falha ao salvar a função.",
+    );
+    await userEvent.click(
+      screen.getByRole("link", { name: "Sair das funções" }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Continuar editando" }),
+    );
+    expect(screen.queryByText("Outra página")).not.toBeInTheDocument();
+    mocks.api.mockImplementation(async (_path, options) =>
+      options?.method === "PUT" ? functions[1] : functions,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Salvar função" }),
+    );
+    await screen.findByText(
+      "Função salva. As funções ativas ficam disponíveis em Membros e convites.",
+    );
+    await userEvent.click(
+      screen.getByRole("link", { name: "Sair das funções" }),
+    );
+    expect(await screen.findByText("Outra página")).toBeVisible();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

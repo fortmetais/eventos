@@ -1,5 +1,21 @@
 # Pacotes de sincronização com GitHub e Hostinger
 
+## Publicação autorizada em 19/11/2026
+
+O usuário autorizou o envio do estado local validado para `fortmetais/eventos` e `facnsaloanda.com.br`, incluindo a padronização de interface, a refatoração e o acesso temporário abaixo. As restrições anteriores de manter somente local estão substituídas por esta autorização. O SQL 20 deve ser conferido/aplicado antes da atualização da API; preservar o histórico e os dados existentes. O plano de retorno está em [RETORNO_VERSAO_20261119.md](RETORNO_VERSAO_20261119.md). O resultado efetivo do envio e da publicação será registrado após a verificação da Hostinger.
+
+## Membros e convites — liberação individual com senha temporária
+
+**Incluído na publicação autorizada em 19/11/2026.** Conferir o SQL 20 no Supabase antes da API e da interface. Isso não altera a publicação anterior do acesso por senha e troca obrigatória.
+
+Solicitado em 12/11/2026. Inclui ação exclusiva do administrador global para liberar o acesso do destinatário de um convite pendente válido com senha temporária. Exige motivo e reconhecimento explícito da dispensa individual de confirmação do e-mail, encerramento de sessões anteriores e troca obrigatória de senha. As credenciais são exibidas para compartilhamento manual somente no resultado e limpas ao fechar. Não aceita o convite, não cria vínculo organizacional e não envia e-mail. Repetição de solicitação retorna conflito sem revelar novamente a senha. Publicar API e interface juntas; conferir o contrato em `docs/api.md` e executar `scripts/browser-temporary-access-check.mjs` com respostas fictícias antes da sincronização. Nenhuma conta real ou credencial integra os testes ou o repositório.
+
+Na instalação gradual, aplicar somente `database/manual/20_auditoria_acesso_temporario.sql` para acrescentar os detalhes da auditoria (migration equivalente `202611120003_temporary_access_audit`). Preservar os registros existentes; não executar o histórico completo de migrations. Sem nova variável de ambiente. A reserva auditada ocorre antes da alteração no Auth e registra o resultado ou falha parcial sem guardar senhas, impedindo repetição automática.
+
+Verificação local no navegador aprovada em computador e celular com serviços fictícios: ação apenas para administrador global, confirmação explícita, cópia de credenciais, limpeza ao fechar, ausência de senha no armazenamento/URL e resposta de conflito sem repetição automática. Capturas em `.local/screenshots/temporary-access-{desktop,mobile}.png`.
+
+Validação final local: **892 testes passaram** (470 da API e 422 da interface), incluindo concorrência em PostgreSQL isolado; verificação de tipos e compilação aprovadas. Evidências em `.local/temporary-admin-tests-passed.log`, `.local/temporary-admin-types.log` e `.local/temporary-admin-build.log`. Reservas pendentes ou de resultado indeterminado bloqueiam novas alterações para o mesmo e-mail, inclusive a troca pessoal, até conclusão ou revisão. O banco de desenvolvimento local recebeu somente o SQL 20, preservando os registros existentes; evidência em `.local/temporary-admin-local-schema.json`. O Supabase de produção permanece sem esse script, e o pacote continua sem commit ou envio.
+
 ## Acesso por senha e troca obrigatória
 
 Solicitado em 12/11/2026. Inclui cadastro com senha e confirmação de e-mail, definição de senha por contas que já acessam por e-mail e retorno ao convite preservado. Contas liberadas individualmente com senha temporária administrativa ficam bloqueadas para o painel e o aceite de convites até definir uma senha pessoal e entrar novamente. A configuração individual não altera a confirmação dos demais usuários.

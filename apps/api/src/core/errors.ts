@@ -1,6 +1,7 @@
 import type { ErrorRequestHandler } from "express";
 import { ZodError } from "zod";
 import { Prisma } from "@prisma/client";
+import { logOperationalEvent } from "./operational-log.js";
 
 export class AppError extends Error {
   constructor(
@@ -79,13 +80,11 @@ export const errorHandler: ErrorRequestHandler = (
     return;
   }
   // Não registrar mensagens de consultas, corpos, tokens, arquivos ou dados pessoais.
-  console.error(
-    JSON.stringify({
-      level: "error",
-      event: "request_failed",
-      type: error?.constructor?.name ?? "Unknown",
-    }),
-  );
+  logOperationalEvent({
+    level: "error",
+    event: "request_failed",
+    type: error?.constructor?.name ?? "Unknown",
+  });
   response.status(500).json({
     error: {
       code: "INTERNAL",

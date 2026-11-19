@@ -12,6 +12,7 @@ import { AppError } from "../../core/errors.js";
 import { dateOnly, type FormConfig } from "../events/events.validation.js";
 import { ageAt, validCpf } from "./registrations.validation.js";
 import { requiresGuardian } from "./guardian.validation.js";
+import { asJsonObject } from "../../core/json-object.js";
 
 const value = z.union([
   z.string().max(2000),
@@ -51,10 +52,7 @@ export const correctionBaseLabels: Record<string, string> = {
   guardianEmail: "E-mail do responsável",
   guardianRelationship: "Parentesco do responsável",
 };
-export const asCorrectionObject = (value: unknown): Record<string, any> =>
-  value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, any>)
-    : {};
+export const asCorrectionObject = asJsonObject;
 const empty = (value: unknown) =>
   value == null || value === "" || (Array.isArray(value) && value.length === 0);
 const protectedQuestions = new Set([
@@ -91,9 +89,10 @@ export function validateRegistrationCorrections(
   },
 ) {
   const current = asCorrectionObject(context.current);
-  const snapshot: Record<string, any> & { answers: Record<string, any> } = {
+  const answers = { ...asCorrectionObject(current.answers) };
+  const snapshot: Record<string, unknown> = {
     ...current,
-    answers: { ...asCorrectionObject(current.answers) },
+    answers,
   };
   const form = { ...context.form, questions: context.form.questions ?? [] };
   const catalog = fieldCatalog(form, context.kind);
@@ -139,7 +138,7 @@ export function validateRegistrationCorrections(
       ? target === "email"
         ? (current.contactEmail ?? current.email)
         : current[target]
-      : snapshot.answers[question!.id];
+      : answers[question!.id];
     const trimmed = typeof raw === "string" ? raw.trim() : raw;
     const required =
       ["name", "birthDate", "phone"].includes(target) ||
@@ -295,21 +294,21 @@ export function validateRegistrationCorrections(
       const property = target === "email" ? "contactEmail" : target;
       if (normalized === undefined) delete snapshot[property];
       else snapshot[property] = normalized;
-    } else if (normalized === undefined) delete snapshot.answers[question!.id];
-    else snapshot.answers[question!.id] = normalized;
+    } else if (normalized === undefined) delete answers[question!.id];
+    else answers[question!.id] = normalized;
     changes[target] = { before: previous ?? null, after: normalized ?? null };
     labels.push(question?.label ?? correctionBaseLabels[target]);
   }
   if (!Object.keys(changes).some((key) => key.startsWith("question:"))) {
     if (Object.hasOwn(current, "answers")) snapshot.answers = current.answers;
-    else delete (snapshot as Record<string, any>).answers;
+    else delete snapshot.answers;
   }
   return { snapshot, changes, labels };
 }
 
 export function correctionImportPending(context: {
   previous: unknown;
-  snapshot: Record<string, any>;
+  snapshot: Record<string, unknown>;
   form: FormConfig;
   kind: "VOLUNTEER" | "CAMPER";
   startsAt: Date;
@@ -332,7 +331,7 @@ export function correctionImportPending(context: {
     "Termos gerais atuais não confirmados",
     "Informar responsável e obter autorização para menor de idade.",
   ]);
-  for (const [field, label] of [
+  for (const [, label] of [
     ["emergencyName", "Nome do contato de emergência"],
     ["emergencyPhone", "Telefone do contato de emergência"],
     ["emergencyRelationship", "Parentesco do contato de emergência"],

@@ -7,7 +7,6 @@ import { EventParticipantImportWizard } from "../components/EventParticipantImpo
 import {
   importFields,
   importLabels,
-  type ImportField,
   type ImportMapping,
   type ImportRow,
   type ImportBatch,

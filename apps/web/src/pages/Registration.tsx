@@ -1,3 +1,4 @@
+import { FormErrorSummary } from "../components/FormErrorSummary";
 import { Fragment, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowRight, Check, CheckCircle2, ShieldCheck } from "lucide-react";
@@ -66,6 +67,7 @@ export function Registration() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [validationAttempt, setValidationAttempt] = useState(0);
   const [saved, setSaved] = useState("");
   const [result, setResult] = useState<Draft["registration"]>();
   const [guardian, setGuardian] = useState<GuardianSummary | null>(null);
@@ -462,6 +464,7 @@ export function Registration() {
       }
     }
     setErrors(next);
+    setValidationAttempt((value) => value + 1);
     return Object.keys(next).length === 0;
   }
   async function next(e: FormEvent) {
@@ -873,6 +876,7 @@ export function Registration() {
           </h2>
         </div>
         {error && <Notice>{error}</Notice>}
+        <FormErrorSummary errors={errors} attempt={validationAttempt} />
         {prefilled && (
           <Notice kind="info">
             Dados anteriores preenchidos. Confira antes de continuar.

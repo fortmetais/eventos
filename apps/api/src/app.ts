@@ -58,6 +58,13 @@ import { guardianRoutes } from "./modules/registrations/guardian.routes.js";
 import { ParticipantImportsService } from "./modules/participant-imports/participant-imports.service.js";
 import { participantImportsRoutes } from "./modules/participant-imports/participant-imports.routes.js";
 import { siteVisitsRoutes } from "./modules/site-visits/site-visits.routes.js";
+import {
+  temporaryAccessAuth,
+  type TemporaryAccessAuth,
+} from "./modules/organizations/temporary-access-auth.js";
+import { TemporaryAccessService } from "./modules/organizations/temporary-access.service.js";
+import { temporaryAccessRoutes } from "./modules/organizations/temporary-access.routes.js";
+import { requireResolvedTemporaryAccess } from "./core/temporary-access-operations.js";
 
 export function createApp(
   dependencies: {
@@ -78,6 +85,7 @@ export function createApp(
     invitationLinkSecret?: string;
     decisionNotificationsEnabled?: boolean;
     firstPasswordUpdater?: FirstPasswordUpdater;
+    temporaryAccessAuth?: TemporaryAccessAuth;
   } = {},
 ) {
   const db = dependencies.db ?? database;
@@ -181,6 +189,8 @@ export function createApp(
     const updater = dependencies.firstPasswordUpdater ?? updateFirstPassword;
     await db.$transaction(
       async (tx) => {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${account(req).email.toLowerCase()}, 0))::text AS locked`;
+        await requireResolvedTemporaryAccess(tx, account(req).email);
         await tx.$queryRaw`SELECT conta_id FROM acesso.contas WHERE conta_id=${account(req).id}::uuid FOR UPDATE`;
         await updater(account(req).id, password);
       },
@@ -205,6 +215,18 @@ export function createApp(
     );
   }
   app.use("/api/v1", organizationFunctionsRoutes(db, auth, limit));
+  app.use(
+    "/api/v1",
+    temporaryAccessRoutes(
+      new TemporaryAccessService(
+        db,
+        dependencies.temporaryAccessAuth ?? temporaryAccessAuth(),
+        config.WEB_URL,
+      ),
+      auth,
+      dependencies.rateLimits !== false,
+    ),
+  );
   const prefillLimit =
     dependencies.rateLimits === false
       ? limit

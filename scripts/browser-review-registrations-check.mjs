@@ -897,14 +897,22 @@ try {
           bounds.every(Boolean),
           "Todos os controles da barra devem estar visíveis.",
         );
+        const measurement = bounds.map((box, index) => ({
+          control: ["busca", "ordenação", "ocultar", "atualizar", "filtros"][
+            index
+          ],
+          ...box,
+        }));
         for (const box of bounds) {
           assert(
             Math.abs(box.height - 46) <= 1,
-            "Busca, ordenação e botões devem ter a mesma altura de 46 px.",
+            "Busca, ordenação e botões devem ter a mesma altura de 46 px. Medidas: " +
+              JSON.stringify(measurement),
           );
           assert(
             Math.abs(box.y - bounds[0].y) <= 1,
-            "Os controles da barra devem estar alinhados no topo.",
+            "Os controles da barra devem estar alinhados no topo. Medidas: " +
+              JSON.stringify(measurement),
           );
         }
         assert(
