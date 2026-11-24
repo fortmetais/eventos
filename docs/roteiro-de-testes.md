@@ -1,5 +1,12 @@
 # Roteiro de testes da aplicação Encontro
 
+## Cartaz inicial e inscrições de campistas — 24/11/2026
+
+- Conferir a nova arte inteira, sem corte: proporção 1024 × 1536, WebP de 720/1024 pixels e JPEG de alternativa. As URLs novas de imagem e estilo devem evitar o cartaz anterior em cache.
+- Conferir o botão **Inscrições para campistas** abaixo do brasão FAC, na área superior direita indicada, em computador, celular de 390/320 pixels e orientação horizontal. O botão não deve cobrir o título do ingresso; seu alvo de toque deve alcançar 44 pixels sem ampliar a arte visualmente.
+- Acionar por mouse, toque e Enter: abrir o Google Forms informado em nova aba, mantendo o cartaz e sem vínculo `window.opener`. Nos testes automatizados, interceptar o destino externo para não acessar nem enviar o formulário real.
+- Conferir música, foco visível, ausência de rolagem horizontal e registro agregado de visita/clique sem cookies ou identificação do visitante. Simular falha no áudio: seu aviso não deve cobrir nem interceptar o botão de inscrição. Os fluxos internos, as campanhas e suas pausas permanecem independentes deste acesso ao Forms.
+
 ## Gestão de campistas por campanha — 24/11/2026
 
 Preparação: aplicar o SQL 22 inteiro antes da nova API em uma base de teste com inscrições. Reaplicar para conferir idempotência. A etapa não inclui pausa operacional, alteração de flags, preenchimento de inscrições ou envio de avisos. A base gradual de produção recebe somente a etapa correspondente, conforme [o guia da atualização](../deploy/supabase/ATUALIZACAO_22_CAMPISTAS.txt).

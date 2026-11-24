@@ -7,6 +7,8 @@ const posterAssets = new Set([
   "/fac-2027.jpg",
   "/fac-2027-720-v1.webp",
   "/fac-2027-1041-v1.webp",
+  "/fac-2027-720-v2.webp",
+  "/fac-2027-1024-v2.webp",
   "/pagina-temporaria.css",
   "/lazaro.mp3",
   "/musica.js",

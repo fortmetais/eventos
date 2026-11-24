@@ -89,18 +89,28 @@ describe("Fluxos públicos e painéis com o cartaz no início", () => {
 
   it("entrega os cartazes WebP no modo de testes", async () => {
     const app = createPreviewApp(api, { webRoot });
-    for (const width of [720, 1041])
+    for (const [width, version] of [
+      [720, 1],
+      [1041, 1],
+      [720, 2],
+      [1024, 2],
+    ])
       await request(app)
-        .get(`/fac-2027-${width}-v1.webp`)
+        .get(`/fac-2027-${width}-v${version}.webp`)
         .expect("Content-Type", /image\/webp/)
         .expect(200);
   });
-  it("mantém arte, aviso de encerramento e música no início com a CSP do cartaz", async () => {
+  it("mantém a nova arte, inscrição de campistas e música no início com a CSP do cartaz", async () => {
     const response = await request(preview()).get("/?source=test").expect(200);
     expect(response.type).toBe("text/html");
     expect(response.text).toContain('class="poster-page"');
-    expect(response.text).toContain("INSCRIÇÕES PARA SERVOS ENCERRADAS");
-    expect(response.text).not.toContain("docs.google.com/forms/");
+    expect(response.text).toContain("INSCRIÇÕES PARA CAMPISTAS");
+    expect(response.text).toContain(
+      'href="https://docs.google.com/forms/d/e/1FAIpQLSe3R2cm8qVkqIzQhNlwC7PQH1s92pFVwJ8iMwcisBKeUAAgnA/viewform?pli=1"',
+    );
+    expect(response.text).toContain('target="_blank"');
+    expect(response.text).toContain('rel="noopener noreferrer"');
+    expect(response.text).not.toContain("INSCRIÇÕES PARA SERVOS ENCERRADAS");
     expect(response.text).toContain('src="/lazaro.mp3"');
     expect(response.text).not.toContain("Test application");
     expect(response.headers["content-security-policy"]).toContain(

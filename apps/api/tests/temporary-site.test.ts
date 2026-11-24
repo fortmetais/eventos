@@ -1,49 +1,69 @@
 import { describe, expect, it } from "vitest";
 import request from "supertest";
+import sharp from "sharp";
 import { createTemporaryApp } from "../src/core/temporary-app.js";
 import { runtimeSettings } from "../src/core/runtime.js";
 
 describe("página temporária do FAC", () => {
   const app = createTemporaryApp();
+  const registrationUrl =
+    "https://docs.google.com/forms/d/e/1FAIpQLSe3R2cm8qVkqIzQhNlwC7PQH1s92pFVwJ8iMwcisBKeUAAgnA/viewform?pli=1";
   it.each(["/", "/entrar", "/admin", "/inscricao/123", "/convite/abc"])(
-    "exibe a arte e o aviso de inscrições encerradas no caminho %s",
+    "exibe a nova arte e o acesso à inscrição de campistas no caminho %s",
     async (path) => {
       const response = await request(app)
         .get(path)
         .set("Accept", "text/html")
         .expect(200);
-      expect(response.text).toContain("INSCRIÇÕES PARA SERVOS ENCERRADAS");
-      expect(response.text).toContain(
-        'class="registration-link" type="button" disabled',
+      expect(response.text).toContain("INSCRIÇÕES PARA CAMPISTAS");
+      expect(response.text).toContain(`href="${registrationUrl}"`);
+      expect(response.text).toContain('class="registration-link"');
+      expect(response.text).toContain('target="_blank"');
+      expect(response.text).toContain('rel="noopener noreferrer"');
+      expect(response.text).not.toContain("INSCRIÇÕES PARA SERVOS ENCERRADAS");
+      expect(response.text).not.toMatch(
+        /class="registration-link"[^>]*disabled/,
       );
-      expect(response.text).not.toContain("docs.google.com/forms");
-      expect(response.text).toContain('src="/fac-2027.jpg"');
+      expect(response.text).toContain('width="1024" height="1536"');
       expect(response.text).toContain('src="/musica.js?v=2" defer');
       expect(response.text).toContain('id="background-music"');
       expect(response.headers["cache-control"]).toBe("no-store");
     },
   );
   it("entrega a arte enviada e o estilo responsivo", async () => {
-    await request(app)
+    const image = await request(app)
       .get("/fac-2027.jpg")
       .expect("Content-Type", /image\/jpeg/)
       .expect(200);
+    expect(await sharp(image.body).metadata()).toMatchObject({
+      width: 1024,
+      height: 1536,
+    });
     const css = await request(app).get("/pagina-temporaria.css").expect(200);
     expect(css.text).toContain("object-fit: contain");
-    expect(css.text).toContain("calc((100svh - 40px) * 1041 / 1510)");
+    expect(css.text).toContain("1024 / 1536");
   });
   it("oferece cartazes WebP responsivos com cache e JPEG como alternativa", async () => {
     const page = await request(app).get("/").expect(200);
-    expect(page.text).toContain("/fac-2027-720-v1.webp 720w");
-    expect(page.text).toContain("/fac-2027-1041-v1.webp 1041w");
-    expect(page.text).toContain('src="/fac-2027.jpg"');
-    for (const width of [720, 1041]) {
+    expect(page.text).toContain("/fac-2027-720-v2.webp 720w");
+    expect(page.text).toContain("/fac-2027-1024-v2.webp 1024w");
+    expect(page.text).toContain('src="/fac-2027.jpg?v=campistas-20261124-3"');
+    for (const width of [720, 1024]) {
       const response = await request(app)
-        .get(`/fac-2027-${width}-v1.webp`)
+        .get(`/fac-2027-${width}-v2.webp`)
         .expect("Content-Type", /image\/webp/)
         .expect(200);
       expect(response.headers["cache-control"]).toContain("31536000");
+      expect(await sharp(response.body).metadata()).toMatchObject({
+        width,
+        height: width * 1.5,
+      });
     }
+    for (const width of [720, 1041])
+      await request(app)
+        .get(`/fac-2027-${width}-v1.webp`)
+        .expect("Content-Type", /image\/webp/)
+        .expect(200);
   });
   it("bloqueia consultas e alterações da API de negócio", async () => {
     for (const path of [
