@@ -34,17 +34,19 @@ function DepartmentOccupancy({
   descriptionId: string;
 }) {
   const { capacity, occupied, available } = department;
-  const selected = campaignId
-    ? (department.occupiedByCampaign[campaignId] ?? 0)
-    : occupied;
-  const other = Math.max(0, occupied - selected);
+  const selected = occupied;
   const free = available ?? 0;
-  const scale = Math.max(capacity ?? 0, occupied, selected + other + free, 1);
+  const scale = Math.max(capacity ?? 0, occupied, selected + free, 1);
   const excess = capacity == null ? 0 : Math.max(0, occupied - capacity);
   return (
     <Link
       className="event-dashboard-chart-row"
       to={registrationsLink({
+        ...(department.campaignId
+          ? { campaign: department.campaignId }
+          : campaignId
+            ? { campaign: campaignId }
+            : {}),
         team: department.id,
         sort: "ACCEPTED_FIRST",
         includeClosed: "true",
@@ -52,19 +54,21 @@ function DepartmentOccupancy({
       aria-label={`Ver inscrições de ${department.name}`}
       aria-describedby={descriptionId}
     >
-      <span className="event-dashboard-chart-name">{department.name}</span>
+      <span className="event-dashboard-chart-name">
+        {department.name}
+        {department.kind && (
+          <small className="muted">
+            {" "}
+            · {department.kind === "CAMPER" ? "Campistas" : "Servos"}
+          </small>
+        )}
+      </span>
       <span className="event-dashboard-department-values" id={descriptionId}>
         <span>
           {capacity == null
             ? `${occupied} ocupadas · Vagas não definidas`
             : `${occupied} de ${capacity} vagas ocupadas`}
         </span>
-        {campaignId && (
-          <>
-            <span> · {selected} nesta campanha</span>
-            <span> · {other} de outras campanhas</span>
-          </>
-        )}
         {capacity != null && (
           <span>
             {" · "}
@@ -90,12 +94,6 @@ function DepartmentOccupancy({
               className="occupancy-selected"
               style={{ width: `${(selected / scale) * 100}%` }}
             />
-            {campaignId && (
-              <span
-                className="occupancy-other"
-                style={{ width: `${(other / scale) * 100}%` }}
-              />
-            )}
             <span
               className="occupancy-free"
               style={{ width: `${(free / scale) * 100}%` }}
@@ -121,6 +119,26 @@ export function EventDashboardCharts({
   const id = useId();
   const departmentsAvailable =
     summary.departmentsAvailable === true && Array.isArray(summary.departments);
+  const selectedCampaign = summary.campaigns.find(
+    (campaign) => campaign.id === campaignId,
+  );
+  const departments = (summary.departments ?? []).filter(
+    (department) =>
+      !campaignId ||
+      (department.campaignId
+        ? department.campaignId === campaignId
+        : selectedCampaign?.kind !== "CAMPER" &&
+          Object.hasOwn(department.occupiedByCampaign, campaignId)),
+  );
+  const camper = selectedCampaign?.kind === "CAMPER";
+  const mixed =
+    !campaignId &&
+    departments.some((department) => department.kind === "CAMPER");
+  const occupationTitle = camper
+    ? "Ocupação das equipes"
+    : mixed
+      ? "Ocupação das equipes e departamentos"
+      : "Ocupação dos departamentos";
   return (
     <div className="event-dashboard-charts">
       <section
@@ -173,26 +191,30 @@ export function EventDashboardCharts({
         className="event-dashboard-chart"
         aria-labelledby={`${id}-departments`}
       >
-        <h2 id={`${id}-departments`}>Ocupação dos departamentos</h2>
+        <h2 id={`${id}-departments`}>{occupationTitle}</h2>
         {!departmentsAvailable ? (
           <p className="event-dashboard-chart-note">
-            Dados dos departamentos indisponíveis.
+            {camper
+              ? "Dados das equipes indisponíveis."
+              : "Dados dos departamentos indisponíveis."}
           </p>
-        ) : !summary.departments!.length ? (
+        ) : !departments.length ? (
           <p className="event-dashboard-chart-note">
-            Nenhum departamento cadastrado para este evento.
+            {camper
+              ? "Nenhuma equipe cadastrada para esta campanha."
+              : "Nenhum departamento cadastrado para este evento."}
           </p>
         ) : (
           <>
             <p className="event-dashboard-chart-note">
               Vagas ocupadas por aceitos/confirmados. Clique para ver inscrições
-              do departamento.
-              {campaignId && " Capacidade compartilhada entre as campanhas."}
+              {camper ? "da equipe." : "da equipe ou departamento."} As vagas
+              pertencem somente à campanha indicada.
             </p>
             <div className="event-dashboard-chart-rows">
-              {summary.departments!.map((department, index) => (
+              {departments.map((department, index) => (
                 <DepartmentOccupancy
-                  key={department.id}
+                  key={`${department.campaignId ?? "legacy"}:${department.id}`}
                   department={department}
                   campaignId={campaignId}
                   registrationsLink={registrationsLink}

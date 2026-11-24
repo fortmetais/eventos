@@ -38,6 +38,11 @@ import { requiresGuardian } from "./guardian.validation.js";
 import { sanitizeHidden } from "@fac/form-layout";
 import { readRegistrationCorrections } from "./registration-corrections-history.js";
 import { EventRegistrationSummaryService } from "./event-registration-summary.service.js";
+import { CamperTeamsRepository } from "./camper-teams.repository.js";
+import {
+  basicCamperTeam,
+  normalizeRegistrationTeam,
+} from "./registration-team.js";
 
 type PendingInformationRecord = {
   id: string;
@@ -311,6 +316,8 @@ export class RegistrationsService {
           campaign.event.startsAt,
           campaign.kind,
         );
+        // Camper groups are assigned by the organization, never by the public form.
+        if (campaign.kind === "CAMPER") delete payload.preferredTeamId;
         const minor = requiresGuardian(
           payload.birthDate,
           campaign.event.startsAt,
@@ -501,7 +508,7 @@ export class RegistrationsService {
       await this.withPendingInformation(items);
     return {
       items: itemsWithPendingInformation.map((item) => ({
-        ...item,
+        ...normalizeRegistrationTeam(item),
         decisionSummary: summaries.get(item.id) ?? {
           ready: false,
           notice: null,
@@ -533,7 +540,7 @@ export class RegistrationsService {
       ),
     ]);
     return {
-      ...items[0],
+      ...normalizeRegistrationTeam(items[0]),
       corrections,
       decisionSummary: summaries.get(registrationId) ?? {
         ready: false,
@@ -581,6 +588,7 @@ export class RegistrationsService {
           include: {
             campaign: { include: { event: true } },
             team: { select: basicTeam },
+            camperTeam: { select: basicCamperTeam },
             consent: true,
             person: { select: { birthDate: true } },
           },
@@ -664,6 +672,29 @@ export class RegistrationsService {
           else
             await tx.$queryRaw`SELECT equipe_id FROM eventos.equipes WHERE equipe_id = ${registration.teamId}::uuid FOR UPDATE`;
         }
+        if (
+          registration.camperTeamId &&
+          registration.campaign.kind === "CAMPER"
+        ) {
+          const camperTeams = new CamperTeamsRepository(this.repo.db);
+          if (
+            [...allocatedStatuses].includes(status as "APPROVED" | "CONFIRMED")
+          )
+            await camperTeams.requireSpace(
+              tx,
+              organizationId,
+              registration.campaignId,
+              registration.camperTeamId,
+              registrationId,
+            );
+          else
+            await camperTeams.lock(
+              tx,
+              organizationId,
+              registration.campaignId,
+              registration.camperTeamId,
+            );
+        }
         const minorImported =
           registration.origin === "IMPORT" &&
           requiresGuardian(
@@ -699,7 +730,7 @@ export class RegistrationsService {
             // Returning to received/review releases capacity while preserving
             // the existing department as a non-reserving indication.
             ...(["REJECTED", "CANCELLED"].includes(status)
-              ? { teamId: null }
+              ? { teamId: null, camperTeamId: null }
               : {}),
             history: {
               create: {
@@ -761,7 +792,7 @@ export class RegistrationsService {
     );
     // Preparing a notice never sends it: the organizer chooses the channel.
     return {
-      ...result,
+      ...normalizeRegistrationTeam(result),
       ...(decisionNoticeMissing
         ? {
             noticeWarning:
@@ -928,7 +959,6 @@ export class RegistrationsService {
   ) {
     const { teamId } = assignmentSchema.parse(input);
     const departmentsRepo = new DepartmentsRepository(this.repo.db);
-    await departmentsRepo.requireReady();
     return this.repo.db.$transaction(async (tx) => {
       await requireOrganizationManager(tx, organizationId, actorId);
       const candidate = await tx.registration.findFirst({
@@ -946,6 +976,20 @@ export class RegistrationsService {
         include: { campaign: { include: { event: true } } },
       });
       assert(registration, 404, "Inscrição não encontrada.");
+      assert(
+        !this.volunteersOnly || registration.campaign.kind === "VOLUNTEER",
+        404,
+        "Inscrição indisponível.",
+      );
+      if (registration.campaign.kind === "CAMPER")
+        return this.assignCamper(
+          tx,
+          organizationId,
+          registration,
+          teamId,
+          actorId,
+        );
+      await departmentsRepo.requireReady();
       assert(
         registration.campaign.kind === "VOLUNTEER" &&
           ["RECEIVED", "REVIEW", "WAITLIST", "APPROVED", "CONFIRMED"].includes(
@@ -1020,8 +1064,75 @@ export class RegistrationsService {
           entityId: registrationId,
         },
       });
-      return updated;
+      return normalizeRegistrationTeam(updated);
     });
+  }
+  private async assignCamper(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+    registration: {
+      id: string;
+      campaignId: string;
+      camperTeamId: string | null;
+      status: RegistrationStatus;
+      campaign: { event: { status: string } };
+    },
+    teamId: string | null,
+    actorId: string,
+  ) {
+    assert(
+      ["RECEIVED", "REVIEW", "WAITLIST", "APPROVED", "CONFIRMED"].includes(
+        registration.status,
+      ),
+      409,
+      "Esta inscrição não permite indicar equipe.",
+    );
+    assert(
+      !["CANCELLED", "COMPLETED"].includes(registration.campaign.event.status),
+      409,
+      "Este evento não aceita alocação de campistas.",
+    );
+    const teams = new CamperTeamsRepository(this.repo.db);
+    await teams.requireReady();
+    for (const id of [
+      ...new Set(
+        [registration.camperTeamId, teamId].filter((id): id is string =>
+          Boolean(id),
+        ),
+      ),
+    ].sort())
+      await teams.lock(tx, organizationId, registration.campaignId, id);
+    if (
+      teamId !== null &&
+      [...allocatedStatuses].includes(
+        registration.status as "APPROVED" | "CONFIRMED",
+      )
+    )
+      await teams.requireSpace(
+        tx,
+        organizationId,
+        registration.campaignId,
+        teamId,
+        registration.id,
+      );
+    const updated = await tx.registration.update({
+      where: { id: registration.id },
+      data: { camperTeamId: teamId, teamId: null },
+    });
+    await tx.auditLog.create({
+      data: {
+        organizationId,
+        actorId,
+        entityId: registration.id,
+        action:
+          teamId === null
+            ? "CAMPER_TEAM_REMOVED"
+            : ["APPROVED", "CONFIRMED"].includes(registration.status)
+              ? "CAMPER_TEAM_ASSIGNED"
+              : "CAMPER_TEAM_INDICATED",
+      },
+    });
+    return normalizeRegistrationTeam(updated);
   }
   async health(
     organizationId: string,

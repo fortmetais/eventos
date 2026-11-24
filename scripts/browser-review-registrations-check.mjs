@@ -10,6 +10,8 @@ const orgId = "00000000-0000-4000-8000-000000000001";
 const eventId = "00000000-0000-4000-8000-000000000003";
 const campaignId = "00000000-0000-4000-8000-000000000004";
 const teamId = "00000000-0000-4000-8000-000000000005";
+const camperCampaignId = "00000000-0000-4000-8000-000000000007";
+const camperTeamId = "00000000-0000-4000-8000-000000000008";
 const otherEventId = "00000000-0000-4000-8000-000000000006";
 const authHost = "auth.encontro.invalid";
 const user = {
@@ -128,8 +130,21 @@ try {
         {
           id: campaignId,
           kind: "VOLUNTEER",
+          opensAt: "2026-10-01T00:00:00Z",
+          closesAt: "2027-02-01T23:59:00Z",
+          paused: false,
           allowWaitlist: true,
           _count: { registrations: 4 },
+        },
+        {
+          id: camperCampaignId,
+          kind: "CAMPER",
+          opensAt: "2026-11-01T00:00:00Z",
+          closesAt: "2027-03-01T23:59:00Z",
+          paused: false,
+          capacity: 20,
+          allowWaitlist: true,
+          _count: { registrations: 2 },
         },
       ],
       teams: [
@@ -143,6 +158,18 @@ try {
         },
       ],
     };
+    const camperTeams = [
+      {
+        id: camperTeamId,
+        campaignId: camperCampaignId,
+        kind: "CAMPER",
+        eventId,
+        name: "EQUIPE AZUL",
+        capacity: 10,
+        occupied: 0,
+        available: 10,
+      },
+    ];
     const people = [
       "Ágata Silva",
       "Bruno Souza",
@@ -232,6 +259,15 @@ try {
       headers: ["Nome", "Observação original"],
       cells: [rows[1].person.name, "Resposta original reservada."],
     };
+    const camperRows = ["Campista Ana", "Campista Bia"].map((name, index) => ({
+      ...structuredClone(rows[3]),
+      id: `00000000-0000-4000-8000-${String(index + 21).padStart(12, "0")}`,
+      protocol: `INS-CAMPISTA-${index + 1}`,
+      person: { name, phone: "44999999999" },
+      snapshot: { ...rows[3].snapshot, name },
+      campaign: { ...event.campaigns[1], event: rows[3].campaign.event },
+      team: null,
+    }));
     const notices = new Map();
     const guardian = {
       id: "guardian-fixture",
@@ -250,7 +286,7 @@ try {
     };
     function makeNotice(row) {
       const shortLink = `${target}/r#fixture-${row.id}`;
-      const message = `Olá, ${row.person.name}! Departamento: ${row.team?.name ?? "A definir pela organização"}. Confirme pelo link: ${shortLink}`;
+      const message = `Olá, ${row.person.name}! ${row.campaign.kind === "CAMPER" ? "Equipe" : "Departamento"}: ${row.team?.name ?? "A definir pela organização"}. Confirme pelo link: ${shortLink}`;
       return {
         id: `notice-${row.id}`,
         kind: "ACEITE",
@@ -371,13 +407,41 @@ try {
             campaigns: [],
           },
         ]);
+      if (
+        url.pathname === `${base}/campaigns/${campaignId}/teams` &&
+        request.method() === "GET"
+      )
+        return json(
+          route,
+          event.teams.map((team) => ({
+            ...team,
+            campaignId,
+            kind: "VOLUNTEER",
+          })),
+        );
+      if (
+        url.pathname === `${base}/campaigns/${camperCampaignId}/teams` &&
+        request.method() === "GET"
+      )
+        return json(route, camperTeams);
       if (url.pathname === `${base}/registrations`) {
+        const requestedCampaign = url.searchParams.get("campaignId");
+        assert(
+          [campaignId, camperCampaignId].includes(requestedCampaign),
+          "A listagem deve fixar a campanha.",
+        );
         queries.push(url.searchParams.toString());
         const q = (url.searchParams.get("q") ?? "")
           .normalize("NFD")
           .replace(/\p{Diacritic}/gu, "")
           .toLowerCase();
-        let result = (testingResponseFilters ? filteringRows : rows).filter(
+        let result = (
+          requestedCampaign === camperCampaignId
+            ? camperRows
+            : testingResponseFilters
+              ? filteringRows
+              : rows
+        ).filter(
           (row) =>
             (url.searchParams.get("includeClosed") !== "false" ||
               !["REJECTED", "CANCELLED"].includes(row.status)) &&
@@ -459,7 +523,7 @@ try {
         new RegExp(`^${base}/registrations/([^/]+)(.*)$`),
       );
       if (match) {
-        const row = [...rows, ...filteringRows].find(
+        const row = [...rows, ...camperRows, ...filteringRows].find(
             (item) => item.id === match[1],
           ),
           suffix = match[2];
@@ -485,7 +549,13 @@ try {
         }
         if (suffix === "/team" && request.method() === "PUT") {
           const { teamId: value } = request.postDataJSON();
-          row.team = value ? event.teams.find((t) => t.id === value) : null;
+          const availableTeams =
+            row.campaign.kind === "CAMPER" ? camperTeams : event.teams;
+          assert(
+            !value || availableTeams.some((team) => team.id === value),
+            "Equipe deve pertencer à campanha.",
+          );
+          row.team = value ? availableTeams.find((t) => t.id === value) : null;
           if (notices.has(row.id))
             notices.set(row.id, { ...notices.get(row.id), ...makeNotice(row) });
           changes.push("team");
@@ -593,7 +663,23 @@ try {
         path: `.local/screenshots/review-events-${screenLabel}.png`,
         fullPage: true,
       });
-      await page.getByText(event.name, { exact: true }).first().click();
+      await expect(
+        page.getByRole("button", {
+          name: `Campistas — ${event.name} — 2 inscrições`,
+        }),
+      ).toBeVisible();
+      assert.equal(
+        queries.length,
+        0,
+        "Os cards não devem carregar uma listagem misturada.",
+      );
+      await page
+        .getByRole("button", { name: `Servos — ${event.name} — 4 inscrições` })
+        .click();
+      assert.equal(
+        new URL(page.url()).searchParams.get("campaign"),
+        campaignId,
+      );
       await expect(
         page.getByRole("tab", { name: "Inscrições", exact: true }),
       ).toHaveAttribute("aria-selected", "true");
@@ -1821,7 +1907,7 @@ try {
       );
       testingResponseFilters = true;
       await page.goto(
-        `${target}/organizacao/${orgId}/inscricoes?evento=${eventId}&q=ficticia&sort=NAME_DESC&page=2`,
+        `${target}/organizacao/${orgId}/inscricoes?evento=${eventId}&campaign=${campaignId}&q=ficticia&sort=NAME_DESC&page=2`,
       );
       await expect(
         page.getByText("Página 2 de 2", { exact: true }),
@@ -2029,7 +2115,7 @@ try {
       );
       const teamQueryStart = queries.length;
       await page.goto(
-        `${target}/organizacao/${orgId}/inscricoes?evento=${eventId}&q=ficticia&sort=NAME_DESC&page=2`,
+        `${target}/organizacao/${orgId}/inscricoes?evento=${eventId}&campaign=${campaignId}&q=ficticia&sort=NAME_DESC&page=2`,
       );
       await expect(
         page.getByText("Página 2 de 2", { exact: true }),
@@ -2161,6 +2247,101 @@ try {
         ),
         "Filtros de resposta e ficha não podem criar rolagem horizontal.",
       );
+
+      testingResponseFilters = false;
+      const beforeChooserQueries = queries.length;
+      await page.goto(
+        `${target}/organizacao/${orgId}/inscricoes?evento=${eventId}`,
+      );
+      await expect(
+        page.getByRole("button", {
+          name: `Campistas — ${event.name} — 2 inscrições`,
+        }),
+      ).toBeVisible();
+      assert.equal(
+        queries.length,
+        beforeChooserQueries,
+        "Link antigo de evento deve pedir campanha.",
+      );
+      await page
+        .getByRole("button", {
+          name: `Campistas — ${event.name} — 2 inscrições`,
+        })
+        .click();
+      const camperRow = page
+        .locator("tbody tr")
+        .filter({
+          has: page.locator(".review-person strong", {
+            hasText: "Campista Ana",
+          }),
+        });
+      await expect(camperRow).toBeVisible();
+      assert.equal(
+        new URL(page.url()).searchParams.get("campaign"),
+        camperCampaignId,
+      );
+      const camperTeam = camperRow.getByRole("combobox", {
+        name: "Equipe de Campista Ana",
+      });
+      await expect(
+        camperTeam.locator("option", { hasText: "EQUIPE AZUL" }),
+      ).toHaveCount(1);
+      await expect(
+        camperTeam.locator("option", { hasText: "SECRETARIA" }),
+      ).toHaveCount(0);
+      await camperTeam.selectOption(camperTeamId);
+      await expect(camperTeam).toHaveValue(camperTeamId);
+      await expect(camperRow).toContainText("Indicado — sem reserva");
+      await camperTeam.selectOption("");
+      const camperDecision = camperRow.getByRole("combobox", {
+        name: "Decisão de Campista Ana",
+      });
+      await camperDecision.selectOption("APPROVED");
+      await expect(camperDecision).toHaveValue("APPROVED");
+      await camperDecision.selectOption("CONFIRMED");
+      await expect(camperDecision).toHaveValue("CONFIRMED");
+      await expect(camperTeam.locator('option[value=""]')).toBeEnabled();
+      await camperTeam.selectOption(camperTeamId);
+      await expect(camperTeam).toHaveValue(camperTeamId);
+      await camperTeam.selectOption("");
+      await expect(camperTeam).toHaveValue("");
+      await page
+        .getByRole("button", {
+          name: mobile ? /Filtros e ordenação/ : "Filtros",
+          exact: !mobile,
+        })
+        .click();
+      await expect(
+        page.getByRole("combobox", { name: "Equipe", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("combobox", { name: "Campanha", exact: true }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("combobox", { name: "Espiritualidade", exact: true }),
+      ).toHaveCount(0);
+      if (mobile)
+        await page.getByRole("button", { name: /Ver 2 inscrições/ }).click();
+      await page.screenshot({
+        path: `.local/screenshots/review-campers-${screenLabel}.png`,
+        fullPage: true,
+      });
+      await page.goto(
+        `${target}/organizacao/${orgId}/inscricoes?evento=${otherEventId}&campaign=${campaignId}&inscricao=${camperRows[0].id}`,
+      );
+      await expect(
+        page
+          .getByRole("dialog")
+          .getByRole("heading", { name: "Campista Ana", exact: true }),
+      ).toBeVisible();
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get("evento"))
+        .toBe(eventId);
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get("campaign"))
+        .toBe(camperCampaignId);
+      await page.keyboard.press("Escape");
+
       assert.deepEqual(errors, []);
       console.log(
         `Inscrições ${screenLabel}: fluxo existente preservado; respostas e filtro de equipe/departamento com indicados/alocados, sem departamento, combinação, URL, recarga, limpeza e paginação aprovados.`,

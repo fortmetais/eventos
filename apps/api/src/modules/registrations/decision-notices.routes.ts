@@ -39,6 +39,26 @@ export function decisionNoticesRoutes(
       ),
     ),
   );
+  const campaignMessagePath =
+    "/organizations/:organizationId/campaigns/:campaignId/accept-message";
+  routes.get(campaignMessagePath, auth, organizer, async (req, res) =>
+    res.json(
+      await messages.campaignPage(
+        param(req, "organizationId"),
+        param(req, "campaignId"),
+      ),
+    ),
+  );
+  routes.put(campaignMessagePath, auth, organizer, limit, async (req, res) =>
+    res.json(
+      await messages.saveCampaign(
+        param(req, "organizationId"),
+        param(req, "campaignId"),
+        account(req).id,
+        req.body,
+      ),
+    ),
+  );
   const base =
     "/organizations/:organizationId/registrations/:registrationId/decision-notice";
   routes.get(base, auth, organizer, async (req, res) =>

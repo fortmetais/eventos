@@ -1,0 +1,76 @@
+ATUALIZAÇÃO 22 — EQUIPES E MENSAGENS DE CAMPISTAS (24/11/2026)
+
+Esta orientação atualiza a base gradual já utilizada pela aplicação. Não
+reimporte o banco antigo, não execute o histórico inteiro de migrations e
+não altere auth ou storage. Nenhuma credencial deve entrar no repositório.
+
+1. PREPARAR E CONFERIR O DESTINO
+
+Guardar uma cópia atual dos esquemas e dados da aplicação pelo procedimento
+de backup do projeto. Conferir a conexão correta com CONFERIR_DESTINO.sql.
+Preservar as variáveis privadas, a versão ativa e as flags da Hostinger.
+Versão anterior desta entrega: 5c0ed05fdd82314ef9f06aa1b5282fe9122ee556.
+
+Pré-requisitos: etapas 01/02/03/05/06 já aplicadas. Manter as demais etapas
+existentes, incluindo os departamentos de servos e as mensagens antigas.
+Antes da atualização, esta consulta somente de contagem deve retornar zero:
+
+SELECT count(*) AS vinculos_que_exigem_conferencia
+FROM inscricoes.inscricoes r
+JOIN eventos.campanhas c ON c.campanha_id=r.campanha_id
+WHERE r.equipe_id IS NOT NULL AND c.publico::text <> 'SERVO';
+
+Se houver vínculos antigos de campistas em departamentos de servos, conferir
+esses registros antes de continuar. A etapa 22 também bloqueia esse cenário.
+Não apagar nem converter automaticamente equipes, preferências ou alocações.
+
+2. APLICAR ANTES DA NOVA API
+
+Executar inteiro database/manual/22_gestao_campistas_por_campanha.sql como
+script, com parada no primeiro erro. O arquivo controla BEGIN/COMMIT.
+Em sessão abortada, executar ROLLBACK e conferir a causa antes de repetir.
+Na instalação gradual, este é o arquivo da entrega; a migration equivalente
+202611240001_camper_campaign_management atende instalações novas por migrations.
+
+Acrescenta duas tabelas privadas no esquema eventos:
+- equipes_campistas: identificador, campanha proprietária, nome e vagas;
+- mensagens_aceite_campistas: campanha, conteúdo opcional, revisão, autor e data.
+Acrescenta equipe_campista_id opcional às inscrições. Relações compostas e
+validações impedem equipe de outra campanha e mistura de públicos. A estrutura
+de servos permanece nos seus campos e tabelas anteriores. As tabelas novas
+têm RLS e não oferecem escrita direta pelos papéis públicos do navegador.
+
+O script é aditivo, transacional e repetível. Não altera respostas, decisões,
+termos, períodos, flags, contas ou mensagens existentes; não cria inscrições
+nem envia avisos. Não inclui pausa de atendimento. Seus limites de espera por
+bloqueio e duração provocam erro controlado se a alteração não puder concluir.
+
+3. CONFERIR E PUBLICAR
+
+Executar deploy/supabase/CONFERIR_ATUALIZACOES.sql e conferir as dez linhas
+da etapa 22 como OK. A consulta verifica colunas, tipos e nulabilidade;
+o sucesso do script inteiro também é necessário para relações e validações.
+Conferir novamente as quantidades e vínculos anteriores sem expor dados pessoais.
+
+Somente então publicar a nova API e a interface. O Prisma Client novo lê o
+campo opcional nas inscrições, inclusive nos fluxos de servos: não inverter
+a ordem. npm run build:hostinger e npm start não aplicam essa atualização.
+Não alterar as flags da hospedagem como efeito colateral da compilação.
+Percursos de conferência: docs/roteiro-de-testes.md, seção de 24/11/2026.
+
+4. RETORNAR COM OS DADOS PRESERVADOS
+
+Para recolher a liberação de campistas, definir na hospedagem:
+EVENTS_ENABLED=false
+CAMPER_REGISTRATIONS_ENABLED=false
+
+Preservar VOLUNTEER_REGISTRATIONS_ENABLED e as outras configurações aprovadas.
+Reiniciar/reimplantar e conferir os fluxos de servos e de acesso. A combinação
+é necessária porque EVENTS_ENABLED=true também libera os públicos da aplicação.
+Não executar DROP, remover colunas ou redistribuir as equipes cadastradas.
+Se for necessário retornar o código, reimplantar a versão anterior registrada.
+O procedimento completo está em deploy/ENTREGA_20261124.md.
+
+Essas flags não revogam links pessoais já emitidos: eles continuam sujeitos
+à validade, à decisão administrativa e às regras próprias de autorização.
+Registrar o resultado efetivo da migração, da publicação e de eventual retorno.

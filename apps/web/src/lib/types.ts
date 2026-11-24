@@ -94,6 +94,8 @@ export interface Team {
   id: string;
   name: string;
   eventId: string;
+  campaignId?: string;
+  kind?: "CAMPER" | "VOLUNTEER";
   capacity?: number | null;
   occupied?: number;
   available?: number | null;
@@ -137,6 +139,8 @@ export interface EventRegistrationSummary {
   departmentsAvailable?: boolean;
   departments?: {
     id: string;
+    campaignId?: string;
+    kind?: "CAMPER" | "VOLUNTEER";
     name: string;
     capacity: number | null;
     occupied: number;

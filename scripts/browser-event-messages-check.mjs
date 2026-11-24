@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { mkdirSync } from "node:fs";
 import { chromium, expect } from "@playwright/test";
 import {
+  camperMessageFields,
+  defaultCamperMessageTemplate,
   defaultMessageTemplate,
   messageFields,
   requiredMessageFields,
@@ -15,6 +17,8 @@ if (!["localhost", "127.0.0.1"].includes(new URL(target).hostname))
 const org = "00000000-0000-4000-8000-000000000001",
   event = "00000000-0000-4000-8000-000000000002",
   account = "00000000-0000-4000-8000-000000000003";
+const volunteerCampaign = "00000000-0000-4000-8000-000000000005",
+  camperCampaign = "00000000-0000-4000-8000-000000000006";
 const noticeId = "00000000-0000-4000-8000-000000000004";
 const token = Buffer.alloc(32, 129).toString("base64url");
 const code = Buffer.concat([
@@ -72,6 +76,7 @@ try {
     const settings = {
       ready: true,
       event: { id: event, name: "FAC dos testes" },
+      campaign: { id: volunteerCampaign, kind: "VOLUNTEER" },
       revision: 0,
       template: defaultMessageTemplate,
       defaultTemplate: defaultMessageTemplate,
@@ -85,7 +90,27 @@ try {
         link: `${target}/r#${code}`,
       },
     };
+    const camperSettings = {
+      ...settings,
+      campaign: { id: camperCampaign, kind: "CAMPER" },
+      template: defaultCamperMessageTemplate,
+      defaultTemplate: defaultCamperMessageTemplate,
+      fields: camperMessageFields,
+      previewValues: {
+        ...Object.fromEntries(
+          camperMessageFields.map((f) => [f.key, f.example]),
+        ),
+        evento: settings.event.name,
+        organizacao: organization.name,
+        link: `${target}/r#${code}`,
+      },
+    };
     const savedBodies = [];
+    const camperSavedBodies = [];
+    let legacyReads = 0,
+      volunteerScopedReads = 0,
+      camperReads = 0,
+      camperSaves = 0;
     let saves = 0,
       putAttempts = 0,
       confirmations = 0,
@@ -177,10 +202,23 @@ try {
           ],
         });
       if (path === `/api/v1/organizations/${org}/events`)
-        return json([{ id: event, name: settings.event.name }]);
+        return json([
+          {
+            id: event,
+            name: settings.event.name,
+            campaigns: [settings.campaign, camperSettings.campaign],
+          },
+        ]);
       if (
-        path === `/api/v1/organizations/${org}/events/${event}/accept-message`
+        path ===
+          `/api/v1/organizations/${org}/events/${event}/accept-message` ||
+        path ===
+          `/api/v1/organizations/${org}/campaigns/${volunteerCampaign}/accept-message`
       ) {
+        if (req.method() === "GET") {
+          if (path.includes("/campaigns/")) volunteerScopedReads++;
+          else legacyReads++;
+        }
         if (req.method() === "PUT") {
           putAttempts++;
           const body = req.postDataJSON();
@@ -202,6 +240,25 @@ try {
           savedBodies.push(body);
         }
         return json(settings);
+      }
+      if (
+        path ===
+        `/api/v1/organizations/${org}/campaigns/${camperCampaign}/accept-message`
+      ) {
+        if (req.method() === "GET") camperReads++;
+        if (req.method() === "PUT") {
+          const body = req.postDataJSON();
+          assert.equal(body.revision, camperSettings.revision);
+          if (body.template !== null)
+            validateMessageTemplate(body.template, "CAMPER");
+          camperSettings.template =
+            body.template ?? defaultCamperMessageTemplate;
+          camperSettings.customized = body.template !== null;
+          camperSettings.revision++;
+          camperSaves++;
+          camperSavedBodies.push(body);
+        }
+        return json(camperSettings);
       }
       if (
         path === `/api/v1/public/decision-responses/${noticeId}/view` ||
@@ -448,6 +505,145 @@ try {
       page.getByText(/Mensagem salva para este evento/),
     ).toBeVisible();
     assert.equal(saves, 4);
+    assert(
+      legacyReads > 0,
+      "O endereço legado deve continuar lendo o modelo de servos.",
+    );
+
+    const campaignSelect = page.getByRole("combobox", {
+      name: "Campanha",
+      exact: true,
+    });
+    const savedVolunteerTemplate = settings.template;
+    const savedVolunteerRevision = settings.revision;
+    await expect(campaignSelect).toHaveValue(volunteerCampaign);
+    await campaignSelect.selectOption(camperCampaign);
+    await expect(campaignSelect).toHaveValue(camperCampaign);
+    await expect(editor).toHaveValue(defaultCamperMessageTemplate);
+    assert.equal(
+      new URL(page.url()).searchParams.get("campaign"),
+      camperCampaign,
+    );
+    await expect(
+      page.getByRole("heading", { name: /Aprovação de campistas/ }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: "Inserir departamento alocado",
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    const camperDraft =
+      "Olá, {{primeiro_nome}}! Sua inscrição de campista está aprovada. Responda pelo link {{link}}. Equipe: ";
+    await editor.fill(camperDraft);
+    await editor.focus();
+    await editor.evaluate((input) =>
+      input.setSelectionRange(input.value.length, input.value.length),
+    );
+    await page
+      .getByRole("button", { name: "Inserir equipe de campistas", exact: true })
+      .click();
+    const customizedCamperTemplate = `${camperDraft}{{equipe}}`;
+    await expect(editor).toHaveValue(customizedCamperTemplate);
+    await expect(preview).toContainText("Olá, Maria!");
+    await expect(preview).toContainText("Equipe: EQUIPE AZUL");
+    await expect(preview).not.toContainText("SECRETARIA");
+    assert.equal(camperSaves, 0, "A prévia não salva o modelo de campistas.");
+
+    await campaignSelect.selectOption(volunteerCampaign);
+    const unsavedDialog = page.getByRole("dialog", {
+      name: "Alterações não salvas",
+    });
+    await expect(unsavedDialog).toBeVisible();
+    await unsavedDialog
+      .getByRole("button", { name: "Continuar editando" })
+      .click();
+    await expect(unsavedDialog).toHaveCount(0);
+    await expect(campaignSelect).toHaveValue(camperCampaign);
+    await expect(editor).toHaveValue(customizedCamperTemplate);
+    assert.equal(
+      new URL(page.url()).searchParams.get("campaign"),
+      camperCampaign,
+    );
+    assert.equal(camperSaves, 0);
+    assert.equal(settings.template, savedVolunteerTemplate);
+    assert.equal(settings.revision, savedVolunteerRevision);
+    await saveButton.click();
+    await expect(
+      page.getByText(/Mensagem salva para esta campanha/),
+    ).toBeVisible();
+    assert.equal(camperSaves, 1);
+    assert.equal(camperSavedBodies.at(-1).template, customizedCamperTemplate);
+    assert.equal(settings.template, savedVolunteerTemplate);
+    assert.equal(
+      saves,
+      4,
+      "Salvar Campistas não pode salvar a mensagem de Servos.",
+    );
+    await page.reload();
+    await expect(campaignSelect).toHaveValue(camperCampaign);
+    await expect(editor).toHaveValue(customizedCamperTemplate);
+    await expect(preview).toContainText("Equipe: EQUIPE AZUL");
+    await expect(page.getByText(/Alterações ainda não salvas/)).toHaveCount(0);
+    await page.screenshot({
+      path: `.local/screenshots/event-messages-campers-${mobile ? "mobile" : "desktop"}.png`,
+      fullPage: true,
+    });
+
+    await editor.fill(
+      `${customizedCamperTemplate}\nAlteração de campistas não salva.`,
+    );
+    await campaignSelect.selectOption(volunteerCampaign);
+    await expect(unsavedDialog).toBeVisible();
+    await unsavedDialog
+      .getByRole("button", { name: "Descartar alterações" })
+      .click();
+    await expect(campaignSelect).toHaveValue(volunteerCampaign);
+    await expect(editor).toHaveValue(savedVolunteerTemplate);
+    await expect(
+      page.getByRole("button", {
+        name: "Inserir departamento alocado",
+        exact: true,
+      }),
+    ).toBeVisible();
+    assert(volunteerScopedReads > 0);
+    assert.equal(camperSettings.template, customizedCamperTemplate);
+    assert.equal(
+      camperSaves,
+      1,
+      "Descartar a edição não pode persistir o rascunho.",
+    );
+
+    await editor.fill(
+      `${savedVolunteerTemplate}\nAlteração de servos não salva.`,
+    );
+    await campaignSelect.selectOption(camperCampaign);
+    await expect(unsavedDialog).toBeVisible();
+    await unsavedDialog
+      .getByRole("button", { name: "Continuar editando" })
+      .click();
+    await expect(campaignSelect).toHaveValue(volunteerCampaign);
+    await expect(editor).toHaveValue(
+      `${savedVolunteerTemplate}\nAlteração de servos não salva.`,
+    );
+    assert.equal(settings.revision, savedVolunteerRevision);
+    assert.equal(camperSettings.template, customizedCamperTemplate);
+    await campaignSelect.selectOption(camperCampaign);
+    await unsavedDialog
+      .getByRole("button", { name: "Descartar alterações" })
+      .click();
+    await expect(editor).toHaveValue(customizedCamperTemplate);
+    assert(camperReads >= 2, "A campanha recarrega seu próprio modelo salvo.");
+    assert.equal(saves, 4);
+    assert.equal(camperSaves, 1);
+    assert.equal(settings.template, savedVolunteerTemplate);
+    assert.equal(settings.revision, savedVolunteerRevision);
+    assert(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+      "O editor de campistas não pode criar rolagem horizontal.",
+    );
     await page.goto(`${target}/r#${code}`);
     await expect(
       page.getByRole("button", { name: "Vou participar" }),
@@ -638,7 +834,7 @@ try {
     assert.deepEqual(errors, []);
     await context.close();
     console.log(
-      `Mensagens ${mobile ? "celular" : "desktop"}: editor e link compacto preservados; página pública sem prazo exibido, ordem visual, respostas independentes de evento/espiritualidade, recarga, troca Sim→Não e ausência de configuração aprovados.`,
+      `Mensagens ${mobile ? "celular" : "desktop"}: editor legado e link compacto preservados; modelos de Servos/Campistas separados, {{equipe}}, prévia, gravação/recarga e proteção de troca de campanha aprovados; página pública sem prazo exibido, ordem visual, respostas independentes de evento/espiritualidade, recarga, troca Sim→Não e ausência de configuração aprovados.`,
     );
   }
 } finally {

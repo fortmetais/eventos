@@ -180,9 +180,15 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
       expect(result.body.volunteerRegistrationsReady).toBe(true);
       expect(result.body.eventsEnabled).toBe(false);
       const tables = await db.$queryRaw<
-        { rowsecurity: boolean }[]
-      >`SELECT rowsecurity FROM pg_tables WHERE schemaname IN ('acesso','organizacoes','pessoas','eventos','inscricoes','saude','arquivos')`;
-      expect(tables).toHaveLength(26);
+        { tablename: string; rowsecurity: boolean }[]
+      >`SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname IN ('acesso','organizacoes','pessoas','eventos','inscricoes','saude','arquivos')`;
+      expect(tables).toHaveLength(28);
+      expect(tables.map((table) => table.tablename)).toEqual(
+        expect.arrayContaining([
+          "equipes_campistas",
+          "mensagens_aceite_campistas",
+        ]),
+      );
       expect(tables.every((t) => t.rowsecurity)).toBe(true);
       await request(app)
         .get(`/api/v1/public/campaigns/${camperId}`)

@@ -8,11 +8,15 @@ export function DepartmentCapacity({
   organizationId,
   editable,
   refresh,
+  campaignId,
+  kind = team.kind ?? "VOLUNTEER",
 }: {
   team: Team;
   organizationId: string;
   editable: boolean;
   refresh: () => void;
+  campaignId?: string;
+  kind?: "CAMPER" | "VOLUNTEER";
 }) {
   const [capacity, setCapacity] = useState(
     team.capacity == null ? "" : String(team.capacity),
@@ -21,7 +25,10 @@ export function DepartmentCapacity({
   const [error, setError] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const pending = useRef(false);
-  const path = `/organizations/${organizationId}/events/${team.eventId}/teams/${team.id}`;
+  const path = campaignId
+    ? `/organizations/${organizationId}/campaigns/${campaignId}/teams/${team.id}`
+    : `/organizations/${organizationId}/events/${team.eventId}/teams/${team.id}`;
+  const label = kind === "CAMPER" ? "equipe" : "departamento";
   async function save(event: FormEvent) {
     event.preventDefault();
     if (pending.current) return;
@@ -120,17 +127,20 @@ export function DepartmentCapacity({
               type="button"
               className="text-button danger"
               disabled={busy || (team.occupied ?? 0) > 0}
-              aria-label={`Excluir departamento ${team.name}`}
+              aria-label={`Excluir ${label} ${team.name}`}
               onClick={() => {
                 setError("");
                 setConfirmingDelete(true);
               }}
             >
-              <Trash2 size={17} /> Excluir departamento
+              <Trash2 size={17} /> Excluir {label}
             </button>
           )}
           {(team.occupied ?? 0) > 0 && (
-            <small>Há participantes vinculados a este departamento.</small>
+            <small>
+              Há participantes vinculados a{" "}
+              {kind === "CAMPER" ? "esta equipe" : "este departamento"}.
+            </small>
           )}
         </div>
       )}

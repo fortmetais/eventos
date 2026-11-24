@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { assert } from "../../core/errors.js";
+import { normalizeRegistrationTeam } from "../registrations/registration-team.js";
 export class ProfilesRepository {
   constructor(public db: PrismaClient) {}
   get(accountId: string) {
@@ -36,8 +37,8 @@ export class ProfilesRepository {
       });
     });
   }
-  registrations(accountId: string) {
-    return this.db.registration.findMany({
+  async registrations(accountId: string) {
+    const registrations = await this.db.registration.findMany({
       where: { accountId },
       select: {
         id: true,
@@ -46,6 +47,7 @@ export class ProfilesRepository {
         createdAt: true,
         snapshot: true,
         team: { select: { name: true } },
+        camperTeam: { select: { name: true } },
         campaign: {
           select: {
             kind: true,
@@ -63,5 +65,6 @@ export class ProfilesRepository {
       },
       orderBy: { createdAt: "desc" },
     });
+    return registrations.map(normalizeRegistrationTeam);
   }
 }

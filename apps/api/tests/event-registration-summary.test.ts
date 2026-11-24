@@ -19,7 +19,12 @@ const counts = (value: number) =>
 
 describe("Resumo de inscrições — compatibilidade e leitura consistente", () => {
   function mocked(
-    stage: { registrations: boolean; presence: boolean; departments?: boolean },
+    stage: {
+      registrations: boolean;
+      presence: boolean;
+      departments?: boolean;
+      camperDepartments?: boolean;
+    },
     campaigns = [{ id: randomUUID(), kind: "VOLUNTEER" }],
   ) {
     const eventId = randomUUID(),
@@ -96,11 +101,16 @@ describe("Resumo de inscrições — compatibilidade e leitura consistente", () 
       code: "EVENT_REGISTRATION_SUMMARY_SETUP_REQUIRED",
     });
   });
-  it("agrega ocupação global e por campanha em lote, distinguindo capacidade nula de zero", async () => {
+  it("agrega capacidade e ocupação somente da campanha proprietária, distinguindo nulo de zero", async () => {
     const firstCampaign = randomUUID(),
       secondCampaign = randomUUID();
     const fixture = mocked(
-      { registrations: true, presence: true, departments: true },
+      {
+        registrations: true,
+        presence: true,
+        departments: true,
+        camperDepartments: true,
+      },
       [
         { id: firstCampaign, kind: "VOLUNTEER" },
         { id: secondCampaign, kind: "CAMPER" },
@@ -112,6 +122,7 @@ describe("Resumo de inscrições — compatibilidade e leitura consistente", () 
         name: "A compartilhada",
         capacity: 5,
         campaignId: firstCampaign,
+        kind: "VOLUNTEER",
         occupied: 2n,
       },
       {
@@ -119,6 +130,7 @@ describe("Resumo de inscrições — compatibilidade e leitura consistente", () 
         name: "A compartilhada",
         capacity: 5,
         campaignId: secondCampaign,
+        kind: "CAMPER",
         occupied: 1n,
       },
       {
@@ -126,14 +138,32 @@ describe("Resumo de inscrições — compatibilidade e leitura consistente", () 
         name: "B não configurada",
         capacity: null,
         campaignId: firstCampaign,
+        kind: "VOLUNTEER",
         occupied: 1n,
       },
       {
         id: "zero",
         name: "C zero",
         capacity: 0,
-        campaignId: null,
+        campaignId: firstCampaign,
+        kind: "VOLUNTEER",
         occupied: 0n,
+      },
+      {
+        id: "not-permitted",
+        name: "Oculta",
+        capacity: 99,
+        campaignId: randomUUID(),
+        kind: "CAMPER",
+        occupied: 99n,
+      },
+      {
+        id: "wrong-kind",
+        name: "Inconsistente",
+        capacity: 99,
+        campaignId: firstCampaign,
+        kind: "CAMPER",
+        occupied: 99n,
       },
     ]);
     const result = await fixture.service.read(
@@ -144,30 +174,110 @@ describe("Resumo de inscrições — compatibilidade e leitura consistente", () 
     expect(result.departments).toEqual([
       {
         id: "shared",
+        campaignId: firstCampaign,
+        kind: "VOLUNTEER",
         name: "A compartilhada",
         capacity: 5,
-        occupied: 3,
-        available: 2,
-        occupiedByCampaign: { [firstCampaign]: 2, [secondCampaign]: 1 },
+        occupied: 2,
+        available: 3,
+        occupiedByCampaign: { [firstCampaign]: 2 },
+      },
+      {
+        id: "shared",
+        campaignId: secondCampaign,
+        kind: "CAMPER",
+        name: "A compartilhada",
+        capacity: 5,
+        occupied: 1,
+        available: 4,
+        occupiedByCampaign: { [secondCampaign]: 1 },
       },
       {
         id: "undefined",
+        campaignId: firstCampaign,
+        kind: "VOLUNTEER",
         name: "B não configurada",
         capacity: null,
         occupied: 1,
         available: null,
-        occupiedByCampaign: { [firstCampaign]: 1, [secondCampaign]: 0 },
+        occupiedByCampaign: { [firstCampaign]: 1 },
       },
       {
         id: "zero",
+        campaignId: firstCampaign,
+        kind: "VOLUNTEER",
         name: "C zero",
         capacity: 0,
         occupied: 0,
         available: 0,
-        occupiedByCampaign: { [firstCampaign]: 0, [secondCampaign]: 0 },
+        occupiedByCampaign: { [firstCampaign]: 0 },
       },
     ]);
     expect(fixture.tx.$queryRaw).toHaveBeenCalledTimes(3);
+    const occupancySql = fixture.tx.$queryRaw.mock.calls[2][0].sql;
+    expect(occupancySql).toContain("UNION ALL");
+    expect(occupancySql).toContain("r.campanha_id=c.campanha_id");
+    expect(occupancySql).toContain("r.equipe_campista_id=t.equipe_campista_id");
+  });
+  it("não depende da capacidade dos servos para uma campanha exclusivamente campista", async () => {
+    const campaignId = randomUUID();
+    const fixture = mocked(
+      {
+        registrations: true,
+        presence: true,
+        departments: false,
+        camperDepartments: true,
+      },
+      [{ id: campaignId, kind: "CAMPER" }],
+    );
+    fixture.tx.$queryRaw.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        id: "group",
+        name: "Equipe azul",
+        capacity: 5,
+        campaignId,
+        kind: "CAMPER",
+        occupied: 2n,
+      },
+    ]);
+    const result = await fixture.service.read(
+      fixture.organizationId,
+      fixture.eventId,
+    );
+    expect(result.departmentsAvailable).toBe(true);
+    expect(result.departments).toEqual([
+      {
+        id: "group",
+        name: "Equipe azul",
+        campaignId,
+        kind: "CAMPER",
+        capacity: 5,
+        occupied: 2,
+        available: 3,
+        occupiedByCampaign: { [campaignId]: 2 },
+      },
+    ]);
+    expect(fixture.tx.$queryRaw.mock.calls[2][0].sql).not.toContain(
+      "FROM eventos.equipes t",
+    );
+  });
+  it("informa a estrutura campista ausente sem inventar ocupação ou ler departamentos dos servos", async () => {
+    const fixture = mocked(
+      {
+        registrations: true,
+        presence: true,
+        departments: true,
+        camperDepartments: false,
+      },
+      [{ id: randomUUID(), kind: "CAMPER" }],
+    );
+    const result = await fixture.service.read(
+      fixture.organizationId,
+      fixture.eventId,
+    );
+    expect(result.departmentsAvailable).toBe(false);
+    expect(result.departments).toEqual([]);
+    expect(fixture.tx.$queryRaw).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -232,7 +342,9 @@ const url = process.env.TEST_EVENT_SUMMARY_DATABASE_URL;
       departmentOverbooked: string,
       departmentZero: string,
       departmentEmpty: string,
-      foreignDepartment: string;
+      foreignDepartment: string,
+      camperGroup: string,
+      foreignCamperGroup: string;
     const path = (event = eventId, organization = org) =>
       `/api/v1/organizations/${organization}/events/${event}/registration-summary`;
     async function notice(
@@ -341,6 +453,13 @@ const url = process.env.TEST_EVENT_SUMMARY_DATABASE_URL;
           closesAt: new Date("2020-02-01"),
         },
       });
+      await db.team.create({
+        data: {
+          eventId: camperOnlyEventId,
+          name: "Departamento sem campanha de servos",
+          capacity: 10,
+        },
+      });
       for (const campaign of campaigns) {
         const form = await db.formVersion.create({
           data: {
@@ -437,7 +556,7 @@ const url = process.env.TEST_EVENT_SUMMARY_DATABASE_URL;
       await notice(rows["CAMPER:CONFIRMED"][0], { going: true });
       const teams = await Promise.all([
         db.team.create({
-          data: { eventId, name: "A - Compartilhada", capacity: 10 },
+          data: { eventId, name: "A - Departamento de servos", capacity: 10 },
         }),
         db.team.create({
           data: {
@@ -478,7 +597,6 @@ const url = process.env.TEST_EVENT_SUMMARY_DATABASE_URL;
       for (const [registrationId, teamId] of [
         [rows["VOLUNTEER:APPROVED"][0], departmentShared],
         [rows["VOLUNTEER:CONFIRMED"][0], departmentShared],
-        [rows["CAMPER:CONFIRMED"][0], departmentShared],
         ...["RECEIVED", "REVIEW", "WAITLIST", "REJECTED", "CANCELLED"].map(
           (status) => [rows[`VOLUNTEER:${status}`][0], departmentShared],
         ),
@@ -489,6 +607,44 @@ const url = process.env.TEST_EVENT_SUMMARY_DATABASE_URL;
           where: { id: registrationId },
           data: { teamId },
         });
+      camperGroup = (
+        await db.camperTeam.create({
+          data: {
+            campaignId: camperCampaign,
+            name: "F - Equipe de campistas",
+            capacity: 4,
+          },
+        })
+      ).id;
+      for (const status of [
+        "CONFIRMED",
+        "RECEIVED",
+        "REVIEW",
+        "WAITLIST",
+        "REJECTED",
+        "CANCELLED",
+      ])
+        await db.registration.update({
+          where: { id: rows[`CAMPER:${status}`][0] },
+          data: { camperTeamId: camperGroup },
+        });
+      const foreignCampaign = await db.campaign.create({
+        data: {
+          eventId: otherEventId,
+          kind: "CAMPER",
+          opensAt: new Date("2020-01-01"),
+          closesAt: new Date("2020-02-01"),
+        },
+      });
+      foreignCamperGroup = (
+        await db.camperTeam.create({
+          data: {
+            campaignId: foreignCampaign.id,
+            name: "Equipe campista de outra organização",
+            capacity: 50,
+          },
+        })
+      ).id;
     }, 30000);
     afterAll(async () => {
       await db.$disconnect();
@@ -671,6 +827,7 @@ const url = process.env.TEST_EVENT_SUMMARY_DATABASE_URL;
         byStatus: counts(0),
         candidateGoing: 0,
       });
+      expect(campaignEmpty.body.departments).toEqual([]);
       const hidden = await request(volunteers)
         .get(path(camperOnlyEventId))
         .set(auth())
@@ -715,14 +872,17 @@ const url = process.env.TEST_EVENT_SUMMARY_DATABASE_URL;
         departmentOverbooked,
         departmentZero,
         departmentEmpty,
+        camperGroup,
       ]);
       expect(result.body.departments[0]).toEqual({
         id: departmentShared,
-        name: "A - Compartilhada",
+        campaignId: volunteerCampaign,
+        kind: "VOLUNTEER",
+        name: "A - Departamento de servos",
         capacity: 10,
-        occupied: 3,
-        available: 7,
-        occupiedByCampaign: { [volunteerCampaign]: 2, [camperCampaign]: 1 },
+        occupied: 2,
+        available: 8,
+        occupiedByCampaign: { [volunteerCampaign]: 2 },
       });
       expect(result.body.departments[1]).toMatchObject({
         capacity: null,
@@ -744,11 +904,26 @@ const url = process.env.TEST_EVENT_SUMMARY_DATABASE_URL;
         occupied: 0,
         available: 3,
       });
+      expect(result.body.departments[5]).toEqual({
+        id: camperGroup,
+        campaignId: camperCampaign,
+        kind: "CAMPER",
+        name: "F - Equipe de campistas",
+        capacity: 4,
+        occupied: 1,
+        available: 3,
+        occupiedByCampaign: { [camperCampaign]: 1 },
+      });
       expect(
         result.body.departments.map(
           (department: { id: string }) => department.id,
         ),
       ).not.toContain(foreignDepartment);
+      expect(
+        result.body.departments.map(
+          (department: { id: string }) => department.id,
+        ),
+      ).not.toContain(foreignCamperGroup);
       const events = await request(full)
         .get(`/api/v1/organizations/${org}/events`)
         .set(auth())
@@ -757,21 +932,25 @@ const url = process.env.TEST_EVENT_SUMMARY_DATABASE_URL;
         (event: { id: string }) => event.id === eventId,
       ).teams;
       expect(
-        result.body.departments.map(
-          ({
-            id,
-            name,
-            capacity,
-            occupied,
-            available,
-          }: {
-            id: string;
-            name: string;
-            capacity: number | null;
-            occupied: number;
-            available: number | null;
-          }) => ({ id, name, capacity, occupied, available }),
-        ),
+        result.body.departments
+          .filter(
+            (department: { kind: string }) => department.kind === "VOLUNTEER",
+          )
+          .map(
+            ({
+              id,
+              name,
+              capacity,
+              occupied,
+              available,
+            }: {
+              id: string;
+              name: string;
+              capacity: number | null;
+              occupied: number;
+              available: number | null;
+            }) => ({ id, name, capacity, occupied, available }),
+          ),
       ).toEqual(
         current.map(
           ({
@@ -790,7 +969,7 @@ const url = process.env.TEST_EVENT_SUMMARY_DATABASE_URL;
         ),
       );
     });
-    it("campanha não liberada ocupa capacidade compartilhada sem expor seu identificador no mapa permitido", async () => {
+    it("campanha não liberada não expõe sua equipe nem ocupa capacidade dos servos", async () => {
       const result = await request(volunteers)
         .get(path())
         .set(auth())
@@ -800,25 +979,93 @@ const url = process.env.TEST_EVENT_SUMMARY_DATABASE_URL;
       );
       expect(department).toMatchObject({
         capacity: 10,
-        occupied: 3,
-        available: 7,
+        campaignId: volunteerCampaign,
+        kind: "VOLUNTEER",
+        occupied: 2,
+        available: 8,
         occupiedByCampaign: { [volunteerCampaign]: 2 },
       });
       expect(Object.keys(department.occupiedByCampaign)).toEqual([
         volunteerCampaign,
       ]);
       expect(department.occupiedByCampaign[camperCampaign]).toBeUndefined();
-      // Selecting this campaign leaves one slot occupied by another campaign and seven genuinely free.
+      expect(
+        result.body.departments.every(
+          (entry: { kind: string; campaignId: string }) =>
+            entry.kind === "VOLUNTEER" &&
+            entry.campaignId === volunteerCampaign,
+        ),
+      ).toBe(true);
       expect(
         department.occupied - department.occupiedByCampaign[volunteerCampaign],
-      ).toBe(1);
+      ).toBe(0);
       const released = await request(releasedCampers)
         .get(path())
         .set(auth())
         .expect(200);
       expect(
-        released.body.departments[0].occupiedByCampaign[camperCampaign],
+        released.body.departments.find(
+          (entry: { id: string }) => entry.id === camperGroup,
+        ).occupiedByCampaign[camperCampaign],
       ).toBe(1);
+    });
+    it("bloqueia vínculo entre públicos e mantém a contagem independente após a tentativa", async () => {
+      const ids = [rows["CAMPER:APPROVED"][0], rows["VOLUNTEER:APPROVED"][2]];
+      const unchangedRows = () =>
+        db.registration.findMany({
+          where: { id: { in: ids } },
+          select: {
+            id: true,
+            campaignId: true,
+            status: true,
+            teamId: true,
+            camperTeamId: true,
+            updatedAt: true,
+          },
+          orderBy: { id: "asc" },
+        });
+      const before = await unchangedRows();
+      await expect(
+        db.registration.update({
+          where: { id: rows["CAMPER:APPROVED"][0] },
+          data: { teamId: departmentShared },
+        }),
+      ).rejects.toThrow("A equipe não corresponde ao público da inscrição.");
+      await expect(
+        db.registration.update({
+          where: { id: rows["VOLUNTEER:APPROVED"][2] },
+          data: { camperTeamId: camperGroup },
+        }),
+      ).rejects.toThrow("A equipe não corresponde ao público da inscrição.");
+      const [constraint] = await db.$queryRaw<{ definition: string }[]>`
+        SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint
+        WHERE conrelid='inscricoes.inscricoes'::regclass
+          AND conname='inscricoes_equipe_campista_campanha_fk'`;
+      expect(constraint.definition).toMatch(
+        /FOREIGN KEY \(equipe_campista_id, campanha_id\)/,
+      );
+      expect(constraint.definition).toMatch(
+        /REFERENCES eventos\.equipes_campistas\(equipe_campista_id, campanha_id\)/,
+      );
+      await expect(
+        db.registration.update({
+          where: { id: rows["CAMPER:APPROVED"][0] },
+          data: { camperTeamId: foreignCamperGroup },
+        }),
+      ).rejects.toMatchObject({ code: "P2003" });
+      expect(await unchangedRows()).toEqual(before);
+      const result = (await request(full).get(path()).set(auth()).expect(200))
+        .body;
+      expect(
+        result.departments.find(
+          (entry: { id: string }) => entry.id === departmentShared,
+        ),
+      ).toMatchObject({ occupied: 2, available: 8 });
+      expect(
+        result.departments.find(
+          (entry: { id: string }) => entry.id === camperGroup,
+        ),
+      ).toMatchObject({ occupied: 1, available: 3 });
     });
     it("não inventa ocupação ou capacidade quando a coluna de vagas ainda não foi instalada", async () => {
       await db.$executeRawUnsafe(
@@ -833,6 +1080,33 @@ const url = process.env.TEST_EVENT_SUMMARY_DATABASE_URL;
       } finally {
         await db.$executeRawUnsafe(
           "ALTER TABLE eventos.equipes RENAME COLUMN vagas_summary_temporaria TO vagas",
+        );
+      }
+    });
+    it("mantém os servos disponíveis sem consultar a estrutura campista quando esse público não está liberado", async () => {
+      await db.$executeRawUnsafe(
+        "ALTER TABLE eventos.equipes_campistas RENAME TO equipes_campistas_summary_temporaria",
+      );
+      try {
+        const restricted = (
+          await request(volunteers).get(path()).set(auth()).expect(200)
+        ).body;
+        expect(restricted.departmentsAvailable).toBe(true);
+        expect(restricted.departments).toHaveLength(5);
+        expect(
+          restricted.departments.every(
+            (entry: { kind: string }) => entry.kind === "VOLUNTEER",
+          ),
+        ).toBe(true);
+        const fullResult = (
+          await request(full).get(path()).set(auth()).expect(200)
+        ).body;
+        expect(fullResult.departmentsAvailable).toBe(false);
+        expect(fullResult.departments).toEqual([]);
+        expect(fullResult.totals.total).toBe(28);
+      } finally {
+        await db.$executeRawUnsafe(
+          "ALTER TABLE eventos.equipes_campistas_summary_temporaria RENAME TO equipes_campistas",
         );
       }
     });

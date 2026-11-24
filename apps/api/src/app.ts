@@ -405,6 +405,7 @@ export function createApp(
         auth,
         limit,
         !eventsEnabled,
+        volunteersOnly,
       ),
     );
     registrations.use(

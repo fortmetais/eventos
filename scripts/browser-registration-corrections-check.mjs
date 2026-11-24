@@ -192,7 +192,7 @@ const labels = {
   ),
 };
 const automaticReason = "Correção da ficha pela organização.";
-const listUrl = `${target}/organizacao/${orgId}/inscricoes?evento=${eventId}`;
+const listUrl = `${target}/organizacao/${orgId}/inscricoes?evento=${eventId}&campaign=${campaignId}`;
 const phoneFields = new Set([
   "phone",
   "emergencyPhone",
@@ -432,12 +432,25 @@ async function createFixtureContext(browser, viewport, role = "ORGANIZER") {
           },
         ],
       });
+    if (
+      url.pathname === `${base}/campaigns/${campaignId}/teams` &&
+      request.method() === "GET"
+    )
+      return json(
+        route,
+        teams.map((team) => ({ ...team, campaignId, kind: "VOLUNTEER" })),
+      );
     if (url.pathname === `${base}/events` && request.method() === "GET")
       return json(route, [event]);
     if (
       url.pathname === `${base}/registrations` &&
       request.method() === "GET"
     ) {
+      assert.equal(
+        url.searchParams.get("campaignId"),
+        campaignId,
+        "Correções devem manter a campanha de origem.",
+      );
       state.listReads++;
       const search = (url.searchParams.get("q") ?? "").toLocaleLowerCase(
         "pt-BR",

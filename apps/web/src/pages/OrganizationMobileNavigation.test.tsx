@@ -45,6 +45,7 @@ function view(path = "/organizacao/org/inscricoes", role: Role = "ORGANIZER") {
         >
           <Route path="inscricoes" element={<h1>Inscrições do evento</h1>} />
           <Route path="eventos" element={<h1>Eventos da organização</h1>} />
+          <Route path="mensagens" element={<h1>Mensagens do evento</h1>} />
           <Route index element={<h1>Visão geral</h1>} />
         </Route>
       </Routes>
@@ -55,6 +56,20 @@ beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
 describe("Navegação compacta da organização em Inscrições", () => {
+  it("preserva evento e campanha nos atalhos de inscrições e mensagens", async () => {
+    view("/organizacao/org/inscricoes?evento=fac&campaign=campistas&q=nome&page=4");
+    const messages = screen.getByRole("link", { name: "Mensagens" });
+    expect(messages).toHaveAttribute(
+      "href",
+      "/organizacao/org/mensagens?evento=fac&campaign=campistas",
+    );
+    await userEvent.click(messages);
+    expect(await screen.findByRole("heading", { name: "Mensagens do evento" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Inscrições" })).toHaveAttribute(
+      "href",
+      "/organizacao/org/inscricoes?evento=fac&campaign=campistas",
+    );
+  });
   it("usa o menu único da organização e permite fechar por Escape com retorno de foco", async () => {
     const { container } = view();
     expect(

@@ -32,6 +32,8 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
     event: string,
     secondEvent: string,
     campaign: string,
+    camperCampaign: string,
+    camperForm: string,
     form: string,
     registration: string;
   const path = () =>
@@ -103,6 +105,27 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
       await db.formVersion.create({
         data: {
           campaignId: campaign,
+          version: 1,
+          config: {},
+          publishedAt: new Date(),
+        },
+      })
+    ).id;
+    camperCampaign = (
+      await db.campaign.create({
+        data: {
+          eventId: event,
+          kind: "CAMPER",
+          opensAt: new Date("2026-01-01"),
+          closesAt: new Date("2027-05-20"),
+          capacity: 20,
+        },
+      })
+    ).id;
+    camperForm = (
+      await db.formVersion.create({
+        data: {
+          campaignId: camperCampaign,
           version: 1,
           config: {},
           publishedAt: new Date(),
@@ -379,5 +402,218 @@ Que Nossa Senhora conduza seu SIM e que Deus abençoe sua entrega! 🙏🏻❤�
       notice.message,
     );
     expect(send).not.toHaveBeenCalled();
+  });
+  it("mantém o endpoint antigo dos servos e acrescenta o contexto no endpoint da campanha", async () => {
+    const current = (await request(app).get(path()).set(auth()).expect(200))
+      .body;
+    const canonical = (
+      await request(app)
+        .get(
+          `/api/v1/organizations/${org}/campaigns/${campaign}/accept-message`,
+        )
+        .set(auth())
+        .expect(200)
+    ).body;
+    const { campaign: context, ...settings } = canonical;
+    expect(context).toEqual({ id: campaign, kind: "VOLUNTEER" });
+    expect(settings).toEqual(current);
+    const saved = (
+      await request(app)
+        .put(
+          `/api/v1/organizations/${org}/campaigns/${campaign}/accept-message`,
+        )
+        .set(auth())
+        .send({ revision: current.revision, template: current.template })
+        .expect(200)
+    ).body;
+    expect(saved.campaign).toEqual(context);
+    expect(
+      (await request(app).get(path()).set(auth()).expect(200)).body.template,
+    ).toBe(saved.template);
+    expect(send).not.toHaveBeenCalled();
+  });
+  it("isola o modelo campista, usa sua equipe atual no WhatsApp e mantém o envio explícito", async () => {
+    const camperPath = `/api/v1/organizations/${org}/campaigns/${camperCampaign}/accept-message`;
+    await request(app).get(camperPath).expect(401);
+    await request(app).get(camperPath).set(auth("secretary")).expect(403);
+    await request(app)
+      .put(camperPath)
+      .set(auth("secretary"))
+      .send({ revision: 0, template: null })
+      .expect(403);
+    await request(app).get(camperPath).set(auth("other")).expect(403);
+    await request(app)
+      .get(
+        `/api/v1/organizations/${other}/campaigns/${camperCampaign}/accept-message`,
+      )
+      .set(auth("other"))
+      .expect(404);
+    const volunteerBefore = (
+      await request(app).get(path()).set(auth()).expect(200)
+    ).body;
+    const initial = (await request(app).get(camperPath).set(auth()).expect(200))
+      .body;
+    expect(initial).toMatchObject({
+      ready: true,
+      customized: false,
+      revision: 0,
+      campaign: { id: camperCampaign, kind: "CAMPER" },
+    });
+    expect(initial.template).not.toMatch(/servir|departamento|equipe/iu);
+    expect(initial.fields).toContainEqual({
+      key: "equipe",
+      label: "Equipe de campistas",
+      example: "EQUIPE AZUL",
+    });
+    expect(initial.requiredFields).toEqual(volunteerBefore.requiredFields);
+    const person = await db.person.create({
+      data: {
+        organizationId: org,
+        name: "João Campista",
+        birthDate: new Date("1990-01-01"),
+        phone: "44999999999",
+      },
+    });
+    const draft = await db.draft.create({
+      data: {
+        campaignId: camperCampaign,
+        formVersionId: camperForm,
+        tokenHash: randomUUID().replaceAll("-", "").repeat(2),
+        expiresAt: new Date("2090-01-01"),
+      },
+    });
+    const candidate = await db.registration.create({
+      data: {
+        personId: person.id,
+        campaignId: camperCampaign,
+        formVersionId: camperForm,
+        draftId: draft.id,
+        protocol: `CAMPER-MSG-${randomUUID()}`,
+        snapshot: {
+          name: person.name,
+          phone: person.phone,
+          contactEmail: "campista@example.test",
+        },
+      },
+    });
+    const base = `/api/v1/organizations/${org}/registrations/${candidate.id}`;
+    await request(app)
+      .patch(base + "/status")
+      .set(auth())
+      .send({
+        status: "APPROVED",
+        reason: "Inscrição campista aceita no teste",
+      })
+      .expect(200);
+    const defaultNotice = (
+      await request(app)
+        .get(base + "/decision-notice")
+        .set(auth())
+        .expect(200)
+    ).body.notice;
+    expect(defaultNotice.message).toContain("Sua inscrição como campista");
+    expect(defaultNotice.message).not.toMatch(/servir|departamento|equipe/iu);
+    expect(defaultNotice.spirituality).toBeNull();
+    const custom =
+      "Olá, {{primeiro_nome}}! Sua inscrição como campista no {{evento}} foi aceita. Equipe: {{equipe}} / {{departamento}}. Informe se poderá participar: {{link}}";
+    for (const invalid of [
+      custom.replace("{{primeiro_nome}}", ""),
+      custom.replace("{{link}}", ""),
+      custom + " {{senha}}",
+      custom + " {{link}}",
+    ])
+      await request(app)
+        .put(camperPath)
+        .set(auth())
+        .send({ revision: 0, template: invalid })
+        .expect(422);
+    const saved = (
+      await request(app)
+        .put(camperPath)
+        .set(auth())
+        .send({ revision: 0, template: custom })
+        .expect(200)
+    ).body;
+    expect(saved).toMatchObject({
+      revision: 1,
+      customized: true,
+      template: custom,
+    });
+    const unallocated = (
+      await request(app)
+        .get(base + "/decision-notice")
+        .set(auth())
+        .expect(200)
+    ).body.notice;
+    expect(unallocated.message).toContain(
+      "Equipe: A definir pela organização / A definir pela organização",
+    );
+    const group = await db.camperTeam.create({
+      data: { campaignId: camperCampaign, name: "EQUIPE VERDE", capacity: 2 },
+    });
+    await db.registration.update({
+      where: { id: candidate.id },
+      data: { camperTeamId: group.id },
+    });
+    const notice = (
+      await request(app)
+        .get(base + "/decision-notice")
+        .set(auth())
+        .expect(200)
+    ).body.notice;
+    expect(notice.message).toContain("Olá, João!");
+    expect(notice.message).toContain("Equipe: EQUIPE VERDE / EQUIPE VERDE");
+    expect(notice.message).not.toMatch(/\{\{|servir|COZINHA/iu);
+    expect(new URL(notice.whatsappLink).searchParams.get("text")).toBe(
+      notice.message,
+    );
+    expect(notice.message).toContain(notice.shortLink);
+    expect(notice.whatsappSentAt).toBeNull();
+    expect(notice.confirmedAt).toBeNull();
+    expect(
+      (await request(app).get(path()).set(auth()).expect(200)).body,
+    ).toEqual(volunteerBefore);
+    expect(send).not.toHaveBeenCalled();
+    await request(app)
+      .post(base + "/decision-notice/email")
+      .set(auth())
+      .expect(200);
+    expect(send).toHaveBeenCalledOnce();
+    expect(send.mock.calls[0]?.[0]).toMatchObject({
+      to: "campista@example.test",
+      text: notice.message,
+    });
+    send.mockClear();
+    const edits = await Promise.all(
+      [1, 2].map(() =>
+        request(app)
+          .put(camperPath)
+          .set(auth())
+          .send({ revision: 1, template: custom + " Esperamos você!" }),
+      ),
+    );
+    expect(edits.map((result) => result.status).sort()).toEqual([200, 409]);
+    const current = (await request(app).get(camperPath).set(auth()).expect(200))
+      .body;
+    const reset = (
+      await request(app)
+        .put(camperPath)
+        .set(auth())
+        .send({ revision: current.revision, template: null })
+        .expect(200)
+    ).body;
+    expect(reset.template).toBe(initial.defaultTemplate);
+    expect(reset.customized).toBe(false);
+    expect(
+      (await request(app).get(path()).set(auth()).expect(200)).body,
+    ).toEqual(volunteerBefore);
+    expect(
+      await db.auditLog.count({
+        where: {
+          entityId: camperCampaign,
+          action: "CAMPER_ACCEPT_MESSAGE_RESET",
+        },
+      }),
+    ).toBe(1);
   });
 });

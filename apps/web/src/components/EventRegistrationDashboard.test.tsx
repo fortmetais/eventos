@@ -221,11 +221,13 @@ describe("Visão geral de inscrições por evento", () => {
               departments: [
                 {
                   id: "welcome",
+                  campaignId: "camper",
+                  kind: "CAMPER",
                   name: "Acolhida",
                   capacity: 12,
-                  occupied: 8,
-                  available: 4,
-                  occupiedByCampaign: { volunteer: 5, camper: 3 },
+                  occupied: 3,
+                  available: 9,
+                  occupiedByCampaign: { camper: 3 },
                 },
               ],
             },
@@ -238,7 +240,7 @@ describe("Visão geral de inscrições por evento", () => {
       name: "Ver inscrições de Acolhida",
     });
     expect(department).toHaveAccessibleDescription(
-      "8 de 12 vagas ocupadas · 3 nesta campanha · 5 de outras campanhas · 4 livres",
+      "3 de 12 vagas ocupadas · 9 livres",
     );
     const status = screen.getByRole("link", {
       name: "Recusada: 2 inscrições. Ver inscrições",

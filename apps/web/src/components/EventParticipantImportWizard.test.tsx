@@ -514,7 +514,7 @@ describe("Assistente de candidaturas importadas", () => {
     );
     expect(
       screen.getByRole("link", { name: "Abrir gestão de inscrições" }),
-    ).toHaveAttribute("href", "/organizacao/org/inscricoes?evento=event");
+    ).toHaveAttribute("href", "/organizacao/org/inscricoes?evento=event&campaign=campaign");
     expect(
       screen.getByRole("button", { name: "Revisar linhas restantes" }),
     ).toBeVisible();

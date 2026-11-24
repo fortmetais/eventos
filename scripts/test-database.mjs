@@ -115,6 +115,7 @@ try {
     TEST_INITIAL_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_initial_tests?schema=acesso`,
     TEST_EVENTS_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_events_tests?schema=acesso`,
     TEST_VOLUNTEER_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_volunteer_tests?schema=acesso`,
+    TEST_CAMPER_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_camper_tests?schema=acesso`,
     TEST_NOTICE_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_notice_tests?schema=acesso`,
     TEST_DEPARTMENT_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_department_tests?schema=acesso`,
     TEST_FUNCTION_DATABASE_URL: `postgresql://fac_test@127.0.0.1:${port}/fac_function_tests?schema=acesso`,
@@ -201,6 +202,7 @@ try {
     "06_fichas_servos_e_inscricoes.sql",
     "08_departamentos_e_vagas.sql",
     "09_autorizacao_responsavel.sql",
+    "22_gestao_campistas_por_campanha.sql",
   ]) {
     run(binary("psql"), [
       "-h",
@@ -211,6 +213,40 @@ try {
       "fac_test",
       "-d",
       "fac_volunteer_tests",
+      "-v",
+      "ON_ERROR_STOP=1",
+      "-f",
+      join(root, "database", "manual", script),
+    ]);
+  }
+  // Campistas usam a instalação manual e também seus convites públicos.
+  // Preserve a base gradual de servos, que testa a ausência de avisos.
+  run(binary("psql"), [
+    "-h",
+    "127.0.0.1",
+    "-p",
+    String(port),
+    "-U",
+    "fac_test",
+    "-d",
+    "postgres",
+    "-c",
+    "CREATE DATABASE fac_camper_tests TEMPLATE fac_volunteer_tests",
+  ]);
+  for (const script of [
+    "07_avisos_e_confirmacao_servos.sql",
+    "18_respostas_presenca.sql",
+    "19_respostas_espiritualidade.sql",
+  ]) {
+    run(binary("psql"), [
+      "-h",
+      "127.0.0.1",
+      "-p",
+      String(port),
+      "-U",
+      "fac_test",
+      "-d",
+      "fac_camper_tests",
       "-v",
       "ON_ERROR_STOP=1",
       "-f",
@@ -243,6 +279,7 @@ try {
     "18_respostas_presenca.sql",
     "19_respostas_espiritualidade.sql",
     "08_departamentos_e_vagas.sql",
+    "22_gestao_campistas_por_campanha.sql",
   ]) {
     run(binary("psql"), [
       "-h",
@@ -282,6 +319,7 @@ try {
     "14_banners_e_url_evento.sql",
     "06_fichas_servos_e_inscricoes.sql",
     "08_departamentos_e_vagas.sql",
+    "22_gestao_campistas_por_campanha.sql",
   ])
     run(binary("psql"), [
       "-h",
@@ -358,6 +396,7 @@ try {
     "08_departamentos_e_vagas.sql",
     "09_autorizacao_responsavel.sql",
     "13_cadastros_anteriores.sql",
+    "22_gestao_campistas_por_campanha.sql",
   ])
     run(binary("psql"), [
       "-h",
@@ -376,6 +415,7 @@ try {
   // Ensaiar a atualização aditiva nas bases graduais que já têm inscrições.
   for (const database of [
     "fac_volunteer_tests",
+    "fac_camper_tests",
     "fac_notice_tests",
     "fac_department_tests",
     "fac_import_tests",
@@ -386,6 +426,7 @@ try {
       "21_correcoes_fichas.sql",
       "17_mensagens_aceite.sql",
       "19_respostas_espiritualidade.sql",
+      "22_gestao_campistas_por_campanha.sql",
     ])
       run(binary("psql"), [
         "-h",
@@ -443,6 +484,7 @@ try {
       "21_correcoes_fichas.sql",
       "17_mensagens_aceite.sql",
       "19_respostas_espiritualidade.sql",
+      "22_gestao_campistas_por_campanha.sql",
     ])
       run(binary("psql"), [
         "-h",
@@ -506,8 +548,16 @@ try {
     "CREATE DATABASE fac_registration_corrections_tests TEMPLATE fac_event_import_tests",
   ]);
   run(binary("psql"), [
-    "-h", "127.0.0.1", "-p", String(port), "-U", "fac_test", "-d", "postgres",
-    "-c", "CREATE DATABASE fac_event_summary_tests TEMPLATE fac_event_import_tests",
+    "-h",
+    "127.0.0.1",
+    "-p",
+    String(port),
+    "-U",
+    "fac_test",
+    "-d",
+    "postgres",
+    "-c",
+    "CREATE DATABASE fac_event_summary_tests TEMPLATE fac_event_import_tests",
   ]);
   // Algumas suítes reaplicam DDL na mesma base; não executar arquivos da API em paralelo.
   run(

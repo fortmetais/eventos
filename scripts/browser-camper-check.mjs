@@ -294,7 +294,47 @@ try {
           path === `/api/v1/organizations/${orgId}/events` ||
           path === `/api/v1/organizations/${orgId}/event-setups`
         )
-          return json([event]);
+          return json([
+            {
+              ...event,
+              campaigns: [
+                {
+                  ...campaign,
+                  forms: form ? [form] : [],
+                  _count: { registrations: submitted ? 1 : 0 },
+                },
+              ],
+            },
+          ]);
+        if (
+          path ===
+          `/api/v1/organizations/${orgId}/campaigns/${campaignId}/teams`
+        )
+          return json([]);
+        if (path === `/api/v1/organizations/${orgId}/registrations`) {
+          assert.equal(url.searchParams.get("campaignId"), campaignId);
+          const items = submitted
+            ? [
+                {
+                  id: registrationId,
+                  protocol: "INS-CAMPISTA-TESTE",
+                  status: "RECEIVED",
+                  origin: "PUBLIC_FORM",
+                  campaignId,
+                  campaign: { ...campaign, event },
+                  person: { id: "person-camper", ...payload },
+                  snapshot: payload,
+                  teamId: null,
+                  team: null,
+                  form,
+                  createdAt: "2026-11-24T12:00:00Z",
+                  history: [],
+                  decisionSummary: { ready: false, notice: null },
+                },
+              ]
+            : [];
+          return json({ items, total: items.length, page: 1, pageSize: 20 });
+        }
         if (path === `/api/v1/public/campaigns/${campaignId}`)
           return json({ ...campaign, event, form });
         if (path === `/api/v1/public/campaigns/${campaignId}/drafts`) {
@@ -526,14 +566,12 @@ try {
       fullPage: true,
     });
     await admin.goto(`${target}/organizacao/${orgId}/cadastros-anteriores`);
-    await admin
-      .getByLabel("Arquivo Excel", { exact: false })
-      .setInputFiles({
-        name: "antigos.xlsx",
-        mimeType:
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        buffer: xlsx,
-      });
+    await admin.getByLabel("Arquivo Excel", { exact: false }).setInputFiles({
+      name: "antigos.xlsx",
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      buffer: xlsx,
+    });
     await admin.getByRole("button", { name: "Ler planilha" }).click();
     await admin.getByLabel("Aba da planilha").waitFor();
     await admin.getByRole("button", { name: "Preparar prévia" }).click();
@@ -611,6 +649,13 @@ try {
     await visitor
       .getByLabel("Endereço (opcional)", { exact: true })
       .fill("Rua do encontro, 100");
+    assert.equal(
+      await visitor
+        .getByRole("combobox", { name: /equipe|departamento/i })
+        .count(),
+      0,
+      "A equipe do campista é definida pela organização, fora da ficha pública.",
+    );
     await visitor
       .getByLabel("Tamanho da camiseta", { exact: false })
       .selectOption("M");
@@ -707,12 +752,26 @@ try {
       path: `.local/screenshots/camper-${mobile ? "mobile" : "desktop"}-received.png`,
       fullPage: true,
     });
+    await admin.goto(
+      `${target}/organizacao/${orgId}/inscricoes?evento=${eventId}&campaign=${campaignId}`,
+    );
+    const assignedGroup = admin.getByRole("combobox", {
+      name: "Equipe de Campista de demonstração",
+      exact: true,
+    });
+    await assignedGroup.waitFor();
+    assert.equal(await assignedGroup.inputValue(), "");
+    assert.equal(new URL(admin.url()).searchParams.get("campaign"), campaignId);
+    assert.equal(
+      await admin.getByText("INS-CAMPISTA-TESTE", { exact: true }).count(),
+      1,
+    );
     assert.deepEqual(failure, []);
     await adminContext.close();
     await visitorContext.close();
   }
   console.info(
-    "Desktop e celular verificados: importação, revisão, consulta privada, autopreenchimento, ficha de campistas, foto, saúde, rascunho e responsável.",
+    "Desktop e celular verificados: importação, revisão, consulta privada, autopreenchimento, ficha de campistas, foto, saúde, rascunho, responsável e gestão na campanha correta sem preferência pública de equipe.",
   );
 } finally {
   await browser.close();

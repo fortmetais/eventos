@@ -61,9 +61,9 @@ beforeEach(() => {
   );
 });
 afterEach(cleanup);
-const view = () =>
+const view = (url = "/mensagens?evento=event") =>
   render(
-    <MemoryRouter initialEntries={["/mensagens?evento=event"]}>
+    <MemoryRouter initialEntries={[url]}>
       <UnsavedChangesProvider>
         <Routes>
           <Route
@@ -481,5 +481,127 @@ describe("Proteção do rascunho da mensagem", () => {
       await screen.findByRole("heading", { name: "Outra página" }),
     ).toBeVisible();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+describe("Mensagens separadas por campanha", () => {
+  const camperPath = "/organizations/org/campaigns/camper/accept-message";
+  const volunteerPath = "/organizations/org/campaigns/volunteer/accept-message";
+  const camperTemplate =
+    "Olá, {{nome}}! Sua inscrição foi aprovada. Responda pelo link {{link}}.";
+  const camperSettings = {
+    ...initial,
+    campaign: { id: "camper", kind: "CAMPER" },
+    template: camperTemplate,
+    defaultTemplate: camperTemplate,
+    fields: [{ key: "equipe", label: "Equipe alocada", example: "AZUL" }],
+    previewValues: { ...initial.previewValues, equipe: "AZUL" },
+  };
+  function scopedMocks() {
+    mocks.api.mockImplementation(async (url, options) => {
+      if (url.endsWith("/events"))
+        return [
+          {
+            id: "event",
+            name: "FAC Teste",
+            campaigns: [
+              { id: "volunteer", kind: "VOLUNTEER" },
+              { id: "camper", kind: "CAMPER" },
+            ],
+          },
+        ];
+      const result =
+        url === camperPath
+          ? camperSettings
+          : { ...initial, campaign: { id: "volunteer", kind: "VOLUNTEER" } };
+      return options?.method === "PUT"
+        ? {
+            ...result,
+            revision: 1,
+            template: options.body.template ?? result.defaultTemplate,
+          }
+        : result;
+    });
+  }
+  it("edita a mensagem de campistas por campanha sem alterar a de servos nem enviar", async () => {
+    scopedMocks();
+    view("/mensagens?evento=event&campaign=camper");
+    const editor = await screen.findByRole("textbox", {
+      name: /Texto da mensagem/,
+    });
+    await waitFor(() => expect(editor).toHaveValue(camperTemplate));
+    expect(
+      screen.getByRole("heading", {
+        name: "Aprovação de campistas · FAC Teste",
+      }),
+    ).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "Campanha" })).toHaveValue(
+      "camper",
+    );
+    const draft = camperTemplate + " Equipe: {{equipe}}.";
+    fireEvent.change(editor, { target: { value: draft } });
+    expect(
+      screen.getByRole("region", { name: "Prévia da mensagem" }),
+    ).toHaveTextContent("Responda pelo link [link pessoal]. Equipe: AZUL.");
+    fireEvent.click(screen.getByRole("button", { name: "Salvar mensagem" }));
+    await screen.findByText(/Mensagem salva para esta campanha/);
+    expect(mocks.api).toHaveBeenCalledWith(camperPath, {
+      method: "PUT",
+      body: { revision: 0, template: draft },
+    });
+    expect(
+      mocks.api.mock.calls.some(
+        ([url, options]) => url !== camperPath && options?.method,
+      ),
+    ).toBe(false);
+  });
+  it("protege alterações ao trocar entre servos e campistas", async () => {
+    scopedMocks();
+    view("/mensagens?evento=event&campaign=camper");
+    const editor = await screen.findByRole("textbox", {
+      name: /Texto da mensagem/,
+    });
+    await waitFor(() => expect(editor).toHaveValue(camperTemplate));
+    const draft = camperTemplate + " Texto não salvo.";
+    fireEvent.change(editor, { target: { value: draft } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Campanha" }), {
+      target: { value: "volunteer" },
+    });
+    await screen.findByRole("dialog", { name: "Alterações não salvas" });
+    fireEvent.click(screen.getByRole("button", { name: "Continuar editando" }));
+    expect(editor).toHaveValue(draft);
+    expect(mocks.api.mock.calls.some(([url]) => url === volunteerPath)).toBe(
+      false,
+    );
+    fireEvent.change(screen.getByRole("combobox", { name: "Campanha" }), {
+      target: { value: "volunteer" },
+    });
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Descartar alterações" }),
+    );
+    await screen.findByRole("heading", {
+      name: "Aceite para servir · FAC Teste",
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: /Texto da mensagem/ }),
+      ).toHaveValue(standard),
+    );
+    expect(mocks.api.mock.calls.some(([, options]) => options?.method)).toBe(
+      false,
+    );
+  });
+  it("não consulta modelo de uma campanha que não pertence ao evento selecionado", async () => {
+    scopedMocks();
+    view("/mensagens?evento=event&campaign=outra");
+    expect(
+      await screen.findByText("Campanha indisponível para este evento."),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("textbox", { name: /Texto da mensagem/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      mocks.api.mock.calls.some(([url]) => url.endsWith("/accept-message")),
+    ).toBe(false);
   });
 });

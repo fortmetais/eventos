@@ -1,5 +1,11 @@
 # Pacotes de sincronização com GitHub e Hostinger
 
+## Gestão de campistas por campanha — 24/11/2026
+
+Pacote da separação entre departamentos de servos e equipes de campistas, com capacidade, alocação, mensagens e gráficos próprios por campanha. API e interface devem acompanhar a etapa aditiva **SQL 22**, aplicada e conferida antes da nova API. A compilação não aplica migrations nem altera as flags da hospedagem. Não há pausa operacional embutida no SQL.
+
+Procedimento, versão anterior `5c0ed05fdd82314ef9f06aa1b5282fe9122ee556`, verificações e retorno: [ENTREGA_20261124.md](ENTREGA_20261124.md). Guia da base gradual: [ATUALIZACAO_22_CAMPISTAS.txt](supabase/ATUALIZACAO_22_CAMPISTAS.txt). Registrar separadamente o SHA publicado e o resultado da conferência na Hostinger; preparação local não comprova publicação nem aplicação em produção.
+
 ## Publicação autorizada em 19/11/2026
 
 O usuário autorizou o envio do estado local validado para `fortmetais/eventos` e `facnsaloanda.com.br`, incluindo a padronização de interface, a refatoração e o acesso temporário abaixo. As restrições anteriores de manter somente local estão substituídas por esta autorização. O SQL 20 deve ser conferido/aplicado antes da atualização da API; preservar o histórico e os dados existentes. O plano de retorno está em [RETORNO_VERSAO_20261119.md](RETORNO_VERSAO_20261119.md). O resultado efetivo do envio e da publicação será registrado após a verificação da Hostinger.

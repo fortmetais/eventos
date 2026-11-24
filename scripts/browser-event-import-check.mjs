@@ -612,7 +612,7 @@ try {
       page.getByRole("link", { name: "Abrir gestão de inscrições" }),
     ).toHaveAttribute(
       "href",
-      `/organizacao/${orgId}/inscricoes?evento=${eventId}`,
+      `/organizacao/${orgId}/inscricoes?evento=${eventId}&campaign=${campaignId}`,
     );
     await page
       .getByRole("heading", { name: "6. Resultado da importação" })

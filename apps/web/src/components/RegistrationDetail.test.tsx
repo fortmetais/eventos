@@ -12,7 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { useEffect, useState } from "react";
 import { RegistrationDetail } from "./RegistrationDetail";
 import { Modal } from "./Modal";
-import type { Registration } from "../lib/types";
+import type { Registration, Team } from "../lib/types";
 
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
@@ -23,6 +23,17 @@ const mocks = vi.hoisted(() => ({
   team: null as { id: string; name: string } | null,
   origin: "PUBLIC_FORM" as "PUBLIC_FORM" | "IMPORT",
   status: "RECEIVED",
+  kind: "VOLUNTEER" as "VOLUNTEER" | "CAMPER",
+  teams: [
+    {
+      id: "team",
+      eventId: "event",
+      campaignId: "campaign",
+      name: "SECRETARIA",
+      available: 0,
+      capacity: 1,
+    },
+  ] as Team[],
   eventStatus: "PUBLISHED",
   pendingInformation: undefined as string[] | undefined,
   updatedAt: "2026-11-11T12:00:00Z",
@@ -76,63 +87,72 @@ vi.mock("./DecisionNotice", () => ({
   },
 }));
 vi.mock("../lib/hooks", () => ({
-  useRemote: (path: string) => ({
+  useRemote: (path: string | null) => ({
     loading: mocks.loading,
     error: "",
     refresh: mocks.refresh,
     refreshInBackground: mocks.refresh,
     setData: mocks.setData,
-    data: path.endsWith("/events")
-      ? [
-          {
-            id: "event",
-            status: mocks.eventStatus,
-            teams: [
-              { id: "team", name: "SECRETARIA", available: 0, capacity: 1 },
-            ],
-          },
-        ]
-      : {
-          id: "candidate",
-          protocol: "INS-2026-TESTE",
-          status: mocks.status,
-          origin: mocks.origin,
-          updatedAt: mocks.updatedAt,
-          spiritualityResponse: mocks.spiritualityResponse,
-          spiritualityAt:
-            mocks.spiritualityResponse == null ? null : "2026-11-14T17:00:00Z",
-          spiritualityRespondedAt:
-            mocks.spiritualityResponse == null ? null : "2026-11-12T15:00:00Z",
-          decisionSummary: mocks.decisionSummary,
-          pendingInformation: mocks.pendingInformation,
-          importData:
-            mocks.origin === "IMPORT"
-              ? { pending: ["Pendência histórica"] }
-              : null,
-          accountId: "account",
-          team: mocks.team,
-          person: { name: "Maria Teste" },
-          snapshot: {
-            name: "Maria Teste",
-            birthDate: "2000-01-01",
-            phone: "44999999999",
-            photoAssetId: "photo",
-            answers: {},
-            ...mocks.snapshot,
-          },
-          history: [],
-          corrections: mocks.corrections,
-          campaign: {
-            kind: "VOLUNTEER",
-            allowWaitlist: true,
-            event: {
-              id: "event",
-              name: "Evento Teste",
-              startsAt: "2027-02-05",
-              spiritualityStartsAt: mocks.spiritualityStartsAt,
+    data: !path
+      ? null
+      : path.endsWith("/teams")
+        ? mocks.teams
+        : path.endsWith("/events")
+          ? [
+              {
+                id: "event",
+                status: mocks.eventStatus,
+                teams: [
+                  { id: "team", name: "SECRETARIA", available: 0, capacity: 1 },
+                ],
+              },
+            ]
+          : {
+              id: "candidate",
+              protocol: "INS-2026-TESTE",
+              status: mocks.status,
+              origin: mocks.origin,
+              updatedAt: mocks.updatedAt,
+              spiritualityResponse: mocks.spiritualityResponse,
+              spiritualityAt:
+                mocks.spiritualityResponse == null
+                  ? null
+                  : "2026-11-14T17:00:00Z",
+              spiritualityRespondedAt:
+                mocks.spiritualityResponse == null
+                  ? null
+                  : "2026-11-12T15:00:00Z",
+              decisionSummary: mocks.decisionSummary,
+              pendingInformation: mocks.pendingInformation,
+              importData:
+                mocks.origin === "IMPORT"
+                  ? { pending: ["Pendência histórica"] }
+                  : null,
+              accountId: "account",
+              team: mocks.team,
+              person: { name: "Maria Teste" },
+              snapshot: {
+                name: "Maria Teste",
+                birthDate: "2000-01-01",
+                phone: "44999999999",
+                photoAssetId: "photo",
+                answers: {},
+                ...mocks.snapshot,
+              },
+              history: [],
+              corrections: mocks.corrections,
+              campaign: {
+                id: "campaign",
+                kind: mocks.kind,
+                allowWaitlist: true,
+                event: {
+                  id: "event",
+                  name: "Evento Teste",
+                  startsAt: "2027-02-05",
+                  spiritualityStartsAt: mocks.spiritualityStartsAt,
+                },
+              },
             },
-          },
-        },
   }),
 }));
 afterEach(cleanup);
@@ -148,6 +168,17 @@ beforeEach(() => {
   mocks.team = null;
   mocks.origin = "PUBLIC_FORM";
   mocks.status = "RECEIVED";
+  mocks.kind = "VOLUNTEER";
+  mocks.teams = [
+    {
+      id: "team",
+      eventId: "event",
+      campaignId: "campaign",
+      name: "SECRETARIA",
+      available: 0,
+      capacity: 1,
+    },
+  ];
   mocks.eventStatus = "PUBLISHED";
   mocks.pendingInformation = undefined;
   mocks.updatedAt = "2026-11-11T12:00:00Z";
@@ -1063,5 +1094,125 @@ describe("Ficha completa extraída", () => {
       { method: "PUT", body: { teamId: "team" } },
     );
     expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Equipes de campistas na ficha", () => {
+  it("permite retirar equipe de campista confirmado sem transformar em departamento de servo", async () => {
+    mocks.kind = "CAMPER";
+    mocks.status = "CONFIRMED";
+    mocks.team = { id: "camper-team", name: "EQUIPE AZUL" };
+    mocks.teams = [
+      {
+        id: "camper-team",
+        campaignId: "campaign",
+        kind: "CAMPER",
+        eventId: "event",
+        name: "EQUIPE AZUL",
+        capacity: 10,
+        occupied: 1,
+        available: 9,
+      },
+    ];
+    render(
+      <RegistrationDetail
+        organizationId="org"
+        registrationId="candidate"
+        onChanged={vi.fn()}
+      />,
+    );
+    expand("Equipe e decisão");
+    const select = screen.getByRole("combobox", { name: "Alocar em equipe" });
+    expect(
+      within(select).getByRole("option", { name: "Sem equipe" }),
+    ).not.toBeDisabled();
+    fireEvent.change(select, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Salvar equipe" }));
+    await waitFor(() =>
+      expect(mocks.api).toHaveBeenCalledWith(
+        "/organizations/org/registrations/candidate/team",
+        { method: "PUT", body: { teamId: null } },
+      ),
+    );
+  });
+
+  it("ignora equipes fornecidas para outra campanha e usa apenas as da inscrição aberta", () => {
+    mocks.kind = "CAMPER";
+    mocks.teams = [
+      {
+        id: "camper-team",
+        campaignId: "campaign",
+        kind: "CAMPER",
+        eventId: "event",
+        name: "EQUIPE AZUL",
+        capacity: 10,
+        occupied: 1,
+        available: 9,
+      },
+    ];
+    render(
+      <RegistrationDetail
+        organizationId="org"
+        registrationId="candidate"
+        onChanged={vi.fn()}
+        teamContext={{
+          campaignId: "servos",
+          teams: [
+            {
+              id: "wrong",
+              campaignId: "servos",
+              eventId: "event",
+              name: "SECRETARIA",
+            },
+          ],
+          loading: false,
+          error: "",
+        }}
+      />,
+    );
+    expand("Equipe e decisão");
+    const select = screen.getByRole("combobox", { name: "Alocar em equipe" });
+    expect(
+      within(select).getByRole("option", { name: /EQUIPE AZUL/ }),
+    ).toBeVisible();
+    expect(
+      within(select).queryByRole("option", { name: /SECRETARIA/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("não bloqueia a decisão quando o cadastro opcional das equipes de campistas está indisponível", async () => {
+    mocks.kind = "CAMPER";
+    mocks.status = "APPROVED";
+    render(
+      <RegistrationDetail
+        organizationId="org"
+        registrationId="candidate"
+        onChanged={vi.fn()}
+        teamContext={{
+          campaignId: "campaign",
+          teams: null,
+          loading: false,
+          error: "Equipes indisponíveis no momento.",
+        }}
+      />,
+    );
+    expand("Equipe e decisão");
+    expect(
+      screen.getByRole("combobox", { name: "Alocar em equipe" }),
+    ).toBeDisabled();
+    fireEvent.change(
+      screen.getByRole("combobox", { name: "Decisão sobre a inscrição" }),
+      { target: { value: "CONFIRMED" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Salvar decisão" }));
+    await waitFor(() =>
+      expect(mocks.api).toHaveBeenCalledWith(
+        "/organizations/org/registrations/candidate/status",
+        expect.objectContaining({
+          method: "PATCH",
+          body: expect.objectContaining({ status: "CONFIRMED" }),
+        }),
+      ),
+    );
   });
 });

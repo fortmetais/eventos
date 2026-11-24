@@ -10,6 +10,7 @@ import { Field, Loading, Notice, PageHeading } from "../components/ui";
 type MessageSettings = {
   ready: boolean;
   event: { id: string; name: string };
+  campaign?: { id: string; kind: "CAMPER" | "VOLUNTEER" };
   revision: number;
   template: string;
   defaultTemplate: string;
@@ -26,11 +27,20 @@ export function EventMessages() {
   const { organizationId, membership } = useOrganization();
   const [params, setParams] = useSearchParams();
   const eventId = params.get("evento") ?? "";
+  const requestedCampaign = params.get("campaign") ?? "";
   const [editorDirty, setEditorDirty] = useState(false);
   const [editorBusy, setEditorBusy] = useState(false);
   const { run } = useUnsavedChanges(editorDirty, { busy: editorBusy });
   const events = useRemote<EventEdition[]>(
     `/organizations/${organizationId}/events`,
+  );
+  const edition = events.data?.find((event) => event.id === eventId);
+  const campaigns = edition?.campaigns ?? [];
+  const campaign = requestedCampaign
+    ? campaigns.find((item) => item.id === requestedCampaign)
+    : campaigns.find((item) => item.kind === "VOLUNTEER");
+  const invalidCampaign = Boolean(
+    requestedCampaign && !events.loading && !campaign,
   );
   if (membership.role !== "ORGANIZER")
     return (
@@ -39,8 +49,8 @@ export function EventMessages() {
   return (
     <>
       <PageHeading title="Mensagens do evento">
-        Personalize a mensagem de aceite dos servos e confira como ficará antes
-        de compartilhar.
+        Personalize a mensagem de aceite de cada campanha e confira como ficará
+        antes de compartilhar.
       </PageHeading>
       <section className="panel">
         <Field label="Evento">
@@ -53,6 +63,14 @@ export function EventMessages() {
                 const next = new URLSearchParams(params);
                 if (nextEvent) next.set("evento", nextEvent);
                 else next.delete("evento");
+                const available = events.data?.find(
+                  (item) => item.id === nextEvent,
+                )?.campaigns;
+                const nextCampaign =
+                  available?.find((item) => item.kind === "VOLUNTEER") ??
+                  available?.[0];
+                if (nextCampaign) next.set("campaign", nextCampaign.id);
+                else next.delete("campaign");
                 setParams(next, { replace: true });
               });
             }}
@@ -65,14 +83,41 @@ export function EventMessages() {
             ))}
           </select>
         </Field>
+        {campaigns.length > 0 && (
+          <Field label="Campanha">
+            <select
+              value={campaign?.id ?? ""}
+              disabled={editorBusy}
+              onChange={(event) => {
+                const id = event.target.value;
+                void run(() => {
+                  const next = new URLSearchParams(params);
+                  next.set("campaign", id);
+                  setParams(next, { replace: true });
+                });
+              }}
+            >
+              {!campaign && <option value="">Selecione a campanha</option>}
+              {campaigns.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.kind === "CAMPER" ? "Campistas" : "Servos"}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
         {events.loading && <Loading />}
         {events.error && <Notice>{events.error}</Notice>}
       </section>
-      {eventId && (
+      {invalidCampaign && (
+        <Notice>Campanha indisponível para este evento.</Notice>
+      )}
+      {eventId && !invalidCampaign && (!requestedCampaign || campaign) && (
         <MessageEditor
-          key={`${organizationId}:${eventId}`}
+          key={`${organizationId}:${eventId}:${requestedCampaign}`}
           organizationId={organizationId}
           eventId={eventId}
+          campaignId={requestedCampaign || undefined}
           onDirtyChange={setEditorDirty}
           onBusyChange={setEditorBusy}
         />
@@ -83,15 +128,19 @@ export function EventMessages() {
 function MessageEditor({
   organizationId,
   eventId,
+  campaignId,
   onDirtyChange,
   onBusyChange,
 }: {
   organizationId: string;
   eventId: string;
+  campaignId?: string;
   onDirtyChange: (dirty: boolean) => void;
   onBusyChange: (busy: boolean) => void;
 }) {
-  const path = `/organizations/${organizationId}/events/${eventId}/accept-message`;
+  const path = campaignId
+    ? `/organizations/${organizationId}/campaigns/${campaignId}/accept-message`
+    : `/organizations/${organizationId}/events/${eventId}/accept-message`;
   const remote = useRemote<MessageSettings>(path);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false),
@@ -103,6 +152,7 @@ function MessageEditor({
     if (remote.data) setText(remote.data.template);
   }, [remote.data]);
   const data = remote.data;
+  const camper = data?.campaign?.kind === "CAMPER";
   const unsaved = Boolean(data?.ready && text !== data.template);
   useLayoutEffect(() => {
     onDirtyChange(unsaved);
@@ -183,7 +233,11 @@ function MessageEditor({
         },
       });
       remote.setData(updated);
-      setInfo("Mensagem salva para este evento. Nenhuma mensagem foi enviada.");
+      setInfo(
+        camper
+          ? "Mensagem salva para esta campanha. Nenhuma mensagem foi enviada."
+          : "Mensagem salva para este evento. Nenhuma mensagem foi enviada.",
+      );
     } catch (e) {
       setError((e as Error).message);
       setConflict((e as { status?: number }).status === 409);
@@ -197,11 +251,14 @@ function MessageEditor({
   );
   return (
     <section className="panel">
-      <h2>Aceite para servir · {data.event.name}</h2>
+      <h2>
+        {camper ? "Aprovação de campistas" : "Aceite para servir"} ·{" "}
+        {data.event.name}
+      </h2>
       {!data.ready && (
         <Notice>
-          A personalização das mensagens aguarda a atualização 17 do banco. Você
-          pode consultar o texto padrão.
+          A personalização das mensagens aguarda a atualização{" "}
+          {camper ? "22" : "17"} do banco. Você pode consultar o texto padrão.
         </Notice>
       )}
       {error && (
@@ -233,8 +290,11 @@ function MessageEditor({
         Use os botões para inserir as informações de cada candidato. O nome
         (completo ou primeiro nome) e o link pessoal são obrigatórios. Evento e
         validade são opcionais: você pode escrever essas informações diretamente
-        no texto. O departamento será o efetivamente alocado; sem alocação,
-        aparecerá “A definir pela organização”.
+        no texto.{" "}
+        {camper
+          ? "A equipe será a efetivamente alocada"
+          : "O departamento será o efetivamente alocado"}
+        ; sem alocação, aparecerá “A definir pela organização”.
       </p>
       {data.ready && missing.length > 0 && (
         <section aria-label="Informações obrigatórias para salvar">

@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 import {
   defaultMessageTemplate,
+  defaultCamperMessageTemplate,
+  camperMessageFields,
   messageFields,
   requiredMessageFields,
   renderMessageTemplate,
@@ -126,5 +128,144 @@ describe("Modelo de mensagem de aceite", () => {
     "x".repeat(5001),
   ])("rejeita modelo incompleto ou desconhecido", (template) => {
     expect(() => validateMessageTemplate(template)).toThrow();
+  });
+});
+
+describe("Mensagens separadas por público da campanha", () => {
+  const event = {
+    id: "event",
+    name: "FAC",
+    startsAt: new Date("2027-02-05"),
+    organization: { name: "Paróquia" },
+  };
+  it("mantém o padrão campista sem servir ou equipe e oferece equipe como variável opcional", () => {
+    expect(defaultCamperMessageTemplate).toContain("inscrição como campista");
+    expect(defaultCamperMessageTemplate).not.toMatch(
+      /servir|departamento|equipe/iu,
+    );
+    expect(() =>
+      validateMessageTemplate(defaultCamperMessageTemplate, "CAMPER"),
+    ).not.toThrow();
+    expect(camperMessageFields).toContainEqual({
+      key: "equipe",
+      label: "Equipe de campistas",
+      example: "EQUIPE AZUL",
+    });
+    const template =
+      "Olá, {{primeiro_nome}}! Equipe {{equipe}} · {{departamento}}. Responda em {{link}}";
+    expect(() => validateMessageTemplate(template, "CAMPER")).not.toThrow();
+    expect(() => validateMessageTemplate(template)).toThrow();
+    const values = Object.fromEntries(
+      messageFields.map((field) => [field.key, field.example]),
+    ) as MessageValues;
+    values.departamento = "A definir pela organização";
+    expect(renderMessageTemplate(template, values)).toContain(
+      "Equipe A definir pela organização · A definir pela organização",
+    );
+    values.departamento = "EQUIPE VERDE";
+    values.equipe = "EQUIPE VERDE";
+    expect(renderMessageTemplate(template, values)).toContain(
+      "Equipe EQUIPE VERDE · EQUIPE VERDE",
+    );
+  });
+  it("mantém a exigência do nome e de um único link para campistas", () => {
+    for (const template of [
+      "Olá, candidato. Inscrição aceita; fale com a organização.",
+      defaultCamperMessageTemplate.replace("{{nome}}", "Maria"),
+      defaultCamperMessageTemplate + " {{link}}",
+      defaultCamperMessageTemplate + " {{saude}}",
+    ])
+      expect(() => validateMessageTemplate(template, "CAMPER")).toThrow();
+  });
+  it("não lê o modelo dos servos quando a tabela de campistas ainda não foi aplicada", async () => {
+    const read = vi.fn();
+    const transaction = vi.fn();
+    const db = {
+      $queryRaw: vi.fn().mockResolvedValue([{ ready: false }]),
+      $transaction: transaction,
+      camperAcceptMessage: { findUnique: read },
+      campaign: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValue({
+            id: "camper",
+            kind: "CAMPER",
+            eventId: "event",
+            event,
+          }),
+      },
+    } as unknown as PrismaClient;
+    const service = new EventMessagesService(db);
+    expect(
+      await service.campaignTemplate("camper", "CAMPER", "event"),
+    ).toBeNull();
+    expect(await service.campaignPage("org", "camper")).toMatchObject({
+      ready: false,
+      revision: 0,
+      customized: false,
+      campaign: { id: "camper", kind: "CAMPER" },
+      template: defaultCamperMessageTemplate,
+      previewValues: { equipe: "EQUIPE AZUL", departamento: "EQUIPE AZUL" },
+    });
+    await expect(
+      service.saveCampaign("org", "camper", "actor", {
+        revision: 0,
+        template: defaultCamperMessageTemplate,
+      }),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(read).not.toHaveBeenCalled();
+    expect(transaction).not.toHaveBeenCalled();
+  });
+  it("carrega o modelo pela campanha sem misturar mensagens de servos e campistas", async () => {
+    const read = vi.fn().mockResolvedValue({ content: "Modelo campista" });
+    const query = vi
+      .fn()
+      .mockImplementation((strings: TemplateStringsArray) =>
+        Promise.resolve(
+          strings.join("").includes("to_regclass")
+            ? [{ ready: true }]
+            : [{ content: "Modelo servo" }],
+        ),
+      );
+    const service = new EventMessagesService({
+      $queryRaw: query,
+      camperAcceptMessage: { findUnique: read },
+    } as unknown as PrismaClient);
+    expect(
+      await service.campaignTemplate("volunteer", "VOLUNTEER", "event"),
+    ).toBe("Modelo servo");
+    expect(read).not.toHaveBeenCalled();
+    expect(await service.campaignTemplate("camper", "CAMPER", "event")).toBe(
+      "Modelo campista",
+    );
+    expect(read).toHaveBeenCalledExactlyOnceWith({
+      where: { campaignId: "camper" },
+      select: { content: true },
+    });
+  });
+  it("resolve a campanha dentro da organização antes de ler ou salvar seu modelo", async () => {
+    const query = vi.fn();
+    const read = vi.fn();
+    const findFirst = vi.fn().mockResolvedValue(null);
+    const service = new EventMessagesService({
+      $queryRaw: query,
+      campaign: { findFirst },
+      camperAcceptMessage: { findUnique: read },
+    } as unknown as PrismaClient);
+    await expect(
+      service.campaignPage("org", "other-campaign"),
+    ).rejects.toMatchObject({ status: 404 });
+    await expect(
+      service.saveCampaign("org", "other-campaign", "actor", {
+        revision: 0,
+        template: null,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(findFirst).toHaveBeenCalledWith({
+      where: { id: "other-campaign", event: { organizationId: "org" } },
+      include: { event: { include: { organization: true } } },
+    });
+    expect(query).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
   });
 });

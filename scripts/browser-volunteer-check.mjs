@@ -319,6 +319,14 @@ async function fixtures(context) {
       });
     }
     if (
+      path === `/api/v1/organizations/${id}/campaigns/${campaignId}/teams` &&
+      route.request().method() === "GET"
+    )
+      return json(
+        route,
+        event.teams.map((team) => ({ ...team, campaignId, kind: "VOLUNTEER" })),
+      );
+    if (
       path === `/api/v1/organizations/${id}/events` ||
       path === `/api/v1/organizations/${id}/event-setups`
     )
@@ -970,7 +978,7 @@ try {
   });
 
   await admin.goto(
-    `${target}/organizacao/${id}/inscricoes?evento=${eventId}&inscricao=registration-test`,
+    `${target}/organizacao/${id}/inscricoes?evento=${eventId}&campaign=${campaignId}&inscricao=registration-test`,
   );
   await openDetailSection("Participação e respostas");
   await openDetailSection("Departamento e decisão");

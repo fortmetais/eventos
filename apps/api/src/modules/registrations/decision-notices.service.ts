@@ -5,15 +5,21 @@ import { hashToken } from "../../core/security.js";
 import type { DecisionEmailSender } from "../../core/decision-mail.js";
 import {
   defaultMessageTemplate,
+  defaultCamperMessageTemplate,
   EventMessagesService,
   renderMessageTemplate,
 } from "./event-messages.service.js";
+import {
+  basicCamperTeam,
+  normalizeRegistrationTeam,
+} from "./registration-team.js";
 
 const noticeInclude = {
   registration: {
     include: {
       person: true,
       team: true,
+      camperTeam: { select: basicCamperTeam },
       campaign: { include: { event: { include: { organization: true } } } },
     },
   },
@@ -176,25 +182,36 @@ export class DecisionNoticesService {
     }).format(notice.expiresAt);
     const name = registration.person.name;
     const camper = registration.campaign.kind === "CAMPER";
-    const department = registration.team?.name;
+    const department = normalizeRegistrationTeam(registration).team?.name;
     let text = camper
       ? notice.kind === "ACEITE"
-        ? `Olá, ${name}! Sua inscrição como campista no ${event.name} foi aprovada!\n\n${event.organization.name} · Evento a partir de ${eventDate}.\n\nConfirme sua presença pelo link: ${shortLink}\n\nO link é pessoal e válido até ${expiry} (horário de Brasília). A organização finalizará a confirmação conforme as vagas e, para menores, após a autorização do responsável.\n\nEsperamos você!`
+        ? ""
         : `Olá, ${name}. Agradecemos seu interesse em participar do ${event.name}. Sua inscrição como campista não foi selecionada para esta edição. Esperamos receber você em uma próxima oportunidade!\n\nConfira o resultado: ${shortLink}\n\n${event.organization.name}`
       : notice.kind === "ACEITE"
         ? ""
         : `Olá, ${name}. Não foi dessa vez!\n\nAgradecemos sua disponibilidade para servir no ${event.name}. Sua candidatura não foi selecionada para esta edição. Esperamos poder contar com você em uma próxima oportunidade!\n\nConfira o resultado: ${shortLink}\n\n${event.organization.name}`;
-    if (!camper && notice.kind === "ACEITE") {
-      const custom = await new EventMessagesService(this.db).template(event.id);
-      text = renderMessageTemplate(custom ?? defaultMessageTemplate, {
-        nome: name,
-        evento: event.name,
-        organizacao: event.organization.name,
-        data_evento: eventDate,
-        departamento: department ?? "A definir pela organização",
-        link: shortLink.toString(),
-        validade: expiry,
-      });
+    if (notice.kind === "ACEITE") {
+      const custom = await new EventMessagesService(this.db).campaignTemplate(
+        registration.campaignId,
+        registration.campaign.kind,
+        event.id,
+      );
+      text = renderMessageTemplate(
+        custom ??
+          (camper ? defaultCamperMessageTemplate : defaultMessageTemplate),
+        {
+          nome: name,
+          evento: event.name,
+          organizacao: event.organization.name,
+          data_evento: eventDate,
+          departamento: department ?? "A definir pela organização",
+          ...(camper
+            ? { equipe: department ?? "A definir pela organização" }
+            : {}),
+          link: shortLink.toString(),
+          validade: expiry,
+        },
+      );
     }
     const snapshot = registration.snapshot as {
       email?: string;

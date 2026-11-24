@@ -8,6 +8,7 @@ import { readRegistrationCorrections } from "./registration-corrections-history.
 import { normalizeName } from "../participant-imports/workbook.js";
 import type { FormConfig } from "../events/events.validation.js";
 import { correctedPersonIdentity } from "./registration-corrections.identity.js";
+import { normalizeRegistrationTeam } from "./registration-team.js";
 import {
   asCorrectionObject,
   correctionImportPending,
@@ -96,7 +97,10 @@ export class RegistrationCorrectionsService {
           kind: registration.campaign.kind,
           origin: registration.origin,
           eventStartsAt: registration.campaign.event.startsAt,
-          teams: registration.campaign.event.teams,
+          teams:
+            registration.campaign.kind === "VOLUNTEER"
+              ? registration.campaign.event.teams
+              : [],
         });
         const changed = Object.keys(result.changes);
         if (!changed.length) return;
@@ -268,7 +272,7 @@ export class RegistrationCorrectionsService {
       include: { ...registrationInclude, form: true, consent: true },
     });
     return {
-      ...registration,
+      ...normalizeRegistrationTeam(registration),
       corrections: await readRegistrationCorrections(
         this.db,
         organizationId,

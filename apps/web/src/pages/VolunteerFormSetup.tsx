@@ -134,9 +134,20 @@ function Editor({
   const [busy, setBusy] = useState(false);
   const [bannerFile, setBannerFile] = useState<File | null>(null);
   const bannerPreview = useBannerPreview(bannerFile, fieldsConfig.banner?.url);
-  const draftSnapshot = JSON.stringify({ fieldsConfig, description, requirements, training, capacity, allowWaitlist, terms });
+  const draftSnapshot = JSON.stringify({
+    fieldsConfig,
+    description,
+    requirements,
+    training,
+    capacity,
+    allowWaitlist,
+    terms,
+  });
   const savedSnapshot = useRef(draftSnapshot);
-  useUnsavedChanges(savedSnapshot.current !== draftSnapshot || Boolean(bannerFile), { busy });
+  useUnsavedChanges(
+    savedSnapshot.current !== draftSnapshot || Boolean(bannerFile),
+    { busy },
+  );
   const config: FormConfig = {
     ...fieldsConfig,
     terms,
@@ -270,7 +281,7 @@ function Editor({
               </Link>
               <Link
                 className="button outline"
-                to={`/organizacao/${organizationId}/inscricoes`}
+                to={`/organizacao/${organizationId}/inscricoes?evento=${data.event.id}&campaign=${data.campaign.id}`}
               >
                 {camper ? "Avaliar inscrições" : "Avaliar candidaturas"}
               </Link>
@@ -397,7 +408,7 @@ function Editor({
             )}
             <Link
               className="text-button"
-              to={`/organizacao/${organizationId}/${data.event.status === "DRAFT" ? "eventos" : `inscricoes?evento=${data.event.id}`}`}
+              to={`/organizacao/${organizationId}/inscricoes?evento=${data.event.id}&campaign=${data.campaign.id}&aba=departamentos`}
             >
               Gerenciar departamentos e vagas
             </Link>
@@ -423,6 +434,12 @@ function Editor({
               />
               Permitir lista de espera quando as vagas forem preenchidas.
             </label>
+            <Link
+              className="text-button"
+              to={`/organizacao/${organizationId}/inscricoes?evento=${data.event.id}&campaign=${data.campaign.id}&aba=departamentos`}
+            >
+              Gerenciar equipes e vagas
+            </Link>
           </section>
         )}
         <Field
@@ -439,8 +456,9 @@ function Editor({
         </Field>
         <Notice kind="info">
           Publicar disponibiliza a página do evento. O envio da ficha só será
-          permitido dentro do período de {audience}. Fichas já preenchidas
-          manterão sua versão original.
+          permitido dentro do período de {audience}, enquanto a campanha não
+          estiver pausada. Publicar uma versão não retoma inscrições pausadas.
+          Fichas já preenchidas manterão sua versão original.
         </Notice>
         <FormLayoutEditor
           form={config}

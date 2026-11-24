@@ -77,7 +77,17 @@ WITH esperado (etapa, esquema, tabela, coluna, tipo, aceita_nulo) AS (
     ('17 - mensagens de aceite', 'eventos', 'mensagens_aceite', 'revisao', 'int4', 'NO'),
     ('17 - mensagens de aceite', 'eventos', 'mensagens_aceite', 'atualizado_por', 'uuid', 'NO'),
     ('17 - mensagens de aceite', 'eventos', 'mensagens_aceite', 'atualizado_em', 'timestamptz', 'NO'),
-    ('20 - acesso temporario', 'organizacoes', 'auditoria', 'detalhes', 'jsonb', 'YES')
+    ('20 - acesso temporario', 'organizacoes', 'auditoria', 'detalhes', 'jsonb', 'YES'),
+    ('22 - gestao campistas', 'eventos', 'equipes_campistas', 'equipe_campista_id', 'uuid', 'NO'),
+    ('22 - gestao campistas', 'eventos', 'equipes_campistas', 'campanha_id', 'uuid', 'NO'),
+    ('22 - gestao campistas', 'eventos', 'equipes_campistas', 'nome', 'text', 'NO'),
+    ('22 - gestao campistas', 'eventos', 'equipes_campistas', 'vagas', 'int4', 'NO'),
+    ('22 - gestao campistas', 'eventos', 'mensagens_aceite_campistas', 'campanha_id', 'uuid', 'NO'),
+    ('22 - gestao campistas', 'eventos', 'mensagens_aceite_campistas', 'conteudo', 'text', 'YES'),
+    ('22 - gestao campistas', 'eventos', 'mensagens_aceite_campistas', 'revisao', 'int4', 'NO'),
+    ('22 - gestao campistas', 'eventos', 'mensagens_aceite_campistas', 'atualizado_por', 'uuid', 'NO'),
+    ('22 - gestao campistas', 'eventos', 'mensagens_aceite_campistas', 'atualizado_em', 'timestamptz', 'NO'),
+    ('22 - gestao campistas', 'inscricoes', 'inscricoes', 'equipe_campista_id', 'uuid', 'YES')
 )
 SELECT current_database() AS banco,
        e.etapa,

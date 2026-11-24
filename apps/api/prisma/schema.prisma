@@ -68,6 +68,7 @@ model Account {
   platformAdmin   Boolean          @default(false) @map("admin")
   profile         Json             @default("{}") @map("perfil")
   eventMessages   EventAcceptMessage[]
+  camperMessages  CamperAcceptMessage[]
   createdAt       DateTime         @default(dbgenerated("timezone('UTC'::text, CURRENT_TIMESTAMP)")) @map("criado_em") @db.Timestamp(3)
   memberships     Membership[]
   registrations   Registration[]
@@ -250,6 +251,8 @@ model Campaign {
   drafts        Draft[]
   registrations Registration[]
   participantImports ParticipantImport[]
+  camperTeams   CamperTeam[]
+  camperAcceptMessage CamperAcceptMessage?
 
   @@unique([eventId, kind], map: "campanhas_evento_publico_uk")
   @@map("campanhas")
@@ -411,6 +414,7 @@ model Registration {
   formVersionId         String                 @map("versao_ficha_id") @db.Uuid
   accountId             String?                @map("conta_id") @db.Uuid
   teamId                String?                @map("equipe_id") @db.Uuid
+  camperTeamId          String?                @map("equipe_campista_id") @db.Uuid
   snapshot              Json                   @map("respostas")
   spiritualityResponse  Boolean?               @map("espiritualidade_participara")
   spiritualityRespondedAt DateTime?             @map("espiritualidade_respondido_em") @db.Timestamp(3)
@@ -424,6 +428,7 @@ model Registration {
   form                  FormVersion            @relation(fields: [formVersionId], references: [id])
   account               Account?               @relation(fields: [accountId], references: [id])
   team                  Team?                  @relation(fields: [teamId], references: [id])
+  camperTeam            CamperTeam?            @relation(fields: [camperTeamId, campaignId], references: [id, campaignId], onDelete: Restrict, onUpdate: NoAction, map: "inscricoes_equipe_campista_campanha_fk")
   health                HealthSubmission?
   consent               Consent?
   guardianAuthorization GuardianAuthorization?
@@ -435,6 +440,7 @@ model Registration {
   @@index([campaignId, status])
   @@index([campaignId, origin], map: "inscricoes_campanha_origem_idx")
   @@index([accountId])
+  @@index([camperTeamId], map: "inscricoes_equipe_campista_idx")
   @@map("inscricoes")
   @@schema("inscricoes")
 }
@@ -519,6 +525,34 @@ model Team {
 
   @@unique([eventId, name])
   @@map("equipes")
+  @@schema("eventos")
+}
+
+model CamperTeam {
+  id            String         @id(map: "equipes_campistas_pk") @default(uuid()) @map("equipe_campista_id") @db.Uuid
+  campaignId    String         @map("campanha_id") @db.Uuid
+  name          String         @map("nome")
+  capacity      Int            @map("vagas")
+  campaign      Campaign       @relation(fields: [campaignId], references: [id], onDelete: Restrict, onUpdate: NoAction, map: "equipes_campistas_campanha_fk")
+  registrations Registration[]
+
+  @@unique([campaignId, name], map: "equipes_campistas_campanha_nome_uk")
+  @@unique([id, campaignId], map: "equipes_campistas_id_campanha_uk")
+  @@map("equipes_campistas")
+  @@schema("eventos")
+}
+
+model CamperAcceptMessage {
+  campaignId String   @id(map: "mensagens_aceite_campistas_pk") @map("campanha_id") @db.Uuid
+  content    String?  @map("conteudo")
+  revision   Int      @default(0) @map("revisao")
+  updatedBy  String   @map("atualizado_por") @db.Uuid
+  updatedAt  DateTime @default(now()) @map("atualizado_em") @db.Timestamptz(6)
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "mensagens_aceite_campistas_campanha_fk")
+  updater    Account  @relation(fields: [updatedBy], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "mensagens_aceite_campistas_autor_fk")
+
+  @@index([updatedBy], map: "mensagens_aceite_campistas_autor_idx")
+  @@map("mensagens_aceite_campistas")
   @@schema("eventos")
 }
 

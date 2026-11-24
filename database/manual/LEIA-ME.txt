@@ -167,6 +167,32 @@ Acrescenta detalhes opcionais à auditoria existente e índice de reservas,
 sem apagar registros. API e interface devem acompanhar a alteração.
 Situação e autorização de publicação: deploy/PROXIMA_SINCRONIZACAO.md.
 
+GESTÃO DE CAMPISTAS POR CAMPANHA — ETAPA 22 (24/11/2026)
+
+Antes de publicar a nova API, executar inteiro
+22_gestao_campistas_por_campanha.sql na base gradual já existente.
+Pré-requisitos: acesso, organizações, pessoas, eventos/campanhas e inscrições
+(etapas 01/02/03/05/06; preservar as demais etapas já aplicadas).
+Não executar o histórico completo de migrations Prisma na base gradual.
+
+Acrescenta eventos.equipes_campistas, eventos.mensagens_aceite_campistas e
+inscricoes.inscricoes.equipe_campista_id opcional. Departamentos, vínculos e
+mensagens de servos são preservados. Equipes e mensagens de campistas usam
+o identificador da campanha, com relações e proteções contra mistura de públicos.
+O script é transacional e repetível; não pausa inscrições, altera flags,
+reclassifica candidatos ou envia mensagens. Há limites curtos para espera
+por bloqueios e duração; em erro, interromper e conferir o rollback.
+
+Se existir campista vinculado ao antigo equipe_id, a etapa é recusada para
+conferência. Não limpar, converter ou redistribuir esses vínculos automaticamente.
+Nem compilar nem iniciar a aplicação aplica este SQL.
+
+Guia e conferência: deploy/supabase/ATUALIZACAO_22_CAMPISTAS.txt.
+Entrega e retorno: deploy/ENTREGA_20261124.md.
+Para recolher a liberação de campistas, usar EVENTS_ENABLED=false junto com
+CAMPER_REGISTRATIONS_ENABLED=false, reiniciar/reimplantar e manter tabelas,
+respostas, equipes, mensagens e auditoria. Não excluir a estrutura para retornar.
+
 https://www.postgresql.org/docs/current/ddl-schemas.html
 https://www.prisma.io/docs/orm/v6/prisma-schema/data-model/multi-schema
 https://supabase.com/docs/guides/auth/managing-user-data

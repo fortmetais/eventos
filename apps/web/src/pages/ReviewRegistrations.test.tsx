@@ -11,7 +11,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { ReviewRegistrations } from "./ReviewRegistrations";
-import type { EventEdition, Registration } from "../lib/types";
+import type { EventEdition, Registration, Team } from "../lib/types";
 
 const mocks = vi.hoisted(() => ({
   api: vi.fn(),
@@ -107,6 +107,10 @@ const edition = {
     {
       id: "campaign",
       kind: "VOLUNTEER",
+      opensAt: "2026-10-01T00:00:00Z",
+      closesAt: "2027-02-01T00:00:00Z",
+      paused: false,
+      capacity: null,
       allowWaitlist: true,
       _count: { registrations: 25 },
     },
@@ -135,6 +139,7 @@ const candidate = {
   decisionSummary: { ready: true, notice: null },
 } as Registration;
 let events: EventEdition[], items: Registration[], total: number;
+let camperTeams: Team[];
 let mobileViewport = false;
 let wideLandscapeViewport = false;
 const mediaListeners = new Set<() => void>();
@@ -149,7 +154,9 @@ function Location() {
     </>
   );
 }
-function show(url = "/organizacao/org/inscricoes?evento=event") {
+function show(
+  url = "/organizacao/org/inscricoes?evento=event&campaign=campaign",
+) {
   return render(
     <MemoryRouter initialEntries={[url]}>
       <ReviewRegistrations />
@@ -199,6 +206,18 @@ beforeEach(() => {
       options?: { method?: string; body?: Record<string, unknown> },
     ) => {
       if (path.endsWith("/events")) return structuredClone(events);
+      if (path.includes("/campaigns/") && path.endsWith("/teams")) {
+        const id = path.split("/campaigns/")[1].split("/")[0];
+        const event = events.find((item) =>
+          item.campaigns.some((campaign) => campaign.id === id),
+        );
+        const campaign = event?.campaigns.find(
+          (campaign) => campaign.id === id,
+        );
+        return structuredClone(
+          campaign?.kind === "CAMPER" ? camperTeams : (event?.teams ?? []),
+        );
+      }
       if (path.includes("/registrations?"))
         return { items: structuredClone(items), total, page: 1, pageSize: 20 };
       if (path.endsWith("/status")) {
@@ -206,7 +225,13 @@ beforeEach(() => {
         return items[0];
       }
       if (path.endsWith("/team")) {
-        items[0].team = options!.body!.teamId ? events[0].teams[0] : null;
+        const optionsForCampaign =
+          items[0].campaign.kind === "CAMPER" ? camperTeams : events[0].teams;
+        items[0].team = options!.body!.teamId
+          ? (optionsForCampaign.find(
+              (team) => team.id === options!.body!.teamId,
+            ) ?? null)
+          : null;
         return items[0];
       }
       if (path.endsWith("/registrations/elsewhere"))
@@ -228,7 +253,7 @@ describe("Gestão de inscrições por evento", () => {
     wideLandscapeViewport = true;
     total = 45;
     show(
-      "/organizacao/org/inscricoes?evento=event&q=Maria&sort=NAME_DESC&origin=IMPORT&page=2",
+      "/organizacao/org/inscricoes?evento=event&campaign=campaign&q=Maria&sort=NAME_DESC&origin=IMPORT&page=2",
     );
     await ready();
     const modes = screen.getByRole("group", { name: "Modo de exibição" });
@@ -269,7 +294,9 @@ describe("Gestão de inscrições por evento", () => {
   });
   it("restaura Cards pela URL e preserva a escolha ao reduzir e ampliar a tela", async () => {
     wideLandscapeViewport = true;
-    show("/organizacao/org/inscricoes?evento=event&exibicao=cards");
+    show(
+      "/organizacao/org/inscricoes?evento=event&campaign=campaign&exibicao=cards",
+    );
     await ready();
     expect(
       screen.getByRole("list", { name: "Inscrições em cards" }),
@@ -300,7 +327,9 @@ describe("Gestão de inscrições por evento", () => {
   });
   it("mantém cards compactos no celular sem mostrar o seletor de computador", async () => {
     mobileViewport = true;
-    show("/organizacao/org/inscricoes?evento=event&exibicao=lista");
+    show(
+      "/organizacao/org/inscricoes?evento=event&campaign=campaign&exibicao=lista",
+    );
     await ready();
     expect(
       screen.queryByRole("group", { name: "Modo de exibição" }),
@@ -312,7 +341,9 @@ describe("Gestão de inscrições por evento", () => {
     expect(screen.getByTestId("location")).toHaveTextContent("exibicao=lista");
   });
   it("mantém lista em computador menor ou vertical mesmo com Cards na URL", async () => {
-    show("/organizacao/org/inscricoes?evento=event&exibicao=cards");
+    show(
+      "/organizacao/org/inscricoes?evento=event&campaign=campaign&exibicao=cards",
+    );
     await ready();
     expect(
       screen.queryByRole("group", { name: "Modo de exibição" }),
@@ -325,7 +356,9 @@ describe("Gestão de inscrições por evento", () => {
   });
   it("usa Lista quando a URL informa um modo desconhecido", async () => {
     wideLandscapeViewport = true;
-    show("/organizacao/org/inscricoes?evento=event&exibicao=desconhecido");
+    show(
+      "/organizacao/org/inscricoes?evento=event&campaign=campaign&exibicao=desconhecido",
+    );
     await ready();
     expect(screen.getByRole("button", { name: "Lista" })).toHaveAttribute(
       "aria-pressed",
@@ -335,7 +368,9 @@ describe("Gestão de inscrições por evento", () => {
   });
   it("preserva a escolha de Cards ao voltar aos eventos e reabrir um evento", async () => {
     wideLandscapeViewport = true;
-    show("/organizacao/org/inscricoes?evento=event&exibicao=cards");
+    show(
+      "/organizacao/org/inscricoes?evento=event&campaign=campaign&exibicao=cards",
+    );
     await ready();
     fireEvent.click(screen.getByRole("button", { name: /Voltar aos eventos/ }));
     await waitFor(() =>
@@ -529,7 +564,7 @@ describe("Gestão de inscrições por evento", () => {
   it("mantém busca e ações no celular e concentra filtros em uma única janela", async () => {
     mobileViewport = true;
     show(
-      "/organizacao/org/inscricoes?evento=event&q=Maria&origin=IMPORT&status=REVIEW",
+      "/organizacao/org/inscricoes?evento=event&campaign=campaign&q=Maria&origin=IMPORT&status=REVIEW",
     );
     await ready();
     expect(screen.getByRole("searchbox")).toHaveValue("Maria");
@@ -616,8 +651,8 @@ describe("Gestão de inscrições por evento", () => {
     render(
       <MemoryRouter
         initialEntries={[
-          "/organizacao/org/inscricoes?evento=event",
-          "/organizacao/org/inscricoes?evento=event&inscricao=registration",
+          "/organizacao/org/inscricoes?evento=event&campaign=campaign",
+          "/organizacao/org/inscricoes?evento=event&campaign=campaign&inscricao=registration",
         ]}
         initialIndex={1}
       >
@@ -646,8 +681,8 @@ describe("Gestão de inscrições por evento", () => {
     render(
       <MemoryRouter
         initialEntries={[
-          "/organizacao/org/inscricoes?evento=event",
-          "/organizacao/org/inscricoes?evento=event&inscricao=registration",
+          "/organizacao/org/inscricoes?evento=event&campaign=campaign",
+          "/organizacao/org/inscricoes?evento=event&campaign=campaign&inscricao=registration",
         ]}
         initialIndex={1}
       >
@@ -671,7 +706,7 @@ describe("Gestão de inscrições por evento", () => {
     expect(screen.getByTestId("location")).not.toHaveTextContent("inscricao=");
   });
   it("troca as abas com o teclado preservando a pesquisa", async () => {
-    show("/organizacao/org/inscricoes?evento=event&q=Maria");
+    show("/organizacao/org/inscricoes?evento=event&campaign=campaign&q=Maria");
     await ready();
     fireEvent.keyDown(screen.getByRole("tab", { name: "Inscrições" }), {
       key: "ArrowRight",
@@ -731,7 +766,9 @@ describe("Gestão de inscrições por evento", () => {
     expect(screen.getByTestId("location")).not.toHaveTextContent("inscricao=");
   });
   it("aplica pesquisa e ordenação no endpoint e preserva filtros na URL", async () => {
-    show("/organizacao/org/inscricoes?evento=event&origin=IMPORT&page=2");
+    show(
+      "/organizacao/org/inscricoes?evento=event&campaign=campaign&origin=IMPORT&page=2",
+    );
     await ready();
     fireEvent.change(screen.getByRole("searchbox"), {
       target: { value: "MáRia" },
@@ -788,7 +825,9 @@ describe("Gestão de inscrições por evento", () => {
     "filtra %s por %s=%s e volta à primeira página",
     async (label, key, value) => {
       total = 25;
-      show("/organizacao/org/inscricoes?evento=event&page=2&q=Maria");
+      show(
+        "/organizacao/org/inscricoes?evento=event&campaign=campaign&page=2&q=Maria",
+      );
       await ready();
       fireEvent.click(screen.getByRole("button", { name: "Filtros" }));
       const select = screen.getByRole("combobox", { name: label });
@@ -820,7 +859,7 @@ describe("Gestão de inscrições por evento", () => {
   it("retoma e combina filtros das duas perguntas e permite limpá-los no celular", async () => {
     mobileViewport = true;
     show(
-      "/organizacao/org/inscricoes?evento=event&presence=VOU&spirituality=SEM_RESPOSTA&q=Maria",
+      "/organizacao/org/inscricoes?evento=event&campaign=campaign&presence=VOU&spirituality=SEM_RESPOSTA&q=Maria",
     );
     await ready();
     fireEvent.click(
@@ -866,7 +905,7 @@ describe("Gestão de inscrições por evento", () => {
         ],
       });
       show(
-        "/organizacao/org/inscricoes?evento=event&page=2&q=Maria&sort=NAME_DESC",
+        "/organizacao/org/inscricoes?evento=event&campaign=campaign&page=2&q=Maria&sort=NAME_DESC",
       );
       await ready();
       fireEvent.click(
@@ -905,7 +944,7 @@ describe("Gestão de inscrições por evento", () => {
   it("retoma equipe pela URL, combina com respostas e limpa no celular", async () => {
     mobileViewport = true;
     show(
-      "/organizacao/org/inscricoes?evento=event&team=NONE&presence=VOU&spirituality=SIM&q=Maria",
+      "/organizacao/org/inscricoes?evento=event&campaign=campaign&team=NONE&presence=VOU&spirituality=SIM&q=Maria",
     );
     await ready();
     fireEvent.click(
@@ -1238,4 +1277,271 @@ describe("Gestão de inscrições por evento", () => {
       mocks.api.mock.calls.some(([, options]) => options?.method === "POST"),
     ).toBe(false);
   });
+});
+
+function configureCampers() {
+  const campaign = {
+    ...events[0].campaigns[0],
+    id: "camper-campaign",
+    kind: "CAMPER" as const,
+    _count: { registrations: 7 },
+  };
+  events[0].campaigns.push(campaign);
+  camperTeams = [
+    {
+      id: "camper-team",
+      campaignId: campaign.id,
+      kind: "CAMPER",
+      eventId: "event",
+      name: "EQUIPE AZUL",
+      capacity: 12,
+      occupied: 3,
+      available: 9,
+    },
+  ];
+  return campaign;
+}
+
+describe("Campanhas e equipes independentes", () => {
+  it("mostra dois cards por evento com contagens próprias e mantém campanha na listagem", async () => {
+    const campaign = configureCampers();
+    items[0].campaign = { ...items[0].campaign, ...campaign };
+    show("/organizacao/org/inscricoes");
+    expect(
+      await screen.findByRole("button", {
+        name: /Servos — 3º Acampamento FAC — 25 inscrições/,
+      }),
+    ).toBeVisible();
+    const campers = screen.getByRole("button", {
+      name: /Campistas — 3º Acampamento FAC — 7 inscrições/,
+    });
+    expect(queries()).toHaveLength(0);
+    fireEvent.click(campers);
+    await ready();
+    const params = new URLSearchParams(
+      String(queries().at(-1)![0]).split("?")[1],
+    );
+    expect(params.get("eventId")).toBe("event");
+    expect(params.get("campaignId")).toBe("camper-campaign");
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "campaign=camper-campaign",
+    );
+    const team = await screen.findByRole("combobox", {
+      name: "Equipe de Maria Teste",
+    });
+    expect(
+      within(team).getByRole("option", { name: /EQUIPE AZUL/ }),
+    ).toBeVisible();
+    expect(
+      within(team).queryByRole("option", { name: /SECRETARIA/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("link antigo somente com evento pede campanha e não consulta inscrições misturadas", async () => {
+    configureCampers();
+    show("/organizacao/org/inscricoes?evento=event");
+    expect(
+      await screen.findByRole("button", { name: /Campistas —/ }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: /Servos —/ })).toBeVisible();
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(queries()).toHaveLength(0);
+  });
+
+  it("permite preparar campanha ausente sem inventar inscrições ou bloquear as existentes", async () => {
+    events[0].campaigns[0].paused = true;
+    events[0].campaigns[0].forms = [];
+    show("/organizacao/org/inscricoes");
+    expect(
+      await screen.findByRole("link", { name: /Preparar campistas/ }),
+    ).toHaveAttribute("href", "/organizacao/org/eventos/event/ficha-campistas");
+    fireEvent.click(screen.getByRole("button", { name: /Servos —/ }));
+    await ready();
+    expect(
+      screen.getByRole("combobox", { name: "Departamento de Maria Teste" }),
+    ).toBeVisible();
+  });
+
+  it("descobre a campanha verdadeira da ficha mesmo com evento e campanha incorretos na URL", async () => {
+    const campaign = configureCampers();
+    items = [];
+    total = 0;
+    const original = mocks.api.getMockImplementation()!;
+    mocks.api.mockImplementation((path: string, options) =>
+      path.endsWith("/registrations/elsewhere")
+        ? Promise.resolve({
+            ...candidate,
+            id: "elsewhere",
+            campaign: { ...candidate.campaign, ...campaign, event: events[0] },
+          })
+        : original(path, options),
+    );
+    show(
+      "/organizacao/org/inscricoes?evento=evento-errado&campaign=campaign&team=team&inscricao=elsewhere",
+    );
+    expect(await screen.findByText("Ficha original elsewhere")).toBeVisible();
+    await waitFor(() => {
+      const location = new URLSearchParams(
+        screen.getByTestId("location").textContent ?? "",
+      );
+      expect(location.get("evento")).toBe("event");
+      expect(location.get("campaign")).toBe("camper-campaign");
+      expect(location.has("team")).toBe(false);
+    });
+    expect(
+      queries().every(
+        ([path]) =>
+          new URLSearchParams(String(path).split("?")[1]).get("campaignId") ===
+          "camper-campaign",
+      ),
+    ).toBe(true);
+  });
+
+  it("mantém grupos de campistas separados no filtro e não oferece espiritualidade ou campanha Todas", async () => {
+    const campaign = configureCampers();
+    items[0].campaign = { ...items[0].campaign, ...campaign };
+    show(
+      "/organizacao/org/inscricoes?evento=event&campaign=camper-campaign&spirituality=SIM",
+    );
+    await ready();
+    expect(
+      await screen.findByRole("combobox", { name: "Equipe" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("combobox", { name: "Campanha" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "Espiritualidade" }),
+    ).not.toBeInTheDocument();
+    const teamFilter = screen.getByRole("combobox", {
+      name: "Equipe",
+    });
+    expect(
+      within(teamFilter)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual(["Todos", "Sem equipe", "EQUIPE AZUL"]);
+    await waitFor(() =>
+      expect(screen.getByTestId("location")).not.toHaveTextContent(
+        "spirituality=",
+      ),
+    );
+    expect(
+      queries().every(
+        ([path]) =>
+          !new URLSearchParams(String(path).split("?")[1]).has("spirituality"),
+      ),
+    ).toBe(true);
+  });
+
+  it("confirma campista sem equipe e permite remover a equipe após confirmar", async () => {
+    const campaign = configureCampers();
+    items[0].campaign = { ...items[0].campaign, ...campaign };
+    items[0].status = "APPROVED";
+    show("/organizacao/org/inscricoes?evento=event&campaign=camper-campaign");
+    const decision = await ready();
+    fireEvent.change(decision, { target: { value: "CONFIRMED" } });
+    await waitFor(() => expect(decision).toHaveValue("CONFIRMED"));
+    const team = screen.getByRole("combobox", {
+      name: "Equipe de Maria Teste",
+    });
+    expect(
+      within(team).getByRole("option", { name: "Sem equipe" }),
+    ).not.toBeDisabled();
+    fireEvent.change(team, { target: { value: "camper-team" } });
+    await waitFor(() => expect(team).toHaveValue("camper-team"));
+    fireEvent.change(team, { target: { value: "" } });
+    await waitFor(() =>
+      expect(mocks.api).toHaveBeenCalledWith(
+        "/organizations/org/registrations/registration/team",
+        { method: "PUT", body: { teamId: null } },
+      ),
+    );
+  });
+
+  it("descarta resposta tardia de departamentos ao trocar para campistas", async () => {
+    const campaign = configureCampers();
+    const original = mocks.api.getMockImplementation()!;
+    let resolvePrevious!: (value: Team[]) => void;
+    mocks.api.mockImplementation((path: string, options) =>
+      path === "/organizations/org/campaigns/campaign/teams"
+        ? new Promise<Team[]>((resolve) => {
+            resolvePrevious = resolve;
+          })
+        : original(path, options),
+    );
+    show();
+    await ready();
+    fireEvent.click(screen.getByRole("button", { name: "Voltar aos eventos" }));
+    items[0].campaign = { ...items[0].campaign, ...campaign };
+    fireEvent.click(await screen.findByRole("button", { name: /Campistas —/ }));
+    await ready();
+    const team = screen.getByRole("combobox", {
+      name: "Equipe de Maria Teste",
+    });
+    await waitFor(() =>
+      expect(
+        within(team).getByRole("option", { name: /EQUIPE AZUL/ }),
+      ).toBeVisible(),
+    );
+    await act(async () => resolvePrevious(events[0].teams));
+    expect(
+      within(team).queryByRole("option", { name: /SECRETARIA/ }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+it("protege o nome de equipe não salvo antes de voltar aos cards", async () => {
+  const campaign = configureCampers();
+  items[0].campaign = { ...items[0].campaign, ...campaign };
+  show(
+    "/organizacao/org/inscricoes?evento=event&campaign=camper-campaign&aba=departamentos",
+  );
+  const name = await screen.findByRole("textbox", { name: /Nova equipe/ });
+  fireEvent.change(name, { target: { value: "EQUIPE NOVA" } });
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  try {
+    fireEvent.click(screen.getByRole("button", { name: "Voltar aos eventos" }));
+    await waitFor(() =>
+      expect(confirm).toHaveBeenCalledWith("Descartar alterações não salvas?"),
+    );
+    expect(name).toHaveValue("EQUIPE NOVA");
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "campaign=camper-campaign",
+    );
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "Voltar aos eventos" }));
+    expect(
+      await screen.findByRole("button", { name: /Campistas —/ }),
+    ).toBeVisible();
+  } finally {
+    confirm.mockRestore();
+  }
+});
+
+it("mantém o botão acionador e a listagem montados enquanto resolve o contexto da ficha", async () => {
+  const original = mocks.api.getMockImplementation()!;
+  let resolveDetail!: (value: Registration) => void;
+  mocks.api.mockImplementation((path: string, options) =>
+    path.endsWith("/registrations/registration")
+      ? new Promise<Registration>((resolve) => {
+          resolveDetail = resolve;
+        })
+      : original(path, options),
+  );
+  show();
+  await ready();
+  const trigger = screen.getByRole("button", {
+    name: "Abrir ficha de Maria Teste",
+  });
+  fireEvent.click(trigger);
+  expect(await screen.findByText("Ficha original registration")).toBeVisible();
+  expect(trigger.isConnected).toBe(true);
+  expect(screen.getByRole("table")).toBeVisible();
+  await act(async () => resolveDetail(structuredClone(items[0])));
+  expect(trigger.isConnected).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Fechar modal" }));
+  expect(
+    screen.getByRole("button", { name: "Abrir ficha de Maria Teste" }),
+  ).toBe(trigger);
 });

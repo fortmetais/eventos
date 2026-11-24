@@ -4,6 +4,7 @@ import {
   type RegistrationStatus,
 } from "@prisma/client";
 import { basicTeam } from "../events/departments.repository.js";
+import { basicCamperTeam } from "./registration-team.js";
 export type RegistrationFilters = {
   eventId?: string;
   campaignId?: string;
@@ -64,6 +65,7 @@ export const registrationInclude = {
     },
   },
   team: { select: basicTeam },
+  camperTeam: { select: basicCamperTeam },
   history: { orderBy: { createdAt: "asc" as const } },
 } satisfies Prisma.RegistrationInclude;
 export class RegistrationsRepository {
@@ -111,8 +113,8 @@ export class RegistrationsRepository {
     if (filters.teamId)
       clauses.push(
         filters.teamId === "NONE"
-          ? Prisma.sql`r.equipe_id IS NULL`
-          : Prisma.sql`r.equipe_id = ${filters.teamId}::uuid`,
+          ? Prisma.sql`(CASE WHEN c.publico::text='CAMPISTA' THEN r.equipe_campista_id ELSE r.equipe_id END) IS NULL`
+          : Prisma.sql`(CASE WHEN c.publico::text='CAMPISTA' THEN r.equipe_campista_id ELSE r.equipe_id END) = ${filters.teamId}::uuid`,
       );
     if (filters.status)
       clauses.push(

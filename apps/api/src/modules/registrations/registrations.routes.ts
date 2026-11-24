@@ -4,12 +4,14 @@ import { account, organizationAccess } from "../../core/auth.js";
 import { param } from "../../core/security.js";
 import type { RegistrationsController } from "./registrations.controller.js";
 import { RegistrationCorrectionsService } from "./registration-corrections.service.js";
+import { campaignTeamsRoutes } from "./campaign-teams.routes.js";
 export function registrationsRoutes(
   c: RegistrationsController,
   db: PrismaClient,
   auth: RequestHandler,
   limit: RequestHandler,
-  volunteersOnly = false,
+  restrictedDecisionPermissions = false,
+  volunteersOnly = restrictedDecisionPermissions,
 ) {
   const r = Router();
   r.post("/public/campaigns/:campaignId/drafts", limit, c.create);
@@ -19,10 +21,11 @@ export function registrationsRoutes(
   const read = organizationAccess(db, ["ORGANIZER", "SECRETARY"]);
   const write = organizationAccess(
     db,
-    volunteersOnly ? ["ORGANIZER"] : ["ORGANIZER", "SECRETARY"],
+    restrictedDecisionPermissions ? ["ORGANIZER"] : ["ORGANIZER", "SECRETARY"],
   );
   const organizer = organizationAccess(db, ["ORGANIZER"]);
   const corrections = new RegistrationCorrectionsService(db, volunteersOnly);
+  r.use(campaignTeamsRoutes(db, auth, limit, volunteersOnly));
   r.get(
     "/organizations/:organizationId/events/:eventId/registration-summary",
     auth,

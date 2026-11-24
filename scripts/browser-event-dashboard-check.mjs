@@ -123,15 +123,15 @@ const events = definitions.map(
         eventId: uuid(610 + index),
         name: "Acolhida e acompanhamento dos participantes",
         capacity: 12,
-        occupied: 8,
-        available: 4,
+        occupied: 5,
+        available: 7,
       },
       {
         id: uuid(671 + index * 3),
         eventId: uuid(610 + index),
         name: "Secretaria",
         capacity: null,
-        occupied: 4,
+        occupied: 2,
         available: null,
       },
       {
@@ -141,6 +141,22 @@ const events = definitions.map(
         capacity: 0,
         occupied: 0,
         available: 0,
+      },
+    ],
+    camperTeams: [
+      {
+        id: uuid(800 + index * 2),
+        name: "Acolhida e acompanhamento dos participantes",
+        capacity: 9,
+        occupied: 3,
+        available: 6,
+      },
+      {
+        id: uuid(801 + index * 2),
+        name: "Equipe azul",
+        capacity: 6,
+        occupied: 2,
+        available: 4,
       },
     ],
     campaigns: [
@@ -208,19 +224,20 @@ function summary(event, volunteersOnly = false) {
     generatedAt: fixedTime.toISOString(),
     presenceAvailable: true,
     departmentsAvailable: true,
-    departments: event.teams.map((team, index) => ({
-      id: team.id,
-      name: team.name,
-      capacity: team.capacity,
-      occupied: team.occupied,
-      available: team.available,
-      occupiedByCampaign: {
-        [event.campaigns[0].id]: [5, 2, 0][index],
-        ...(event.campaigns[1]
-          ? { [event.campaigns[1].id]: [3, 2, 0][index] }
-          : {}),
-      },
-    })),
+    departments: campaigns.flatMap((campaign) =>
+      (campaign.kind === "CAMPER" ? event.camperTeams : event.teams).map(
+        (team) => ({
+          id: team.id,
+          campaignId: campaign.id,
+          kind: campaign.kind,
+          name: team.name,
+          capacity: team.capacity,
+          occupied: team.occupied,
+          available: team.available,
+          occupiedByCampaign: { [campaign.id]: team.occupied },
+        }),
+      ),
+    ),
     totals: {
       total: campaigns.reduce((sum, campaign) => sum + campaign.total, 0),
       byStatus: Object.fromEntries(
@@ -364,6 +381,21 @@ async function fixtureContext(browser, viewport, options = {}) {
       });
     if (url.pathname === `${base}/events` && request.method() === "GET")
       return json(route, visibleEvents);
+    const campaignTeams = url.pathname.match(
+      new RegExp(`^${base}/campaigns/([^/]+)/teams$`),
+    );
+    if (campaignTeams && request.method() === "GET") {
+      const event = visibleEvents.find((entry) =>
+        entry.campaigns.some((campaign) => campaign.id === campaignTeams[1]),
+      );
+      if (!event) return json(route, {}, 404);
+      return json(
+        route,
+        summary(event, volunteersOnly)
+          .departments.filter((entry) => entry.campaignId === campaignTeams[1])
+          .map((entry) => ({ ...entry, eventId: event.id })),
+      );
+    }
     const match = url.pathname.match(
       new RegExp(`^${base}/events/([^/]+)/registration-summary$`),
     );
@@ -442,6 +474,19 @@ const metricLinks = (page) =>
   page.locator(".event-dashboard-metrics").getByRole("link");
 const chartPanel = (page, title) =>
   page.getByRole("region", { name: title, exact: true });
+const occupationPanel = (page) =>
+  page.getByRole("region", { name: /^Ocupação / });
+const departmentLink = (panel, department) =>
+  panel
+    .getByRole("link", {
+      name: `Ver inscrições de ${department.name}`,
+      exact: true,
+    })
+    .and(
+      panel.locator(
+        `a[href*="campaign=${department.campaignId}"][href*="team=${department.id}"]`,
+      ),
+    );
 const statusLink = (panel, status, count) =>
   panel.getByRole("link", {
     name: `${statusLabels[status]}: ${count} ${count === 1 ? "inscrição" : "inscrições"}. Ver inscrições`,
@@ -450,7 +495,17 @@ const statusLink = (panel, status, count) =>
 async function verifyCharts(page, event, value, campaign) {
   const counts = campaign ?? value.totals;
   const situation = chartPanel(page, "Situação das inscrições");
-  const departments = chartPanel(page, "Ocupação dos departamentos");
+  const visibleDepartments = (value.departments ?? []).filter(
+    (department) => !campaign || department.campaignId === campaign.id,
+  );
+  const occupationTitle =
+    campaign?.kind === "CAMPER"
+      ? "Ocupação das equipes"
+      : !campaign &&
+          visibleDepartments.some((department) => department.kind === "CAMPER")
+        ? "Ocupação das equipes e departamentos"
+        : "Ocupação dos departamentos";
+  const departments = chartPanel(page, occupationTitle);
   await expect(
     situation.getByRole("heading", {
       name: "Situação das inscrições",
@@ -459,7 +514,7 @@ async function verifyCharts(page, event, value, campaign) {
   ).toBeVisible();
   await expect(
     departments.getByRole("heading", {
-      name: "Ocupação dos departamentos",
+      name: occupationTitle,
       exact: true,
     }),
   ).toBeVisible();
@@ -498,25 +553,40 @@ async function verifyCharts(page, event, value, campaign) {
   ) {
     await expect(departments.getByRole("link")).toHaveCount(0);
     await expect(
-      departments.getByText("Dados dos departamentos indisponíveis.", {
-        exact: true,
-      }),
+      departments.getByText(
+        campaign?.kind === "CAMPER"
+          ? "Dados das equipes indisponíveis."
+          : "Dados dos departamentos indisponíveis.",
+        {
+          exact: true,
+        },
+      ),
     ).toBeVisible();
     return;
   }
   await expect(departments.getByRole("link")).toHaveCount(
-    value.departments.length,
+    visibleDepartments.length,
   );
-  for (const department of value.departments) {
-    const link = departments.getByRole("link", {
-      name: `Ver inscrições de ${department.name}`,
-      exact: true,
-    });
+  await expect(departments).not.toContainText(
+    /outras campanhas|capacidade compartilhada/i,
+  );
+  for (const department of visibleDepartments) {
+    const link = departmentLink(departments, department);
     await expect(link).toBeVisible();
     const url = new URL(await link.getAttribute("href"), target);
     assert.equal(url.pathname, `/organizacao/${orgId}/inscricoes`);
     assert.equal(url.searchParams.get("evento"), event.id);
-    assert.equal(url.searchParams.get("campaign"), campaign?.id ?? null);
+    assert.equal(url.searchParams.get("campaign"), department.campaignId);
+    assert.deepEqual(Object.keys(department.occupiedByCampaign), [
+      department.campaignId,
+    ]);
+    assert.equal(
+      department.occupiedByCampaign[department.campaignId],
+      department.occupied,
+    );
+    await expect(link).toContainText(
+      department.kind === "CAMPER" ? "Campistas" : "Servos",
+    );
     assert.equal(url.searchParams.get("team"), department.id);
     assert.equal(url.searchParams.get("sort"), "ACCEPTED_FIRST");
     assert.equal(
@@ -539,18 +609,15 @@ async function verifyCharts(page, event, value, campaign) {
         `${department.occupied} de ${department.capacity} vagas ocupadas`,
       );
       await expect(link).toContainText(`${department.available} livres`);
-      const selected = campaign
-        ? (department.occupiedByCampaign[campaign.id] ?? 0)
-        : department.occupied;
-      const other = Math.max(0, department.occupied - selected);
+      const selected = department.occupied;
       const free = department.available ?? 0;
       const scale = Math.max(
         department.capacity,
         department.occupied,
-        selected + other + free,
+        selected + free,
         1,
       );
-      const expectedWidths = [selected, ...(campaign ? [other] : []), free].map(
+      const expectedWidths = [selected, free].map(
         (count) => (count / scale) * 100,
       );
       const widths = await link
@@ -563,19 +630,12 @@ async function verifyCharts(page, event, value, campaign) {
         assert(
           Number.isFinite(width) &&
             Math.abs(width - expectedWidths[index]) < 0.01,
-          "O gráfico deve usar a capacidade global, incluindo outras campanhas e vagas livres.",
+          "O gráfico deve usar somente ocupação e vagas livres da campanha proprietária.",
         ),
       );
     }
-    if (campaign) {
-      const selected = department.occupiedByCampaign[campaign.id] ?? 0;
-      await expect(link).toContainText(`${selected} nesta campanha`);
-      await expect(link).toContainText(
-        `${Math.max(0, department.occupied - selected)} de outras campanhas`,
-      );
-    }
   }
-  if (value.departments.length)
+  if (visibleDepartments.length)
     await expect(departments).toContainText(
       "Vagas ocupadas por aceitos/confirmados.",
     );
@@ -585,10 +645,7 @@ async function verifyChartLayout(page, mobile) {
     page,
     "Situação das inscrições",
   ).boundingBox();
-  const departments = await chartPanel(
-    page,
-    "Ocupação dos departamentos",
-  ).boundingBox();
+  const departments = await occupationPanel(page).boundingBox();
   assert(situation && departments);
   if (mobile)
     assert(
@@ -782,15 +839,12 @@ try {
       await page.goBack();
       await verifyCharts(page, active, current, campaign);
       const department = current.departments[0];
-      const departmentLink = chartPanel(
-        page,
-        "Ocupação dos departamentos",
-      ).getByRole("link", {
-        name: `Ver inscrições de ${department.name}`,
-        exact: true,
-      });
-      await departmentLink.focus();
-      await expect(departmentLink).toBeFocused();
+      const selectedDepartmentLink = departmentLink(
+        occupationPanel(page),
+        department,
+      );
+      await selectedDepartmentLink.focus();
+      await expect(selectedDepartmentLink).toBeFocused();
       await page.keyboard.press("Enter");
       await expect
         .poll(() => new URL(page.url()).searchParams.get("team"))
@@ -810,6 +864,34 @@ try {
       await verifyCharts(page, active, current, campaign);
       await campaignSelector.selectOption("");
       await verifyCards(page, active, current.totals);
+      await verifyCharts(page, active, current);
+
+      // Mesmo nome em públicos diferentes: o gráfico de Todos abre a campanha dona.
+      const camper = current.campaigns.find((entry) => entry.kind === "CAMPER");
+      const camperTeam = current.departments.find(
+        (entry) => entry.campaignId === camper.id,
+      );
+      assert.equal(camperTeam.name, department.name);
+      const allCampaignCamperLink = departmentLink(
+        occupationPanel(page),
+        camperTeam,
+      );
+      await allCampaignCamperLink.focus();
+      await expect(allCampaignCamperLink).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect
+        .poll(() => state.registrationQueries.at(-1)?.teamId)
+        .toBe(camperTeam.id);
+      assert.equal(state.registrationQueries.at(-1).campaignId, camper.id);
+      assert.equal(new URL(page.url()).searchParams.get("campaign"), camper.id);
+      await page.goBack();
+      await expect(campaignSelector).toHaveValue("");
+      await verifyCharts(page, active, current);
+      await campaignSelector.selectOption(camper.id);
+      await verifyCards(page, active, camper, camper);
+      await verifyCharts(page, active, current, camper);
+      await capture(page, `${screen}-campers`);
+      await campaignSelector.selectOption("");
       await verifyCharts(page, active, current);
 
       const historic = byKey.pastRecent;
@@ -910,9 +992,7 @@ try {
         ...department,
         occupied: 0,
         available: department.capacity,
-        occupiedByCampaign: Object.fromEntries(
-          zero.campaigns.map((campaign) => [campaign.id, 0]),
-        ),
+        occupiedByCampaign: { [department.campaignId]: 0 },
       }));
       state.overrides.set(active.id, zero);
       await page.goto(dashboardUrl(active));
@@ -922,9 +1002,9 @@ try {
       await expect(
         chartPanel(page, "Situação das inscrições"),
       ).not.toContainText(/NaN|Infinity|undefined/);
-      await expect(
-        chartPanel(page, "Ocupação dos departamentos"),
-      ).not.toContainText(/NaN|Infinity|undefined/);
+      await expect(occupationPanel(page)).not.toContainText(
+        /NaN|Infinity|undefined/,
+      );
       await capture(page, "mobile-320-zero-charts");
 
       const unavailable = {
@@ -1051,6 +1131,13 @@ try {
       await page.goto(dashboardUrl());
       const expected = summary(byKey.ongoingNear, true);
       await verifyCards(page, byKey.ongoingNear, expected.totals);
+      await verifyCharts(page, byKey.ongoingNear, expected);
+      assert(
+        expected.departments.every(
+          (department) => department.kind === "VOLUNTEER",
+        ),
+      );
+      await expect(occupationPanel(page)).not.toContainText("Campistas");
       await expect(
         page.getByRole("combobox", { name: "Campanha", exact: true }),
       ).toHaveCount(0);

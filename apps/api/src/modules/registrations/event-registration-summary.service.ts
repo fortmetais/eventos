@@ -31,6 +31,8 @@ export type EventRegistrationMetrics = {
 };
 export type EventDepartmentOccupancy = {
   id: string;
+  campaignId: string;
+  kind: CampaignKind;
   name: string;
   capacity: number | null;
   occupied: number;
@@ -86,12 +88,18 @@ export class EventRegistrationSummaryService {
         });
         assert(event, 404, "Evento não encontrado.");
         const [stage] = await tx.$queryRaw<
-          { registrations: boolean; presence: boolean; departments: boolean }[]
+          {
+            registrations: boolean;
+            presence: boolean;
+            departments: boolean;
+            camperDepartments: boolean;
+          }[]
         >`
         SELECT to_regclass('inscricoes.inscricoes') IS NOT NULL AS registrations,
           to_regclass('inscricoes.avisos_decisao') IS NOT NULL AS presence,
           EXISTS (SELECT 1 FROM information_schema.columns
-            WHERE table_schema='eventos' AND table_name='equipes' AND column_name='vagas') AS departments`;
+            WHERE table_schema='eventos' AND table_name='equipes' AND column_name='vagas') AS departments,
+          to_regclass('eventos.equipes_campistas') IS NOT NULL AS "camperDepartments"`;
         assert(
           stage?.registrations,
           503,
@@ -99,7 +107,13 @@ export class EventRegistrationSummaryService {
           "EVENT_REGISTRATION_SUMMARY_SETUP_REQUIRED",
         );
         const presenceAvailable = Boolean(stage.presence);
-        const departmentsAvailable = Boolean(stage.departments);
+        const departmentsAvailable = event.campaigns.length
+          ? event.campaigns.every((campaign) =>
+              campaign.kind === "VOLUNTEER"
+                ? stage.departments
+                : stage.camperDepartments,
+            )
+          : Boolean(stage.departments || stage.camperDepartments);
         const campaigns = event.campaigns.map((campaign) => ({
           ...campaign,
           ...emptyMetrics(presenceAvailable),
@@ -143,60 +157,67 @@ export class EventRegistrationSummaryService {
           }
         }
         const departments: EventDepartmentOccupancy[] = [];
-        if (departmentsAvailable) {
-          // Capacity is shared by the event. Include allocations from every campaign
-          // in the total, while exposing campaign-level counts only for permitted campaigns.
+        if (departmentsAvailable && campaigns.length) {
+          const queries: Prisma.Sql[] = [];
+          const campaignIds = campaigns.map((campaign) => campaign.id);
+          if (campaigns.some((campaign) => campaign.kind === "VOLUNTEER"))
+            queries.push(Prisma.sql`
+              SELECT t.equipe_id::text AS id, t.nome AS name, t.vagas AS capacity,
+                c.campanha_id::text AS "campaignId", 'VOLUNTEER'::text AS kind,
+                count(r.inscricao_id) AS occupied
+              FROM eventos.equipes t
+              JOIN eventos.eventos e ON e.evento_id=t.evento_id
+              JOIN eventos.campanhas c ON c.evento_id=e.evento_id AND c.publico::text='SERVO'
+              LEFT JOIN inscricoes.inscricoes r ON r.equipe_id=t.equipe_id
+                AND r.campanha_id=c.campanha_id
+                AND r.situacao::text IN ('APROVADA','CONFIRMADA')
+              WHERE e.organizacao_id=${organizationId}::uuid AND e.evento_id=${eventId}::uuid
+                AND c.campanha_id=ANY(${campaignIds}::uuid[])
+              GROUP BY t.equipe_id, t.nome, t.vagas, c.campanha_id`);
+          if (campaigns.some((campaign) => campaign.kind === "CAMPER"))
+            queries.push(Prisma.sql`
+              SELECT t.equipe_campista_id::text AS id, t.nome AS name, t.vagas AS capacity,
+                c.campanha_id::text AS "campaignId", 'CAMPER'::text AS kind,
+                count(r.inscricao_id) AS occupied
+              FROM eventos.equipes_campistas t
+              JOIN eventos.campanhas c ON c.campanha_id=t.campanha_id AND c.publico::text='CAMPISTA'
+              JOIN eventos.eventos e ON e.evento_id=c.evento_id
+              LEFT JOIN inscricoes.inscricoes r ON r.equipe_campista_id=t.equipe_campista_id
+                AND r.campanha_id=c.campanha_id
+                AND r.situacao::text IN ('APROVADA','CONFIRMADA')
+              WHERE e.organizacao_id=${organizationId}::uuid AND e.evento_id=${eventId}::uuid
+                AND c.campanha_id=ANY(${campaignIds}::uuid[])
+              GROUP BY t.equipe_campista_id, t.nome, t.vagas, c.campanha_id`);
           const rows = await tx.$queryRaw<
             {
               id: string;
               name: string;
               capacity: number | null;
-              campaignId: string | null;
+              campaignId: string;
+              kind: CampaignKind;
               occupied: bigint;
             }[]
-          >(Prisma.sql`
-            SELECT t.equipe_id::text AS id, t.nome AS name, t.vagas AS capacity,
-              r.campanha_id::text AS "campaignId", count(r.inscricao_id) AS occupied
-            FROM eventos.equipes t
-            JOIN eventos.eventos e ON e.evento_id=t.evento_id
-            LEFT JOIN inscricoes.inscricoes r ON r.equipe_id=t.equipe_id
-              AND r.situacao::text IN ('APROVADA','CONFIRMADA')
-              AND EXISTS (SELECT 1 FROM eventos.campanhas c
-                JOIN eventos.eventos v ON v.evento_id=c.evento_id
-                WHERE c.campanha_id=r.campanha_id AND v.organizacao_id=${organizationId}::uuid)
-            WHERE e.organizacao_id=${organizationId}::uuid AND t.evento_id=${eventId}::uuid
-            GROUP BY t.equipe_id, t.nome, t.vagas, r.campanha_id
-            ORDER BY t.nome ASC, t.equipe_id ASC, r.campanha_id ASC`);
-          const byDepartment = new Map<string, EventDepartmentOccupancy>();
+          >(
+            Prisma.sql`${Prisma.join(queries, " UNION ALL ")} ORDER BY name ASC, id ASC, "campaignId" ASC`,
+          );
           for (const row of rows) {
-            let department = byDepartment.get(row.id);
-            if (!department) {
-              department = {
-                id: row.id,
-                name: row.name,
-                capacity: row.capacity,
-                occupied: 0,
-                available: null,
-                occupiedByCampaign: Object.fromEntries(
-                  campaigns.map((campaign) => [campaign.id, 0]),
-                ),
-              };
-              byDepartment.set(row.id, department);
-            }
+            // Each aggregate belongs to one permitted campaign; never share
+            // camper allocation or capacity with a volunteer department.
+            if (byId.get(row.campaignId)?.kind !== row.kind) continue;
             const occupied = Number(row.occupied);
-            department.occupied += occupied;
-            if (
-              row.campaignId &&
-              Object.hasOwn(department.occupiedByCampaign, row.campaignId)
-            )
-              department.occupiedByCampaign[row.campaignId] += occupied;
-          }
-          for (const department of byDepartment.values()) {
-            department.available =
-              department.capacity === null
-                ? null
-                : Math.max(0, department.capacity - department.occupied);
-            departments.push(department);
+            departments.push({
+              id: row.id,
+              campaignId: row.campaignId,
+              kind: row.kind,
+              name: row.name,
+              capacity: row.capacity,
+              occupied,
+              available:
+                row.capacity === null
+                  ? null
+                  : Math.max(0, row.capacity - occupied),
+              occupiedByCampaign: { [row.campaignId]: occupied },
+            });
           }
         }
         const totals = emptyMetrics(presenceAvailable);

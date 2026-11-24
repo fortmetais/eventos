@@ -226,9 +226,15 @@ const url = process.env.TEST_NOTICE_DATABASE_URL;
     });
     it("SQL manual cria uma tabela protegida, com um aviso por decisão", async () => {
       const tables = await db.$queryRaw<
-        { rowsecurity: boolean }[]
-      >`SELECT rowsecurity FROM pg_tables WHERE schemaname IN ('acesso','organizacoes','pessoas','eventos','inscricoes','saude','arquivos')`;
-      expect(tables).toHaveLength(26);
+        { tablename: string; rowsecurity: boolean }[]
+      >`SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname IN ('acesso','organizacoes','pessoas','eventos','inscricoes','saude','arquivos')`;
+      expect(tables).toHaveLength(28);
+      expect(tables.map((table) => table.tablename)).toEqual(
+        expect.arrayContaining([
+          "equipes_campistas",
+          "mensagens_aceite_campistas",
+        ]),
+      );
       expect(tables.every((t) => t.rowsecurity)).toBe(true);
     });
     it("aceite direto prepara link sem enviar; envio exige ação explícita", async () => {

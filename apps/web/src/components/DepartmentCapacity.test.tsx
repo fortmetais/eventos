@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { DepartmentCapacity } from "./DepartmentCapacity";
+import type { Team } from "../lib/types";
 const mocks = vi.hoisted(() => ({ api: vi.fn(), refresh: vi.fn() }));
 vi.mock("../lib/api", () => ({ api: mocks.api }));
 function view(occupied = 0, editable = true) {
@@ -82,5 +89,93 @@ describe("Excluir departamentos e suas vagas", () => {
     expect(
       screen.queryByRole("button", { name: "Excluir departamento ANJO" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+const team: Team = {
+  id: "blue",
+  campaignId: "campers",
+  kind: "CAMPER",
+  eventId: "event",
+  name: "AZUL",
+  capacity: 10,
+  occupied: 0,
+  available: 10,
+};
+
+describe("Vagas de equipe por campanha", () => {
+  it("salva capacidade e exclui pelo mesmo contexto da campanha de campistas", async () => {
+    const refresh = vi.fn();
+    render(
+      <DepartmentCapacity
+        team={team}
+        organizationId="org"
+        campaignId="campers"
+        editable
+        refresh={refresh}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/Vagas de AZUL/), {
+      target: { value: "12" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Salvar vagas de AZUL" }),
+    );
+    await waitFor(() =>
+      expect(mocks.api).toHaveBeenCalledWith(
+        "/organizations/org/campaigns/campers/teams/blue",
+        { method: "PUT", body: { capacity: 12 } },
+      ),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Excluir equipe AZUL" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar exclusão" }));
+    await waitFor(() =>
+      expect(mocks.api).toHaveBeenCalledWith(
+        "/organizations/org/campaigns/campers/teams/blue",
+        { method: "DELETE" },
+      ),
+    );
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("mantém a rota antiga para consumidores legados de departamentos do evento", async () => {
+    render(
+      <DepartmentCapacity
+        team={{ ...team, kind: "VOLUNTEER" }}
+        organizationId="org"
+        editable
+        refresh={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Salvar vagas de AZUL" }),
+    );
+    await waitFor(() =>
+      expect(mocks.api).toHaveBeenCalledWith(
+        "/organizations/org/events/event/teams/blue",
+        { method: "PUT", body: { capacity: 10 } },
+      ),
+    );
+  });
+
+  it("impede a exclusão de equipe ocupada", () => {
+    render(
+      <DepartmentCapacity
+        team={{ ...team, occupied: 1, available: 9 }}
+        organizationId="org"
+        campaignId="campers"
+        editable
+        refresh={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Excluir equipe AZUL" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText("Há participantes vinculados a esta equipe."),
+    ).toBeVisible();
+    expect(mocks.api).not.toHaveBeenCalled();
   });
 });

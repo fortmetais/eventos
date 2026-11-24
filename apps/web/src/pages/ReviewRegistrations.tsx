@@ -5,7 +5,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -32,14 +32,16 @@ import { RegistrationShareActions } from "../components/RegistrationShareActions
 import { useOrganization } from "./Organization";
 import { useAuth } from "../lib/auth";
 import { useRemote } from "../lib/hooks";
+import { useUnsavedChanges } from "../lib/unsaved-changes";
 import { api } from "../lib/api";
 import type {
   EventEdition,
   Page,
   Registration,
   RegistrationStatus,
+  Team,
 } from "../lib/types";
-import { date, statusLabels } from "../lib/types";
+import { date, dateTime, statusLabels } from "../lib/types";
 import { registrationPendingInformation } from "../lib/registration-pending";
 import { Empty, Field, Loading, Notice, PageHeading } from "../components/ui";
 import "../components/RegistrationCards.css";
@@ -115,15 +117,34 @@ export function ReviewRegistrations() {
   const [navigationPending, setNavigationPending] = useState(false);
   const previousDetailSearch = useRef(search.toString());
   const explicitEvent = search.get("evento") ?? "";
+  const explicitCampaign = search.get("campaign") ?? "";
+  const openedRegistrationContext = useRef<{
+    organizationId: string;
+    registrationId: string;
+    eventId: string;
+    campaignId: string;
+  } | null>(null);
+  const openedContext =
+    openedRegistrationContext.current?.registrationId === selectedQuery &&
+    openedRegistrationContext.current.organizationId === organizationId
+      ? openedRegistrationContext.current
+      : null;
   const direct = useRemote<Registration>(
-    selectedQuery && !explicitEvent
+    selectedQuery
       ? `/organizations/${organizationId}/registrations/${selectedQuery}`
       : null,
   );
-  const eventId = explicitEvent || direct.data?.campaign.event.id || "";
+  const directRegistration =
+    direct.data?.id === selectedQuery ? direct.data : null;
+  const eventId =
+    directRegistration?.campaign.event.id ||
+    openedContext?.eventId ||
+    explicitEvent;
   const tab =
     search.get("aba") === "departamentos" ? "departamentos" : "inscricoes";
-  const campaignId = search.get("campaign") ?? "";
+  const campaignId = selectedQuery
+    ? (directRegistration?.campaign.id ?? openedContext?.campaignId ?? "")
+    : explicitCampaign;
   const teamId = search.get("team") ?? "";
   const status = search.get("status") ?? "";
   const origin = search.get("origin") ?? "";
@@ -142,13 +163,7 @@ export function ReviewRegistrations() {
   const [query, setQuery] = useState(searchQ);
   const [showFilters, setShowFilters] = useState(
     Boolean(
-      campaignId ||
-      teamId ||
-      status ||
-      origin ||
-      completeness ||
-      presence ||
-      spirituality,
+      teamId || status || origin || completeness || presence || spirituality,
     ),
   );
   const isMobile = useReviewMedia("(max-width: 800px)");
@@ -160,7 +175,6 @@ export function ReviewRegistrations() {
   const cardLayout = isMobile || desktopCards;
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const filterCount = [
-    campaignId,
     teamId,
     status,
     origin,
@@ -171,7 +185,7 @@ export function ReviewRegistrations() {
   ].filter(Boolean).length;
   useEffect(() => {
     setMobileFiltersOpen(false);
-  }, [isMobile, eventId, tab, selectedQuery]);
+  }, [isMobile, eventId, campaignId, tab, selectedQuery]);
   const [rows, setRows] = useState<Record<string, RowFeedback>>({});
   const inFlight = useRef(new Set<string>());
   const [invite, setInvite] = useState<{
@@ -181,17 +195,36 @@ export function ReviewRegistrations() {
     useState<Registration | null>(null);
   useEffect(() => {
     setPendingRegistration(null);
-  }, [selectedQuery, eventId, tab]);
+  }, [selectedQuery, eventId, campaignId, tab]);
   const [dirty, setDirty] = useState(false);
   const [teamName, setTeamName] = useState("");
   const [teamCapacity, setTeamCapacity] = useState("");
   const [teamBusy, setTeamBusy] = useState(false);
   const [teamError, setTeamError] = useState("");
-  const creatingTeam = useRef(false);
+  const creatingTeam = useRef<string | null>(null);
+  const teamEdits = useUnsavedChanges(Boolean(teamName || teamCapacity), {
+    busy: teamBusy,
+  });
   const events = useRemote<EventEdition[]>(
     `/organizations/${organizationId}/events`,
   );
   const edition = events.data?.find((event) => event.id === eventId);
+  const campaign = edition?.campaigns.find((item) => item.id === campaignId);
+  const camper = campaign?.kind === "CAMPER";
+  const teamLabel = camper ? "Equipe" : "Departamento";
+  const teamsLabel = camper ? "Equipes" : "Departamentos";
+  const workspace = Boolean(edition && campaign);
+  const cardEvents = eventId
+    ? events.data?.filter((event) => event.id === eventId)
+    : events.data;
+  const teams = useRemote<Team[]>(
+    workspace
+      ? `/organizations/${organizationId}/campaigns/${campaignId}/teams`
+      : null,
+  );
+  const context = `${organizationId}:${eventId}:${campaignId}`;
+  const currentContext = useRef(context);
+  currentContext.current = context;
   const editable = membership.role === "ORGANIZER";
   const canDecide = auth.eventsEnabled || editable;
   const eventClosed =
@@ -236,13 +269,33 @@ export function ReviewRegistrations() {
   }, [query, searchQ, changeSearch]);
   useEffect(() => {
     if (
-      !explicitEvent &&
       selectedQuery &&
-      direct.data?.id === selectedQuery &&
-      direct.data.campaign.event.id
+      directRegistration &&
+      (explicitEvent !== directRegistration.campaign.event.id ||
+        explicitCampaign !== directRegistration.campaign.id)
     )
-      changeSearch({ evento: direct.data.campaign.event.id }, true);
-  }, [explicitEvent, selectedQuery, direct.data, changeSearch]);
+      changeSearch(
+        {
+          evento: directRegistration.campaign.event.id,
+          campaign: directRegistration.campaign.id,
+          ...(explicitCampaign &&
+          explicitCampaign !== directRegistration.campaign.id
+            ? { team: null, spirituality: null, page: null }
+            : {}),
+        },
+        true,
+      );
+  }, [
+    explicitEvent,
+    explicitCampaign,
+    selectedQuery,
+    directRegistration,
+    changeSearch,
+  ]);
+  useEffect(() => {
+    if (camper && spirituality)
+      changeSearch({ spirituality: null, page: null }, true);
+  }, [camper, spirituality, changeSearch]);
   const params = new URLSearchParams({
     page: String(page),
     pageSize: "20",
@@ -256,10 +309,10 @@ export function ReviewRegistrations() {
     ...(origin ? { origin } : {}),
     ...(completeness ? { completeness } : {}),
     ...(presence ? { presence } : {}),
-    ...(spirituality ? { spirituality } : {}),
+    ...(!camper && spirituality ? { spirituality } : {}),
   });
   const list = useRemote<Page<Registration>>(
-    eventId && tab === "inscricoes"
+    workspace && tab === "inscricoes"
       ? `/organizations/${organizationId}/registrations?${params}`
       : null,
   );
@@ -275,9 +328,11 @@ export function ReviewRegistrations() {
   const refresh = () => {
     list.refreshInBackground();
     events.refreshInBackground();
+    teams.refreshInBackground();
+    if (selectedQuery) direct.refreshInBackground();
   };
   useEffect(() => {
-    if (!eventId || tab !== "inscricoes") return;
+    if (!workspace || tab !== "inscricoes") return;
     const refreshVisible = () => {
       if (document.visibilityState === "visible") list.refreshInBackground();
     };
@@ -289,7 +344,7 @@ export function ReviewRegistrations() {
       window.removeEventListener("focus", refreshVisible);
       document.removeEventListener("visibilitychange", refreshVisible);
     };
-  }, [eventId, tab, list.refreshInBackground]);
+  }, [workspace, context, tab, list.refreshInBackground]);
   useEffect(() => {
     if (
       list.data &&
@@ -308,7 +363,11 @@ export function ReviewRegistrations() {
     setTeamError("");
     setTeamName("");
     setTeamCapacity("");
-  }, [eventId]);
+    setTeamBusy(false);
+    creatingTeam.current = null;
+    setInvite(null);
+    setMobileFiltersOpen(false);
+  }, [context]);
 
   async function mutateRow(
     registration: Registration,
@@ -316,6 +375,7 @@ export function ReviewRegistrations() {
     value: string,
   ) {
     if (inFlight.current.has(registration.id)) return;
+    const operationContext = context;
     inFlight.current.add(registration.id);
     setRows((previous) => ({ ...previous, [registration.id]: { busy: true } }));
     try {
@@ -336,6 +396,7 @@ export function ReviewRegistrations() {
         operation === "status" &&
         value === "CONFIRMED" &&
         changed.status === "WAITLIST";
+      if (currentContext.current !== operationContext) return;
       setRows((previous) => ({
         ...previous,
         [registration.id]: waiting
@@ -352,54 +413,70 @@ export function ReviewRegistrations() {
                   ? "Vaga confirmada."
                   : changed.noticeWarning ||
                     (operation === "team"
-                      ? "Departamento salvo."
+                      ? `${teamLabel} ${camper ? "salva" : "salvo"}.`
                       : "Decisão salva."),
             },
       }));
     } catch (error) {
+      if (currentContext.current !== operationContext) return;
       setRows((previous) => ({
         ...previous,
         [registration.id]: { error: (error as Error).message },
       }));
     } finally {
       inFlight.current.delete(registration.id);
-      refresh();
+      if (currentContext.current === operationContext) refresh();
     }
   }
   async function createTeam(event: FormEvent) {
     event.preventDefault();
-    if (creatingTeam.current) return;
-    creatingTeam.current = true;
+    if (creatingTeam.current === context) return;
+    const operationContext = context;
+    creatingTeam.current = operationContext;
     setTeamBusy(true);
     setTeamError("");
     try {
-      await api(`/organizations/${organizationId}/events/${eventId}/teams`, {
-        method: "POST",
-        body: { name: teamName, capacity: Number(teamCapacity) },
-      });
+      await api(
+        `/organizations/${organizationId}/campaigns/${campaignId}/teams`,
+        {
+          method: "POST",
+          body: { name: teamName, capacity: Number(teamCapacity) },
+        },
+      );
+      if (currentContext.current !== operationContext) return;
+      teamEdits.markSaved();
       setTeamName("");
       setTeamCapacity("");
-      events.refreshInBackground();
+      teams.refreshInBackground();
     } catch (error) {
-      setTeamError((error as Error).message);
+      if (currentContext.current === operationContext)
+        setTeamError((error as Error).message);
     } finally {
-      creatingTeam.current = false;
-      setTeamBusy(false);
+      if (creatingTeam.current === operationContext)
+        creatingTeam.current = null;
+      if (currentContext.current === operationContext) setTeamBusy(false);
     }
   }
-  function openEvent(id: string) {
+  function openCampaign(id: string, selectedCampaign: string) {
     setInvite(null);
     setPendingRegistration(null);
     setSearch({
       evento: id,
+      campaign: selectedCampaign,
       aba: "inscricoes",
       ...(search.has("exibicao") ? { exibicao: view } : {}),
     });
   }
-  function openDetail(id: string) {
+  function openDetail(registration: Registration) {
+    openedRegistrationContext.current = {
+      organizationId,
+      registrationId: registration.id,
+      eventId: registration.campaign.event.id,
+      campaignId: registration.campaign.id,
+    };
     setPendingRegistration(null);
     setDirty(false);
-    changeSearch({ inscricao: id });
+    changeSearch({ inscricao: registration.id });
   }
   function filter(key: string, value: string) {
     changeSearch({
@@ -464,7 +541,8 @@ export function ReviewRegistrations() {
     const pending = pendingStates.includes(registration.status);
     const teamAllowed =
       editable &&
-      registration.campaign.kind === "VOLUNTEER" &&
+      !teams.loading &&
+      !teams.error &&
       !eventClosed &&
       (pending || allocatedStates.includes(registration.status));
     const notice = registration.decisionSummary?.notice;
@@ -528,22 +606,25 @@ export function ReviewRegistrations() {
         <td
           role={cellRole}
           className="review-cell-department"
-          data-label="Departamento"
+          data-label={teamLabel}
         >
-          {registration.campaign.kind === "VOLUNTEER" ? (
+          {
             <>
               <select
-                aria-label={`Departamento de ${registration.person.name}`}
+                aria-label={`${teamLabel} de ${registration.person.name}`}
                 value={registration.team?.id ?? ""}
                 disabled={!teamAllowed || feedback?.busy}
                 onChange={(event) =>
                   void mutateRow(registration, "team", event.target.value)
                 }
               >
-                <option value="" disabled={registration.status === "CONFIRMED"}>
-                  Sem departamento
+                <option
+                  value=""
+                  disabled={!camper && registration.status === "CONFIRMED"}
+                >
+                  {camper ? "Sem equipe" : "Sem departamento"}
                 </option>
-                {edition?.teams.map((team) => (
+                {teams.data?.map((team) => (
                   <option
                     key={team.id}
                     value={team.id}
@@ -560,7 +641,7 @@ export function ReviewRegistrations() {
                   </option>
                 ))}
                 {registration.team &&
-                  !edition?.teams.some(
+                  !teams.data?.some(
                     (team) => team.id === registration.team!.id,
                   ) && (
                     <option value={registration.team.id}>
@@ -577,9 +658,7 @@ export function ReviewRegistrations() {
                 <small className="muted">Indicado — sem reserva</small>
               )}
             </>
-          ) : (
-            <span className="muted">Não se aplica</span>
-          )}
+          }
         </td>
         <td role={cellRole} className="review-cell-detail" data-label="Ficha">
           <button
@@ -587,7 +666,7 @@ export function ReviewRegistrations() {
             className="review-icon-button"
             aria-label={`Abrir ficha de ${registration.person.name}`}
             title="Abrir ficha completa"
-            onClick={() => openDetail(registration.id)}
+            onClick={() => openDetail(registration)}
           >
             <UserRound size={19} />
             <span className="review-action-label">Ver ficha</span>
@@ -745,27 +824,16 @@ export function ReviewRegistrations() {
   );
   const advancedOptions = (
     <div id="review-more-filters" className="review-more-filters">
-      <Field label="Campanha">
-        <select
-          value={campaignId}
-          onChange={(event) => filter("campaign", event.target.value)}
-        >
-          <option value="">Todas</option>
-          {edition?.campaigns.map((campaign) => (
-            <option value={campaign.id} key={campaign.id}>
-              {campaign.kind === "VOLUNTEER" ? "Servos" : "Campistas"}
-            </option>
-          ))}
-        </select>
-      </Field>
-      <Field label="Equipe/departamento">
+      <Field label={camper ? "Equipe" : "Equipe/departamento"}>
         <select
           value={teamId}
           onChange={(event) => filter("team", event.target.value)}
         >
           <option value="">Todos</option>
-          <option value="NONE">Sem departamento</option>
-          {edition?.teams.map((team) => (
+          <option value="NONE">
+            {camper ? "Sem equipe" : "Sem departamento"}
+          </option>
+          {teams.data?.map((team) => (
             <option value={team.id} key={team.id}>
               {team.name}
             </option>
@@ -816,17 +884,19 @@ export function ReviewRegistrations() {
           <option value="NAO_IREI">Não</option>
         </select>
       </Field>
-      <Field label="Espiritualidade">
-        <select
-          value={spirituality}
-          onChange={(event) => filter("spirituality", event.target.value)}
-        >
-          <option value="">Todos</option>
-          <option value="SEM_RESPOSTA">Não respondeu</option>
-          <option value="SIM">Sim</option>
-          <option value="NAO">Não</option>
-        </select>
-      </Field>
+      {!camper && (
+        <Field label="Espiritualidade">
+          <select
+            value={spirituality}
+            onChange={(event) => filter("spirituality", event.target.value)}
+          >
+            <option value="">Todos</option>
+            <option value="SEM_RESPOSTA">Não respondeu</option>
+            <option value="SIM">Sim</option>
+            <option value="NAO">Não</option>
+          </select>
+        </Field>
+      )}
     </div>
   );
 
@@ -834,12 +904,33 @@ export function ReviewRegistrations() {
     <div
       className={`registrations-workspace${desktopCards && eventId && tab === "inscricoes" ? " is-card-view" : ""}`}
     >
-      {!eventId ? (
+      {!workspace ? (
         <>
-          <PageHeading title="Inscrições e departamentos">
-            Escolha um evento para organizar os departamentos, analisar
-            candidaturas e acompanhar as confirmações.
+          {eventId && !selectedQuery && (
+            <button
+              className="text-button review-back"
+              type="button"
+              onClick={() =>
+                setSearch(search.has("exibicao") ? { exibicao: view } : {})
+              }
+            >
+              <ArrowLeft size={17} /> Voltar aos eventos
+            </button>
+          )}
+          <PageHeading title="Inscrições por campanha">
+            Escolha Servos ou Campistas para organizar as equipes, analisar
+            inscrições e acompanhar as confirmações.
           </PageHeading>
+          {!direct.loading &&
+            !selectedQuery &&
+            explicitCampaign &&
+            edition &&
+            !campaign && (
+              <Notice>
+                Campanha indisponível neste evento. Selecione uma das campanhas
+                abaixo.
+              </Notice>
+            )}
           {selected && direct.loading ? (
             <Loading />
           ) : selected && direct.error ? (
@@ -848,58 +939,109 @@ export function ReviewRegistrations() {
             <Loading />
           ) : events.error ? (
             <Notice>{events.error}</Notice>
-          ) : events.data?.length ? (
+          ) : cardEvents?.length ? (
             <div className="review-event-grid">
-              {events.data.map((event) => (
-                <button
-                  type="button"
-                  className="review-event-card"
-                  key={event.id}
-                  onClick={() => openEvent(event.id)}
-                >
-                  <div className="review-event-art">
-                    {event.imageThumbnailUrl || event.imageUrl ? (
-                      <img
-                        src={event.imageThumbnailUrl || event.imageUrl!}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                      />
-                    ) : (
-                      <CalendarDays size={38} />
-                    )}
-                    <span
-                      className={`review-event-status event-${event.status.toLowerCase()}`}
+              {cardEvents.flatMap((event) =>
+                (["VOLUNTEER", "CAMPER"] as const).map((kind) => {
+                  const item = event.campaigns.find(
+                    (value) => value.kind === kind,
+                  );
+                  const audience = kind === "CAMPER" ? "Campistas" : "Servos";
+                  const enabled =
+                    auth.eventsEnabled ||
+                    (kind === "CAMPER"
+                      ? auth.camperRegistrationsEnabled !== false
+                      : auth.volunteerRegistrationsEnabled !== false);
+                  const now = Date.now();
+                  const state = !enabled
+                    ? "Indisponível"
+                    : event.status === "CANCELLED" ||
+                        event.status === "COMPLETED"
+                      ? eventLabels[event.status]
+                      : !item ||
+                          event.status === "DRAFT" ||
+                          (item.forms &&
+                            !item.forms.some((form) => form.publishedAt))
+                        ? "Em preparação"
+                        : item.paused
+                          ? "Pausada"
+                          : new Date(item.opensAt).getTime() > now
+                            ? "Não iniciada"
+                            : new Date(item.closesAt).getTime() < now
+                              ? "Encerrada"
+                              : "Inscrições abertas";
+                  const body = (
+                    <>
+                      <div className="review-event-art">
+                        {event.imageThumbnailUrl || event.imageUrl ? (
+                          <img
+                            src={event.imageThumbnailUrl || event.imageUrl!}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        ) : (
+                          <CalendarDays size={38} />
+                        )}
+                        <span
+                          className={`review-event-status event-${event.status.toLowerCase()}`}
+                        >
+                          {state}
+                        </span>
+                      </div>
+                      <div className="review-event-card-body">
+                        <small>
+                          {event.type?.name} · <strong>{audience}</strong>
+                        </small>
+                        <h2>{event.name}</h2>
+                        <p>
+                          <CalendarDays size={15} />
+                          {date(event.startsAt)}
+                          {event.endsAt !== event.startsAt
+                            ? ` a ${date(event.endsAt)}`
+                            : ""}
+                        </p>
+                        <p>{event.city}</p>
+                        {item?.opensAt && item.closesAt && (
+                          <p>
+                            Inscrições: {dateTime(item.opensAt)} até{" "}
+                            {dateTime(item.closesAt)}
+                          </p>
+                        )}
+                        <div className="review-event-card-footer">
+                          <span>
+                            <ClipboardList size={16} />{" "}
+                            {item?._count?.registrations ?? 0} inscrições
+                            {!item && editable && " · Preparar campanha"}
+                          </span>
+                          <ChevronRight size={19} />
+                        </div>
+                      </div>
+                    </>
+                  );
+                  return item || !editable || !enabled ? (
+                    <button
+                      type="button"
+                      className="review-event-card"
+                      key={`${event.id}:${kind}`}
+                      disabled={!item || !enabled}
+                      aria-label={`${audience} — ${event.name} — ${item?._count?.registrations ?? 0} inscrições`}
+                      onClick={() => item && openCampaign(event.id, item.id)}
                     >
-                      {eventLabels[event.status]}
-                    </span>
-                  </div>
-                  <div className="review-event-card-body">
-                    <small>{event.type?.name}</small>
-                    <h2>{event.name}</h2>
-                    <p>
-                      <CalendarDays size={15} />
-                      {date(event.startsAt)}
-                      {event.endsAt !== event.startsAt
-                        ? ` a ${date(event.endsAt)}`
-                        : ""}
-                    </p>
-                    <p>{event.city}</p>
-                    <div className="review-event-card-footer">
-                      <span>
-                        <ClipboardList size={16} />
-                        {event.campaigns.reduce(
-                          (total, campaign) =>
-                            total + (campaign._count?.registrations ?? 0),
-                          0,
-                        )}{" "}
-                        inscrições
-                      </span>
-                      <ChevronRight size={19} />
-                    </div>
-                  </div>
-                </button>
-              ))}
+                      {body}
+                    </button>
+                  ) : (
+                    <Link
+                      key={`${event.id}:${kind}`}
+                      className="review-event-card"
+                      to={`/organizacao/${organizationId}/eventos/${event.id}/ficha-${kind === "CAMPER" ? "campistas" : "servos"}`}
+                      aria-label={`Preparar ${audience.toLowerCase()} — ${event.name}`}
+                    >
+                      {body}
+                    </Link>
+                  );
+                }),
+              )}
             </div>
           ) : (
             <Empty title="Nenhum evento disponível">
@@ -913,10 +1055,12 @@ export function ReviewRegistrations() {
             <button
               type="button"
               className="text-button review-back"
-              onClick={() => {
-                setSearch(search.has("exibicao") ? { exibicao: view } : {});
-                setInvite(null);
-              }}
+              onClick={() =>
+                void teamEdits.run(() => {
+                  setSearch(search.has("exibicao") ? { exibicao: view } : {});
+                  setInvite(null);
+                })
+              }
             >
               <ArrowLeft size={17} />
               Voltar aos eventos
@@ -929,7 +1073,7 @@ export function ReviewRegistrations() {
               </h1>
               <p>
                 {edition
-                  ? `${date(edition.startsAt)} · ${edition.city} · ${eventLabels[edition.status]}`
+                  ? `${camper ? "Campistas" : "Servos"} · ${date(edition.startsAt)} · ${edition.city} · ${eventLabels[edition.status]}`
                   : "Organize as candidaturas e acompanhe cada participação."}
               </p>
             </div>
@@ -961,14 +1105,16 @@ export function ReviewRegistrations() {
                       : tab === "inscricoes"
                         ? "departamentos"
                         : "inscricoes";
-                changeSearch({ aba: next, inscricao: null });
-                document
-                  .getElementById(
-                    next === "inscricoes"
-                      ? "review-registrations-tab"
-                      : "review-departments-tab",
-                  )
-                  ?.focus();
+                void teamEdits.run(() => {
+                  changeSearch({ aba: next, inscricao: null });
+                  document
+                    .getElementById(
+                      next === "inscricoes"
+                        ? "review-registrations-tab"
+                        : "review-departments-tab",
+                    )
+                    ?.focus();
+                });
               }}
             >
               <button
@@ -979,7 +1125,9 @@ export function ReviewRegistrations() {
                 aria-selected={tab === "inscricoes"}
                 tabIndex={tab === "inscricoes" ? 0 : -1}
                 onClick={() =>
-                  changeSearch({ aba: "inscricoes", inscricao: null })
+                  void teamEdits.run(() =>
+                    changeSearch({ aba: "inscricoes", inscricao: null }),
+                  )
                 }
               >
                 Inscrições
@@ -992,10 +1140,12 @@ export function ReviewRegistrations() {
                 aria-selected={tab === "departamentos"}
                 tabIndex={tab === "departamentos" ? 0 : -1}
                 onClick={() =>
-                  changeSearch({ aba: "departamentos", inscricao: null })
+                  void teamEdits.run(() =>
+                    changeSearch({ aba: "departamentos", inscricao: null }),
+                  )
                 }
               >
-                Departamentos e vagas
+                {teamsLabel} e vagas
               </button>
             </div>
             {canChooseView && tab === "inscricoes" && (
@@ -1028,23 +1178,28 @@ export function ReviewRegistrations() {
               aria-labelledby="review-departments-tab"
             >
               <div className="panel">
-                <h2>Departamentos e vagas</h2>
+                <h2>{teamsLabel} e vagas</h2>
                 <p>
-                  Indicar um departamento antes do aceite não reserva vaga.
-                  Servos aceitos e alocados ocupam vagas; recusar ou cancelar
-                  libera a vaga.
+                  {camper
+                    ? "Organize os campistas em equipes próprias desta campanha. A equipe é opcional para confirmar a vaga. Indicar antes da aprovação não reserva vaga; aprovados ou confirmados alocados ocupam as vagas da equipe."
+                    : "Indicar um departamento antes do aceite não reserva vaga. Servos aceitos e alocados ocupam vagas; recusar ou cancelar libera a vaga."}
                 </p>
                 {teamError && <Notice>{teamError}</Notice>}
                 {editable && !eventClosed && (
                   <form className="review-create-team" onSubmit={createTeam}>
-                    <Field label="Novo departamento" required>
+                    <Field
+                      label={camper ? "Nova equipe" : "Novo departamento"}
+                      required
+                    >
                       <input
                         required
                         minLength={2}
                         maxLength={100}
                         value={teamName}
                         onChange={(event) => setTeamName(event.target.value)}
-                        placeholder="Ex.: SECRETARIA"
+                        placeholder={
+                          camper ? "Ex.: EQUIPE AZUL" : "Ex.: SECRETARIA"
+                        }
                       />
                     </Field>
                     <Field label="Vagas" required>
@@ -1060,41 +1215,47 @@ export function ReviewRegistrations() {
                         }
                       />
                     </Field>
-                    <button className="button outline" disabled={teamBusy}>
+                    <button
+                      className="button outline"
+                      disabled={
+                        teamBusy || teams.loading || Boolean(teams.error)
+                      }
+                    >
                       <Plus size={17} />
-                      Criar departamento
+                      Criar {camper ? "equipe" : "departamento"}
                     </button>
                   </form>
                 )}
-                {editable && (
+                {editable && !camper && (
                   <p className="muted">
                     Após criar um departamento, publique uma nova versão da
                     ficha para incluí-lo nas preferências de novas candidaturas.
                   </p>
                 )}
-                {events.loading ? (
+                {teams.loading ? (
                   <Loading />
-                ) : edition?.teams.length ? (
-                  edition.teams.map((team) => (
+                ) : teams.error ? (
+                  <Notice>{teams.error}</Notice>
+                ) : teams.data?.length ? (
+                  teams.data.map((team) => (
                     <DepartmentCapacity
                       key={`${team.id}:${team.capacity}:${team.occupied}`}
                       team={team}
                       organizationId={organizationId}
-                      editable={
-                        editable &&
-                        !eventClosed &&
-                        edition.departmentsReady === true
-                      }
-                      refresh={events.refreshInBackground}
+                      campaignId={campaignId}
+                      kind={campaign!.kind}
+                      editable={editable && !eventClosed}
+                      refresh={refresh}
                     />
                   ))
                 ) : (
-                  <Empty title="Nenhum departamento cadastrado" />
-                )}
-                {edition?.departmentsReady === false && (
-                  <Notice kind="info">
-                    Definir as vagas aguarda a atualização do banco pelo SQL 08.
-                  </Notice>
+                  <Empty
+                    title={
+                      camper
+                        ? "Nenhuma equipe cadastrada"
+                        : "Nenhum departamento cadastrado"
+                    }
+                  />
                 )}
               </div>
             </section>
@@ -1157,6 +1318,7 @@ export function ReviewRegistrations() {
                 {!isMobile && showFilters && advancedOptions}
               </div>
               {list.error && <Notice>{list.error}</Notice>}
+              {teams.error && <Notice>{teams.error}</Notice>}
               <div className="panel review-list-panel">
                 {list.loading ? (
                   <Loading />
@@ -1181,7 +1343,7 @@ export function ReviewRegistrations() {
                       <thead>
                         <tr>
                           <th>Participante</th>
-                          <th>Departamento</th>
+                          <th>{teamLabel}</th>
                           <th>Ficha</th>
                           <th>Decisão</th>
                           <th>Convite / presença</th>
@@ -1244,7 +1406,6 @@ export function ReviewRegistrations() {
               className="button outline"
               onClick={() =>
                 changeSearch({
-                  campaign: null,
                   team: null,
                   status: null,
                   origin: null,
@@ -1297,6 +1458,12 @@ export function ReviewRegistrations() {
             registrationId={selected}
             onChanged={refresh}
             onDirtyChange={setDirty}
+            teamContext={{
+              campaignId,
+              teams: teams.data,
+              loading: teams.loading,
+              error: teams.error,
+            }}
           />
         </Modal>
       )}
@@ -1326,7 +1493,7 @@ export function ReviewRegistrations() {
           <button
             type="button"
             className="button outline"
-            onClick={() => openDetail(pendingRegistration.id)}
+            onClick={() => openDetail(pendingRegistration)}
           >
             Abrir ficha
           </button>

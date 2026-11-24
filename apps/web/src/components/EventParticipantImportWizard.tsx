@@ -1510,7 +1510,7 @@ export function EventParticipantImportWizard({
                     </button>
                     <Link
                       className="button primary"
-                      to={`/organizacao/${organizationId}/inscricoes?evento=${batch.campaign.event.id}`}
+                      to={`/organizacao/${organizationId}/inscricoes?evento=${batch.campaign.event.id}&campaign=${batch.campaign.id}`}
                     >
                       Abrir gestão de inscrições
                     </Link>

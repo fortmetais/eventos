@@ -834,6 +834,7 @@ export class EventsService {
       ...data,
       event: {
         ...eventThumbnail(data.event),
+        teams: data.kind === "CAMPER" ? [] : data.event.teams,
         organization: organizationThumbnail(data.event.organization),
       },
       open: campaignIsOpen(campaign),

@@ -98,6 +98,13 @@ export function OrganizationLayout() {
   );
   const navigationId = useId();
   const base = `/organizacao/${organizationId}`;
+  const selection = new URLSearchParams(location.search);
+  const context = new URLSearchParams();
+  for (const key of ["evento", "campaign"]) {
+    const value = selection.get(key);
+    if (value) context.set(key, value);
+  }
+  const campaignQuery = context.size ? `?${context}` : "";
   const compactMobileNavigation = [base, `${base}/inscricoes`].includes(
     location.pathname.replace(/\/$/, ""),
   );
@@ -171,7 +178,7 @@ export function OrganizationLayout() {
                 {(auth.eventsEnabled ||
                   auth.volunteerRegistrationsEnabled ||
                   auth.camperRegistrationsEnabled) && (
-                  <NavLink to={`${base}/inscricoes`}>
+                  <NavLink to={`${base}/inscricoes${campaignQuery}`}>
                     <ClipboardList size={18} />
                     {auth.eventsEnabled || auth.camperRegistrationsEnabled
                       ? "Inscrições"
@@ -187,7 +194,7 @@ export function OrganizationLayout() {
             </NavLink>
           )}
           {membership.role === "ORGANIZER" && (
-            <NavLink to={`${base}/mensagens`}>
+            <NavLink to={`${base}/mensagens${campaignQuery}`}>
               <MessageSquare size={18} />
               Mensagens
             </NavLink>

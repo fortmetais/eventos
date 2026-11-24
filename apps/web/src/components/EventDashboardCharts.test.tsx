@@ -24,11 +24,13 @@ const empty: EventRegistrationCounts = {
 };
 const department = {
   id: "welcome",
+  campaignId: "volunteer",
+  kind: "VOLUNTEER" as const,
   name: "Acolhida e recepção",
   capacity: 12,
   occupied: 8,
   available: 4,
-  occupiedByCampaign: { volunteer: 5, camper: 3 },
+  occupiedByCampaign: { volunteer: 8 },
 };
 function summary(
   overrides: Partial<EventRegistrationSummary> = {},
@@ -38,7 +40,10 @@ function summary(
     generatedAt: "2026-11-16T15:00:00Z",
     presenceAvailable: true,
     totals: empty,
-    campaigns: [],
+    campaigns: [
+      { ...empty, id: "volunteer", kind: "VOLUNTEER" },
+      { ...empty, id: "camper", kind: "CAMPER" },
+    ],
     departmentsAvailable: true,
     departments: [department],
     ...overrides,
@@ -99,52 +104,69 @@ describe("Gráficos do evento", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("mantém a capacidade e as vagas livres globais ao separar a ocupação por campanha", () => {
-    const rendered = view();
-    const row = screen.getByRole("link", {
+  it("separa as equipes e direciona cada barra à campanha proprietária", () => {
+    const group = {
+      ...department,
+      id: "blue",
+      name: "Equipe Azul",
+      campaignId: "camper",
+      kind: "CAMPER" as const,
+      capacity: 5,
+      occupied: 2,
+      available: 3,
+      occupiedByCampaign: { camper: 2 },
+    };
+    const value = summary({ departments: [department, group] });
+    const rendered = view(value);
+    const volunteerRow = screen.getByRole("link", {
       name: "Ver inscrições de Acolhida e recepção",
     });
-    expect(row).toHaveAccessibleDescription(
+    const camperRow = screen.getByRole("link", {
+      name: "Ver inscrições de Equipe Azul",
+    });
+    expect(volunteerRow).toHaveAccessibleDescription(
       "8 de 12 vagas ocupadas · 4 livres",
     );
-    const freeWidth = (row.querySelector(".occupancy-free") as HTMLElement)
-      .style.width;
-    expect(
-      row.querySelectorAll(".event-dashboard-chart-track > span"),
-    ).toHaveLength(2);
+    expect(camperRow).toHaveAccessibleDescription(
+      "2 de 5 vagas ocupadas · 3 livres",
+    );
+    for (const [row, campaign, team] of [
+      [volunteerRow, "volunteer", "welcome"],
+      [camperRow, "camper", "blue"],
+    ] as const) {
+      const params = new URL(row.getAttribute("href")!, "https://example.test")
+        .searchParams;
+      expect(params.get("campaign")).toBe(campaign);
+      expect(params.get("team")).toBe(team);
+      expect(params.get("sort")).toBe("ACCEPTED_FIRST");
+      expect(
+        row.querySelectorAll(".event-dashboard-chart-track > span"),
+      ).toHaveLength(2);
+    }
     rendered.rerender(
       <MemoryRouter>
         <EventDashboardCharts
           counts={empty}
-          summary={summary()}
-          campaignId="volunteer"
+          summary={value}
+          campaignId="camper"
           registrationsLink={registrationsLink}
         />
       </MemoryRouter>,
     );
-    const selected = screen.getByRole("link", {
-      name: "Ver inscrições de Acolhida e recepção",
-    });
-    expect(selected).toHaveAccessibleDescription(
-      "8 de 12 vagas ocupadas · 5 nesta campanha · 3 de outras campanhas · 4 livres",
-    );
     expect(
-      (selected.querySelector(".occupancy-free") as HTMLElement).style.width,
-    ).toBe(freeWidth);
-    expect(
-      selected.querySelectorAll(".event-dashboard-chart-track > span"),
-    ).toHaveLength(3);
-    expect(within(selected).queryByRole("link")).not.toBeInTheDocument();
-    expect(
-      new URL(
-        selected.getAttribute("href")!,
-        "https://example.test",
-      ).searchParams.get("team"),
-    ).toBe("welcome");
-    expect(selected.getAttribute("href")).toContain("sort=ACCEPTED_FIRST");
-    expect(
-      screen.getByText(/Capacidade compartilhada entre as campanhas/),
+      screen.getByRole("region", { name: "Ocupação das equipes" }),
     ).toBeVisible();
+    expect(
+      screen.queryByRole("link", {
+        name: "Ver inscrições de Acolhida e recepção",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Ver inscrições de Equipe Azul" }),
+    ).toHaveAccessibleDescription("2 de 5 vagas ocupadas · 3 livres");
+    expect(
+      screen.queryByText(/outras campanhas|Capacidade compartilhada/),
+    ).not.toBeInTheDocument();
   });
 
   it("distingue capacidade desconhecida, zero e excesso sem esconder ocupações ou inventar vagas", () => {

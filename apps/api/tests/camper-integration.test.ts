@@ -50,14 +50,14 @@ describe("Modelo completo de ficha para campistas", () => {
   });
 });
 
-const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
+const url = process.env.TEST_CAMPER_DATABASE_URL;
 (url ? describe : describe.skip)(
   "Campistas na instalação gradual com PostgreSQL real",
   () => {
-    if (url && new URL(url).pathname !== "/fac_volunteer_tests")
-      throw new Error("Use somente a base isolada fac_volunteer_tests.");
+    if (url && new URL(url).pathname !== "/fac_camper_tests")
+      throw new Error("Use somente a base isolada fac_camper_tests.");
     const db = new PrismaClient({
-      datasourceUrl: url ?? "postgresql://test@127.0.0.1:1/fac_volunteer_tests",
+      datasourceUrl: url ?? "postgresql://test@127.0.0.1:1/fac_camper_tests",
     });
     const users = Object.fromEntries(
       ["organizer", "secretary", "other", "health"].map((key) => [
@@ -120,6 +120,32 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
       hasDiet: false,
       hasCondition: false,
       hasNeeds: false,
+    };
+    const guardianData = {
+      name: "Responsável",
+      cpf: "52998224725",
+      relationship: "Mãe",
+      phone: "44999998888",
+      email: "",
+      city: "Toledo",
+      participantCity: "Toledo",
+      participantCpf: "",
+      familyName: "Contato",
+      familyPhone: "44999997777",
+      hasMedication: false,
+      medication: "",
+      hasAllergies: false,
+      allergies: "",
+      participationAccepted: true,
+      responsibilityAccepted: true,
+      privacyAccepted: true,
+      imageAuthorized: false,
+      signature: [
+        [
+          { x: 10, y: 10 },
+          { x: 100, y: 80 },
+        ],
+      ],
     };
     beforeAll(async () => {
       await db.account.createMany({ data: Object.values(users) });
@@ -408,32 +434,7 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
         .post(`/api/v1/public/guardian-authorizations/${c.guardian.id}/sign`)
         .send({
           token,
-          data: {
-            name: "Responsável",
-            cpf: "52998224725",
-            relationship: "Mãe",
-            phone: "44999998888",
-            email: "",
-            city: "Toledo",
-            participantCity: "Toledo",
-            participantCpf: "",
-            familyName: "Contato",
-            familyPhone: "44999997777",
-            hasMedication: false,
-            medication: "",
-            hasAllergies: false,
-            allergies: "",
-            participationAccepted: true,
-            responsibilityAccepted: true,
-            privacyAccepted: true,
-            imageAuthorized: false,
-            signature: [
-              [
-                { x: 10, y: 10 },
-                { x: 100, y: 80 },
-              ],
-            ],
-          },
+          data: guardianData,
         })
         .expect(200);
       expect((await change(c.registrationId, "CONFIRMED")).body.status).toBe(
@@ -451,8 +452,58 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
         }),
       ).toBe(1);
     });
-    it("pausa bloqueia novos rascunhos e preserva respostas existentes", async () => {
+    it("pausa bloqueia rascunhos e envio sem alterar inscritos, saúde ou aceites e mantém os links anteriores", async () => {
       const d = await draft();
+      const prior = await submit(true);
+      let emailSends = 0;
+      const noticeApp = createApp({
+        db,
+        eventsEnabled: false,
+        camperRegistrationsEnabled: true,
+        decisionNotificationsEnabled: true,
+        decisionLinkSecret: "segredo-exclusivo-campistas-1234567890123456789",
+        rateLimits: false,
+        resolveIdentity: async (token) => users[token] ?? null,
+        decisionEmail: {
+          async send() {
+            emailSends++;
+            return "SEM_CONFIGURACAO";
+          },
+        },
+      });
+      await request(noticeApp)
+        .patch(`${regPath(prior.registrationId)}/status`)
+        .set(auth())
+        .send({ status: "APPROVED", reason: "Aceite anterior à pausa" })
+        .expect(200);
+      const notice = (
+        await request(noticeApp)
+          .get(`${regPath(prior.registrationId)}/decision-notice`)
+          .set(auth())
+          .expect(200)
+      ).body.notice;
+      expect(notice.link).toBeTruthy();
+      const noticeToken = new URLSearchParams(
+        new URL(notice.link).hash.slice(1),
+      ).get("token");
+      const guardianToken = new URLSearchParams(
+        new URL(prior.guardian.link).hash.slice(1),
+      ).get("token");
+      const registrations = () =>
+        db.registration.findMany({
+          where: { campaignId },
+          orderBy: { id: "asc" },
+          select: {
+            id: true,
+            formVersionId: true,
+            snapshot: true,
+            personId: true,
+            status: true,
+            consent: true,
+            health: { select: { data: true } },
+          },
+        });
+      const before = await registrations();
       await request(app)
         .put(
           `/api/v1/organizations/${organizationId}/events/${eventId}/campaigns`,
@@ -467,6 +518,14 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
           allowWaitlist: true,
         })
         .expect(200);
+      expect(await registrations()).toEqual(before);
+      const campaign = (
+        await request(app)
+          .get(`/api/v1/public/campaigns/${campaignId}`)
+          .expect(200)
+      ).body;
+      expect(campaign.paused).toBe(true);
+      expect(campaign.open).toBe(false);
       await request(app)
         .post(`/api/v1/public/campaigns/${campaignId}/drafts`)
         .expect(409);
@@ -482,6 +541,45 @@ const url = process.env.TEST_VOLUNTEER_DATABASE_URL;
             .expect(200)
         ).body.payload.name,
       ).toBe(d.payload.name);
+      expect(await registrations()).toEqual(before);
+      await request(noticeApp)
+        .post(`/api/v1/public/decision-responses/${notice.id}/view`)
+        .send({ token: noticeToken })
+        .expect(200);
+      await request(noticeApp)
+        .post(`/api/v1/public/decision-responses/${notice.id}`)
+        .send({ token: noticeToken, resposta: "VOU" })
+        .expect(200);
+      await request(app)
+        .post(
+          `/api/v1/public/guardian-authorizations/${prior.guardian.id}/view`,
+        )
+        .send({ token: guardianToken })
+        .expect(200);
+      await request(app)
+        .post(
+          `/api/v1/public/guardian-authorizations/${prior.guardian.id}/sign`,
+        )
+        .send({ token: guardianToken, data: guardianData })
+        .expect(200);
+      expect(
+        (
+          await db.guardianAuthorization.findUniqueOrThrow({
+            where: { id: prior.guardian.id },
+          })
+        ).signedAt,
+      ).not.toBeNull();
+      expect(
+        (
+          await db.registration.findUniqueOrThrow({
+            where: { id: prior.registrationId },
+          })
+        ).status,
+      ).toBe("APPROVED");
+      expect(await db.registration.count({ where: { campaignId } })).toBe(
+        before.length,
+      );
+      expect(emailSends).toBe(0);
     });
   },
 );

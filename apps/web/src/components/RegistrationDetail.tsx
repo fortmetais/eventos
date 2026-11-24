@@ -16,6 +16,7 @@ import type {
   EventEdition,
   Registration,
   RegistrationStatus,
+  Team,
 } from "../lib/types";
 import { date, dateTime, statusLabels } from "../lib/types";
 import { registrationPendingInformation } from "../lib/registration-pending";
@@ -61,11 +62,18 @@ export function RegistrationDetail({
   registrationId,
   onChanged,
   onDirtyChange,
+  teamContext,
 }: {
   organizationId: string;
   registrationId: string;
   onChanged: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  teamContext?: {
+    campaignId: string;
+    teams: Team[] | null;
+    loading: boolean;
+    error: string;
+  };
 }) {
   const auth = useAuth();
   const { membership } = useOrganization();
@@ -77,6 +85,22 @@ export function RegistrationDetail({
     `/organizations/${organizationId}/events`,
   );
   const registration = detail.data?.id === registrationId ? detail.data : null;
+  const suppliedTeams =
+    registration && teamContext?.campaignId === registration.campaign.id
+      ? teamContext
+      : null;
+  const teamOptions = useRemote<Team[]>(
+    registration && membership.role === "ORGANIZER" && !suppliedTeams
+      ? `/organizations/${organizationId}/campaigns/${registration.campaign.id}/teams`
+      : null,
+  );
+  const teams = suppliedTeams ? suppliedTeams.teams : teamOptions.data;
+  const teamsLoading = suppliedTeams
+    ? suppliedTeams.loading
+    : teamOptions.loading;
+  const teamsError = suppliedTeams ? suppliedTeams.error : teamOptions.error;
+  const camper = registration?.campaign.kind === "CAMPER";
+  const teamLabel = camper ? "Equipe" : "Departamento";
   const pendingInformation = registration
     ? registrationPendingInformation(registration)
     : [];
@@ -260,6 +284,7 @@ export function RegistrationDetail({
       );
       detail.refreshInBackground();
       events.refreshInBackground();
+      teamOptions.refreshInBackground();
       onChanged();
       setNextStatus(" ");
       setReason("");
@@ -289,6 +314,7 @@ export function RegistrationDetail({
       setTeamId(undefined);
       detail.refreshInBackground();
       events.refreshInBackground();
+      teamOptions.refreshInBackground();
       onChanged();
     } catch (e) {
       showError((e as Error).message, "management");
@@ -445,8 +471,11 @@ export function RegistrationDetail({
                   </dd>
                 </div>
                 <div>
-                  <dt>Departamento</dt>
-                  <dd>{registration.team?.name ?? "Sem departamento"}</dd>
+                  <dt>{teamLabel}</dt>
+                  <dd>
+                    {registration.team?.name ??
+                      (camper ? "Sem equipe" : "Sem departamento")}
+                  </dd>
                 </div>
                 <div>
                   <dt>Presença</dt>
@@ -748,7 +777,7 @@ export function RegistrationDetail({
 
               {(canDecide || membership.role === "ORGANIZER") && (
                 <DetailSection
-                  title="Departamento e decisão"
+                  title={`${teamLabel} e decisão`}
                   {...sectionProps("management")}
                 >
                   {error && errorSection === "management" && (
@@ -762,28 +791,35 @@ export function RegistrationDetail({
                         disabled={actionBusy}
                         onClick={() => setTeamId(undefined)}
                       >
-                        Desfazer alteração de departamento
+                        Desfazer alteração de{" "}
+                        {camper ? "equipe" : "departamento"}
                       </button>
                     )}
                   {membership.role === "ORGANIZER" &&
-                    registration.campaign.kind === "VOLUNTEER" &&
                     !["REJECTED", "CANCELLED"].includes(
                       registration.status,
                     ) && (
                       <div className="registration-detail-assignment">
-                        <Field label="Alocar em departamento">
+                        {teamsError && <Notice>{teamsError}</Notice>}
+                        <Field
+                          label={`Alocar em ${camper ? "equipe" : "departamento"}`}
+                        >
                           <select
-                            disabled={actionBusy}
+                            disabled={
+                              actionBusy || teamsLoading || Boolean(teamsError)
+                            }
                             value={teamId}
                             onChange={(event) => setTeamId(event.target.value)}
                           >
                             <option
                               value=""
-                              disabled={registration.status === "CONFIRMED"}
+                              disabled={
+                                !camper && registration.status === "CONFIRMED"
+                              }
                             >
-                              Sem departamento
+                              {camper ? "Sem equipe" : "Sem departamento"}
                             </option>
-                            {edition?.teams.map((team) => (
+                            {teams?.map((team) => (
                               <option
                                 key={team.id}
                                 value={team.id}
@@ -809,11 +845,13 @@ export function RegistrationDetail({
                           className="button outline"
                           disabled={
                             actionBusy ||
+                            teamsLoading ||
+                            Boolean(teamsError) ||
                             teamId === (registration.team?.id ?? "")
                           }
                           onClick={() => void assign()}
                         >
-                          Salvar departamento
+                          Salvar {camper ? "equipe" : "departamento"}
                         </button>
                         {registration.team &&
                           !["APPROVED", "CONFIRMED"].includes(
