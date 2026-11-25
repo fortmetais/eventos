@@ -1,5 +1,12 @@
 # Roteiro de testes da aplicação Encontro
 
+## Atualização de segurança das dependências — 25/11/2026
+
+- Após instalar pelo lockfile, conferir `react-router-dom` e `react-router` em **7.18.7** e `express-rate-limit` em **8.7.5**, inclusive as cópias transitivas. Executar `npm run dependencies:check` e `node --test scripts/check-dependency-security.test.mjs`; a verificação deve rejeitar versões antigas, cópias aninhadas vulneráveis e divergências entre o lockfile e os pacotes instalados. O resultado isolado do `npm audit` não substitui essa conferência.
+- Exercitar o limitador real em processo de teste isolado: requisições acima da capacidade continuam retornando **429**, inclusive no cenário de contaminação de `Object.prototype.max` descrito pelo aviso de segurança. Não executar a simulação contra a API de produção.
+- Reexecutar os percursos locais de inscrições, acesso/senha, convites, mensagens e dashboard em computador e celular, com serviços simulados: preservar campanha e filtros na URL, retorno após login, cópia de links, abertura do WhatsApp, troca de campanha e proteção de alterações não salvas.
+- Conferir tipos, compilação, inicialização da hospedagem e o commit efetivamente publicado. Esta atualização não exige SQL ou migração do banco. Após a publicação, verificar os pacotes da compilação ativa; o painel de vulnerabilidades pode continuar apresentando os dados da varredura anterior até a próxima análise da Hostinger.
+
 ## Cartaz inicial e inscrições de campistas — 24/11/2026
 
 - Conferir a nova arte inteira, sem corte: proporção 1024 × 1536, WebP de 720/1024 pixels e JPEG de alternativa. As URLs novas de imagem e estilo devem evitar o cartaz anterior em cache.

@@ -430,7 +430,7 @@ describe("Gestão de inscrições por evento", () => {
     expect(button).not.toBeDisabled();
     mocks.api.mockClear();
     fireEvent.click(button);
-    expect(screen.getByRole("tooltip")).toHaveTextContent(
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
       "Disponível após o aceite",
     );
     expect(mocks.api).not.toHaveBeenCalled();
