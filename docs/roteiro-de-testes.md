@@ -7,10 +7,11 @@
 - Reexecutar os percursos locais de inscrições, acesso/senha, convites, mensagens e dashboard em computador e celular, com serviços simulados: preservar campanha e filtros na URL, retorno após login, cópia de links, abertura do WhatsApp, troca de campanha e proteção de alterações não salvas.
 - Conferir tipos, compilação, inicialização da hospedagem e o commit efetivamente publicado. Esta atualização não exige SQL ou migração do banco. Após a publicação, verificar os pacotes da compilação ativa; o painel de vulnerabilidades pode continuar apresentando os dados da varredura anterior até a próxima análise da Hostinger.
 
-## Cartaz inicial e inscrições de campistas — 24/11/2026
+## Cartaz inicial e inscrições de campistas — 25/11/2026
 
 - Conferir a nova arte inteira, sem corte: proporção 1024 × 1536, WebP de 720/1024 pixels e JPEG de alternativa. As URLs novas de imagem e estilo devem evitar o cartaz anterior em cache.
-- Conferir o botão **Inscrições para campistas** abaixo do brasão FAC, na área superior direita indicada, em computador, celular de 390/320 pixels e orientação horizontal. O botão não deve cobrir o título do ingresso; seu alvo de toque deve alcançar 44 pixels sem ampliar a arte visualmente.
+- Conferir a arte original no centro e a continuação do céu e da paisagem até as bordas em 1024 × 768, 1366 × 900, 1920 × 1080 e 2560 × 1080. Não deve haver textos ou botões duplicados junto às bordas do retrato. Em celulares de 390/320 pixels e orientação horizontal menor que 1024 pixels, manter a imagem vertical e não baixar o panorama.
+- Conferir o link transparente sobre **QUERO ME INSCREVER**, na parte inferior da arte. Não duplicar o texto visualmente. Verificar brilho no hover, foco visível por teclado e toque mínimo de 44 pixels, sem cobrir as demais informações. A preferência de movimento reduzido deve remover as transições.
 - Acionar por mouse, toque e Enter: abrir o Google Forms informado em nova aba, mantendo o cartaz e sem vínculo `window.opener`. Nos testes automatizados, interceptar o destino externo para não acessar nem enviar o formulário real.
 - Conferir música, foco visível, ausência de rolagem horizontal e registro agregado de visita/clique sem cookies ou identificação do visitante. Simular falha no áudio: seu aviso não deve cobrir nem interceptar o botão de inscrição. Os fluxos internos, as campanhas e suas pausas permanecem independentes deste acesso ao Forms.
 

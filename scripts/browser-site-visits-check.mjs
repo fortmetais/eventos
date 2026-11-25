@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import express from "express";
-import { chromium } from "@playwright/test";
+import { chromium, expect } from "@playwright/test";
 import { createPreviewApp } from "../apps/api/dist/core/preview-app.js";
 import { siteVisitsRoutes } from "../apps/api/dist/modules/site-visits/site-visits.routes.js";
 
@@ -35,6 +35,15 @@ await new Promise((resolve) => server.once("listening", resolve));
 const origin = `http://127.0.0.1:${server.address().port}`;
 const registrationUrl =
   "https://docs.google.com/forms/d/e/1FAIpQLSe3R2cm8qVkqIzQhNlwC7PQH1s92pFVwJ8iMwcisBKeUAAgnA/viewform?pli=1";
+const viewports = [
+  [1366, 900, "LARGE"],
+  [390, 844, "SMALL"],
+  [320, 568, "SMALL"],
+  [844, 390, "MEDIUM"],
+  [1920, 1080, "LARGE"],
+  [2560, 1080, "LARGE"],
+  [1024, 768, "LARGE"],
+];
 mkdirSync(".local/screenshots", { recursive: true });
 api.use("/api/v1", (req, _res, next) => {
   requests.push({
@@ -76,12 +85,7 @@ try {
         }
       : {}),
   });
-  for (const [width, height, screen] of [
-    [1366, 900, "LARGE"],
-    [390, 844, "SMALL"],
-    [320, 568, "SMALL"],
-    [844, 390, "MEDIUM"],
-  ]) {
+  for (const [width, height, screen] of viewports) {
     const context = await browser.newContext({
       viewport: { width, height },
       hasTouch: width < 768,
@@ -100,39 +104,75 @@ try {
       },
     );
     const page = await context.newPage();
-    const errors = [];
+    const errors = [],
+      assetRequests = [];
     page.on("pageerror", (error) => errors.push(error.message));
+    page.on("request", (request) => assetRequests.push(request.url()));
     const start = writes.length;
-    await page.goto(origin, { waitUntil: "domcontentloaded" });
+    await page.goto(origin, { waitUntil: "load" });
     await count(start + 1);
     assert.equal(writes[start].create.screen, screen);
     assert.equal(writes[start].create.pageViews, 1);
     const notice = page.getByRole("link", {
-      name: "INSCRIÇÕES PARA CAMPISTAS",
+      name: "Quero me inscrever como campista",
       exact: true,
     });
     assert.equal(await notice.getAttribute("href"), registrationUrl);
     assert.equal(await notice.getAttribute("target"), "_blank");
     assert.equal(await notice.getAttribute("rel"), "noopener noreferrer");
-    const textMetrics = await notice.evaluate((button) => {
+    assert.equal(await notice.count(), 1);
+    const musicControl = await page.locator("#music-toggle").boundingBox();
+    assert(
+      musicControl && musicControl.width >= 44 && musicControl.height >= 44,
+    );
+    assert(
+      musicControl.y >= 0 && musicControl.x + musicControl.width <= width,
+      "O controle de música deve permanecer inteiro na tela.",
+    );
+    const panorama = page.locator(".poster-panorama");
+    assert.equal(await panorama.getAttribute("aria-hidden"), "true");
+    assert.equal(
+      await panorama.evaluate(
+        (element) => getComputedStyle(element).pointerEvents,
+      ),
+      "none",
+    );
+    const showPanorama = width >= 1024 && width / height >= 4 / 3;
+    assert.equal(await panorama.isVisible(), showPanorama);
+    assert.equal(
+      assetRequests.some((url) => url.endsWith("/fac-2027-panorama-v3.webp")),
+      showPanorama,
+      "O panorama deve ser baixado apenas nas telas grandes horizontais.",
+    );
+    const panoramaSides = await panorama.evaluate((element) =>
+      ["::before", "::after"].map((pseudo) => {
+        const style = getComputedStyle(element, pseudo);
+        return {
+          backgroundImage: style.backgroundImage,
+          backgroundSize: style.backgroundSize,
+        };
+      }),
+    );
+    assert(
+      panoramaSides.every((side) =>
+        showPanorama
+          ? side.backgroundImage.includes("/fac-2027-panorama-v3.webp") &&
+            side.backgroundSize === "300% 100%"
+          : side.backgroundImage === "none",
+      ),
+      "O fundo deve usar apenas os terços laterais seguros, sem repetir o centro da arte.",
+    );
+    const overlayMetrics = await notice.evaluate((button) => {
       const bounds = button.getBoundingClientRect(),
         style = getComputedStyle(button);
       const lines = [...button.querySelectorAll("span")].map((line) =>
         line.getBoundingClientRect().toJSON(),
       );
-      const fits = [...button.querySelectorAll("span")].every((line) => {
-        const text = line.getBoundingClientRect();
-        return (
-          text.left >= bounds.left &&
-          text.right <= bounds.right &&
-          text.top >= bounds.top &&
-          text.bottom <= bounds.bottom
-        );
-      });
       return {
-        fits,
         lines,
         bounds: bounds.toJSON(),
+        backgroundColor: style.backgroundColor,
+        backgroundImage: style.backgroundImage,
         font: style.font,
         lineHeight: style.lineHeight,
         clientWidth: button.clientWidth,
@@ -142,18 +182,17 @@ try {
       };
     });
     writeFileSync(
-      `.local/poster-button-metrics-${width}x${height}.json`,
-      JSON.stringify(textMetrics, null, 2),
+      `.local/poster-viagem-button-metrics-${width}x${height}.json`,
+      JSON.stringify(overlayMetrics, null, 2),
     );
-    if (!textMetrics.fits)
-      await page.screenshot({
-        path: `.local/screenshots/poster-campistas-overflow-${width}x${height}.png`,
-        fullPage: true,
-      });
+    assert.equal(overlayMetrics.backgroundColor, "rgba(0, 0, 0, 0)");
+    assert.equal(overlayMetrics.backgroundImage, "none");
+    assert.equal(overlayMetrics.lines.length, 1);
     assert(
-      textMetrics.fits,
-      `O texto do botão deve caber sem corte em ${width} × ${height}.`,
+      overlayMetrics.lines.every((line) => line.width <= 2 && line.height <= 2),
+      "O texto acessível não deve duplicar visualmente o botão impresso na arte.",
     );
+    assert.equal((await notice.textContent()).trim(), "QUERO ME INSCREVER");
     assert(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
@@ -162,21 +201,89 @@ try {
     const box = await notice.boundingBox();
     const poster = await page.locator(".poster").boundingBox();
     assert(box && poster);
-    assert(Math.abs((box.x - poster.x) / poster.width - 0.59) < 0.01);
-    assert(Math.abs((box.y - poster.y) / poster.height - 0.145) < 0.01);
+    assert.equal(
+      await page.locator(".poster").getAttribute("src"),
+      "/fac-2027.jpg?v=viagem-20261125-v3",
+    );
+    if (showPanorama) {
+      assert(Math.abs(poster.height - height) < 1);
+      assert(Math.abs(poster.y) < 1);
+      assert(Math.abs(poster.width / poster.height - 2 / 3) < 0.001);
+      assert(Math.abs(poster.x + poster.width / 2 - width / 2) < 1);
+      const backdrop = await panorama.boundingBox();
+      assert(
+        backdrop &&
+          Math.abs(backdrop.width - width) < 1 &&
+          Math.abs(backdrop.height - height) < 1,
+      );
+    }
+    assert(Math.abs((box.x - poster.x) / poster.width - 0.203) < 0.005);
+    assert(Math.abs((box.y - poster.y) / poster.height - 0.682) < 0.005);
+    assert(Math.abs(box.width / poster.width - 0.594) < 0.005);
+    assert(Math.abs(box.height / poster.height - 0.083) < 0.005);
     assert(box.x + box.width <= poster.x + poster.width);
-    assert(box.y + box.height < poster.y + poster.height * 0.205);
+    assert(box.y + box.height < poster.y + poster.height * 0.77);
     assert(
       await notice.evaluate((link) => {
         const touchArea = getComputedStyle(link, "::after");
         return Number.parseFloat(touchArea.height) >= 44;
       }),
-      "A área de toque deve ter pelo menos 44 px sem cobrir o texto do ingresso.",
+      "A área de toque deve ter pelo menos 44 px sem ampliar o desenho do botão.",
     );
     await page.screenshot({
-      path: `.local/screenshots/poster-campistas-${width}x${height}.png`,
+      path: `.local/screenshots/poster-viagem-${width}x${height}.png`,
       fullPage: true,
     });
+    if (width === 1366) {
+      const idleShadow = await notice.evaluate(
+        (link) => getComputedStyle(link).boxShadow,
+      );
+      await notice.hover();
+      await expect
+        .poll(() => notice.evaluate((link) => getComputedStyle(link).boxShadow))
+        .not.toBe(idleShadow);
+      await page.waitForTimeout(250);
+      await page.screenshot({
+        path: ".local/screenshots/poster-viagem-hover-desktop.png",
+        fullPage: true,
+      });
+      await page.mouse.move(0, 0);
+      await page.keyboard.press("Tab");
+      await expect(notice).toBeFocused();
+      assert(await notice.evaluate((link) => link.matches(":focus-visible")));
+      assert(
+        await notice.evaluate(
+          (link) => Number.parseFloat(getComputedStyle(link).outlineWidth) >= 2,
+        ),
+      );
+      await expect
+        .poll(() => notice.evaluate((link) => getComputedStyle(link).boxShadow))
+        .not.toBe(idleShadow);
+      await page.screenshot({
+        path: ".local/screenshots/poster-viagem-focus-desktop.png",
+        fullPage: true,
+      });
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      assert(
+        await notice.evaluate((link) =>
+          [link, "::before"].every((target) => {
+            const style =
+              typeof target === "string"
+                ? getComputedStyle(link, target)
+                : getComputedStyle(target);
+            return [style.transitionDuration, style.animationDuration].every(
+              (value) =>
+                value
+                  .split(",")
+                  .every((duration) => Number.parseFloat(duration) === 0),
+            );
+          }),
+        ),
+        "O efeito deve respeitar a preferência por movimento reduzido.",
+      );
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await page.keyboard.press("Tab");
+    }
     await page.locator("#background-music").evaluate((audio) => {
       audio.pause();
       audio.dispatchEvent(new Event("error"));
@@ -203,7 +310,7 @@ try {
       "none",
     );
     await page.screenshot({
-      path: `.local/screenshots/poster-campistas-audio-fallback-${width}x${height}.png`,
+      path: `.local/screenshots/poster-viagem-audio-fallback-${width}x${height}.png`,
       fullPage: true,
     });
     const popupOpened = page.waitForEvent("popup");
@@ -240,7 +347,7 @@ try {
     await count(start + 3);
     assert.equal(writes[start + 2].create.pageViews, 1);
     const nativeLink = nativePage.getByRole("link", {
-      name: "INSCRIÇÕES PARA CAMPISTAS",
+      name: "Quero me inscrever como campista",
       exact: true,
     });
     await nativeLink.evaluate((link) =>
@@ -258,19 +365,19 @@ try {
     assert.deepEqual(errors, []);
     await context.close();
   }
-  assert.equal(requests.length, 16);
+  assert.equal(requests.length, viewports.length * 4);
   writeFileSync(
     ".local/poster-visits-requests.json",
     JSON.stringify(requests, null, 2),
   );
   assert.equal(
     requests.filter((request) => request.body.event === "view").length,
-    8,
+    viewports.length * 2,
   );
   assert.equal(
     requests.filter((request) => request.body.event === "registration_click")
       .length,
-    8,
+    viewports.length * 2,
   );
   assert(
     requests.every((request) => request.origin === origin),
@@ -287,7 +394,7 @@ try {
     ),
   );
   console.log(
-    "Cartaz e inscrições de campistas validados em computador e celular: botão na área indicada, texto legível, mouse/toque/teclado, falha de áudio sem bloquear a inscrição, nova aba sem opener, URL correta e visitas/cliques sem cookies ou banco real. Google Forms foi simulado, sem acesso externo.",
+    "Novo cartaz validado em sete larguras de computador e celular: panorama decorativo apenas em telas grandes horizontais e retrato original preservado; área clicável alinhada à arte, sem texto duplicado; brilho em hover/foco e movimento reduzido; mouse/toque/teclado, falha de áudio sem bloquear inscrição, nova aba sem opener, URL correta e visitas/cliques sem cookies ou banco real. Google Forms foi simulado, sem acesso externo.",
   );
 } finally {
   await browser?.close();

@@ -15,7 +15,12 @@ describe("página temporária do FAC", () => {
         .get(path)
         .set("Accept", "text/html")
         .expect(200);
-      expect(response.text).toContain("INSCRIÇÕES PARA CAMPISTAS");
+      expect(response.text).toContain(
+        'aria-label="Quero me inscrever como campista"',
+      );
+      expect(response.text).toContain(
+        'class="screen-reader-only">QUERO ME INSCREVER</span>',
+      );
       expect(response.text).toContain(`href="${registrationUrl}"`);
       expect(response.text).toContain('class="registration-link"');
       expect(response.text).toContain('target="_blank"');
@@ -42,15 +47,34 @@ describe("página temporária do FAC", () => {
     const css = await request(app).get("/pagina-temporaria.css").expect(200);
     expect(css.text).toContain("object-fit: contain");
     expect(css.text).toContain("1024 / 1536");
+    expect(css.text).toContain(":focus-visible");
+    expect(css.text).toContain("prefers-reduced-motion");
+    expect(css.text).toContain("box-shadow");
+  });
+  it("oferece o panorama decorativo de computador sem substituir a arte original", async () => {
+    const page = await request(app).get("/").expect(200);
+    expect(page.text).toContain('class="poster-panorama" aria-hidden="true"');
+    expect(page.text).toContain("/pagina-temporaria.css?v=viagem-20261125-v4");
+    expect(page.text).toContain('src="/fac-2027.jpg?v=viagem-20261125-v3"');
+    const response = await request(app)
+      .get("/fac-2027-panorama-v3.webp")
+      .expect("Content-Type", /image\/webp/)
+      .expect(200);
+    expect(response.headers["cache-control"]).toContain("31536000");
+    expect(await sharp(response.body).metadata()).toMatchObject({
+      width: 2172,
+      height: 724,
+    });
   });
   it("oferece cartazes WebP responsivos com cache e JPEG como alternativa", async () => {
     const page = await request(app).get("/").expect(200);
-    expect(page.text).toContain("/fac-2027-720-v2.webp 720w");
-    expect(page.text).toContain("/fac-2027-1024-v2.webp 1024w");
-    expect(page.text).toContain('src="/fac-2027.jpg?v=campistas-20261124-3"');
+    expect(page.text).toContain("/fac-2027-720-v3.webp 720w");
+    expect(page.text).toContain("/fac-2027-1024-v3.webp 1024w");
+    expect(page.text).toContain('src="/fac-2027.jpg?v=viagem-20261125-v3"');
+    expect(page.text).not.toContain("Quadra Esportiva");
     for (const width of [720, 1024]) {
       const response = await request(app)
-        .get(`/fac-2027-${width}-v2.webp`)
+        .get(`/fac-2027-${width}-v3.webp`)
         .expect("Content-Type", /image\/webp/)
         .expect(200);
       expect(response.headers["cache-control"]).toContain("31536000");
@@ -62,6 +86,11 @@ describe("página temporária do FAC", () => {
     for (const width of [720, 1041])
       await request(app)
         .get(`/fac-2027-${width}-v1.webp`)
+        .expect("Content-Type", /image\/webp/)
+        .expect(200);
+    for (const width of [720, 1024])
+      await request(app)
+        .get(`/fac-2027-${width}-v2.webp`)
         .expect("Content-Type", /image\/webp/)
         .expect(200);
   });
